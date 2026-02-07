@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zigbee Gateway</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <h2>Статус Шлюзу</h2>
+            <!-- Важливо: id="status" має бути тут -->
+            <div id="status" class="status-grid">
+                Завантаження параметрів...
+            </div>
+            <button class="btn-permit" onclick="permitJoin()">Додати новий пристрій</button>
+        </div>
+
+        <div class="card">
+            <h2>Пристрої Zigbee</h2>
+            <ul id="devices">
+                <li class="empty">Пошук пристроїв...</li>
+            </ul>
+        </div>
+    </div>
+    
+    <!-- Додати в самий кінець перед </body> -->
+<div id="toast">Повідомлення</div>
+<script src="script.js"></script>
+</body>
+</html>

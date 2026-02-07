@@ -30,7 +30,7 @@
 
 ### 1. Клонування репозиторію
 ```bash
-git clone https://github.com/Alleks-k/zigbee-gateway-esp32c6-v1.git
+git clone https://github.com/Alleks-k/zigbee-gateway-esp32c6-v2.git
 cd zigbee-gateway-esp32c6
 ```
 

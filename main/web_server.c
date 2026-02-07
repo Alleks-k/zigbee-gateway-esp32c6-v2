@@ -6,10 +6,14 @@
 #include <string.h>
 #include <stdio.h>
 #include "cJSON.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
+#include <sys/stat.h>
 
 static const char *TAG = "WEB_SERVER";
 
 /* Глобальні дані пристроїв */
+static SemaphoreHandle_t devices_mutex = NULL;
 zb_device_t devices[MAX_DEVICES];
 int device_count = 0;
 
@@ -52,9 +56,16 @@ void load_devices_from_nvs() {
 }
 
 void add_device(uint16_t addr) {
+    if (devices_mutex != NULL) {
+        xSemaphoreTake(devices_mutex, portMAX_DELAY);
+    }
+
     for (int i = 0; i < device_count; i++) {
         if (devices[i].short_addr == addr) {
             ESP_LOGI(TAG, "Device 0x%04x is already in the list", addr);
+            if (devices_mutex != NULL) {
+                xSemaphoreGive(devices_mutex);
+            }
             return;
         }
     }
@@ -69,6 +80,10 @@ void add_device(uint16_t addr) {
     } else {
         ESP_LOGW(TAG, "Maximum device limit reached (%d)", MAX_DEVICES);
     }
+
+    if (devices_mutex != NULL) {
+        xSemaphoreGive(devices_mutex);
+    }
 }
 
 /* Обробник для головної сторінки */
@@ -80,11 +95,19 @@ esp_err_t web_handler(httpd_req_t *req)
         httpd_resp_send_err(req, HTTPD_404_NOT_FOUND, "File not found");
         return ESP_FAIL;
     }
-    char buf[2048];
-    size_t len = fread(buf, 1, sizeof(buf), f);
+
+    struct stat st;
+    if (stat("/www/index.html", &st) != 0) {
+        fclose(f);
+        return ESP_FAIL;
+    }
+
+    char *buf = malloc(st.st_size);
+    size_t len = fread(buf, 1, st.st_size, f);
     fclose(f);
     httpd_resp_set_type(req, "text/html; charset=utf-8");
     httpd_resp_send(req, buf, len);
+    free(buf);
     return ESP_OK;
 }
 
@@ -96,11 +119,19 @@ esp_err_t css_handler(httpd_req_t *req)
         httpd_resp_send_err(req, HTTPD_404_NOT_FOUND, "CSS file not found");
         return ESP_FAIL;
     }
-    char buf[1024];
-    size_t len = fread(buf, 1, sizeof(buf), f);
+
+    struct stat st;
+    if (stat("/www/style.css", &st) != 0) {
+        fclose(f);
+        return ESP_FAIL;
+    }
+
+    char *buf = malloc(st.st_size);
+    size_t len = fread(buf, 1, st.st_size, f);
     fclose(f);
     httpd_resp_set_type(req, "text/css");
     httpd_resp_send(req, buf, len);
+    free(buf);
     return ESP_OK;
 }
 
@@ -112,12 +143,19 @@ esp_err_t js_handler(httpd_req_t *req)
         httpd_resp_send_err(req, HTTPD_404_NOT_FOUND, "JS file not found");
         return ESP_FAIL;
     }
-    char *buf = malloc(4096);
+
+    struct stat st;
+    if (stat("/www/script.js", &st) != 0) {
+        fclose(f);
+        return ESP_FAIL;
+    }
+
+    char *buf = malloc(st.st_size);
     if (!buf) {
         fclose(f);
         return ESP_ERR_NO_MEM;
     }
-    size_t len = fread(buf, 1, 4096, f);
+    size_t len = fread(buf, 1, st.st_size, f);
     fclose(f);
     httpd_resp_set_type(req, "application/javascript");
     httpd_resp_send(req, buf, len);
@@ -135,6 +173,10 @@ esp_err_t api_status_handler(httpd_req_t *req)
     cJSON_AddNumberToObject(root, "channel", esp_zb_get_current_channel());
     cJSON_AddNumberToObject(root, "short_addr", esp_zb_get_short_address());
 
+    if (devices_mutex != NULL) {
+        xSemaphoreTake(devices_mutex, portMAX_DELAY);
+    }
+
     cJSON *dev_list = cJSON_CreateArray();
     for (int i = 0; i < device_count; i++) {
         cJSON *item = cJSON_CreateObject();
@@ -142,6 +184,11 @@ esp_err_t api_status_handler(httpd_req_t *req)
         cJSON_AddNumberToObject(item, "short_addr", devices[i].short_addr);
         cJSON_AddItemToArray(dev_list, item);
     }
+
+    if (devices_mutex != NULL) {
+        xSemaphoreGive(devices_mutex);
+    }
+
     cJSON_AddItemToObject(root, "devices", dev_list);
 
     const char *json_str = cJSON_PrintUnformatted(root);
@@ -196,6 +243,7 @@ esp_err_t favicon_handler(httpd_req_t *req)
 
 void start_web_server(void)
 {
+    devices_mutex = xSemaphoreCreateMutex();
     load_devices_from_nvs();
 
     httpd_handle_t server = NULL;

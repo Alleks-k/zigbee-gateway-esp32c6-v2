@@ -72,13 +72,42 @@ void add_device(uint16_t addr) {
 
     if (device_count < MAX_DEVICES) {
         devices[device_count].short_addr = addr;
-        snprintf(devices[device_count].name, sizeof(devices[device_count].name), "Device 0x%04x", addr);
+        snprintf(devices[device_count].name, sizeof(devices[device_count].name), "Пристрій 0x%04x", addr);
         device_count++;
         
         ESP_LOGI(TAG, "New device added: 0x%04x. Total: %d", addr, device_count);
         save_devices_to_nvs();
     } else {
         ESP_LOGW(TAG, "Maximum device limit reached (%d)", MAX_DEVICES);
+    }
+
+    if (devices_mutex != NULL) {
+        xSemaphoreGive(devices_mutex);
+    }
+}
+
+/* НОВА ФУНКЦІЯ: Видалення пристрою */
+void delete_device(uint16_t addr) {
+    if (devices_mutex != NULL) {
+        xSemaphoreTake(devices_mutex, portMAX_DELAY);
+    }
+
+    int found_idx = -1;
+    for (int i = 0; i < device_count; i++) {
+        if (devices[i].short_addr == addr) {
+            found_idx = i;
+            break;
+        }
+    }
+
+    if (found_idx != -1) {
+        // Зсуваємо масив, щоб видалити елемент
+        for (int i = found_idx; i < device_count - 1; i++) {
+            devices[i] = devices[i + 1];
+        }
+        device_count--;
+        ESP_LOGI(TAG, "Device 0x%04x removed. Remaining: %d", addr, device_count);
+        save_devices_to_nvs();
     }
 
     if (devices_mutex != NULL) {
@@ -221,7 +250,9 @@ esp_err_t api_control_handler(httpd_req_t *req)
     
     uint16_t addr;
     uint8_t endpoint, cmd;
-    if (sscanf(buf, "%hx,%hhu,%hhu", &addr, &endpoint, &cmd) == 3) {
+    
+    /* ВИПРАВЛЕНО: Використовуємо %hu (unsigned short decimal) замість %hx */
+    if (sscanf(buf, "%hu,%hhu,%hhu", &addr, &endpoint, &cmd) == 3) {
         ESP_LOGI(TAG, "Web Control: addr=0x%04x, ep=%d, cmd=%d", addr, endpoint, cmd);
         send_on_off_command(addr, endpoint, cmd);
         const char* resp = "{\"message\":\"Command sent\"}";
@@ -230,6 +261,45 @@ esp_err_t api_control_handler(httpd_req_t *req)
     } else {
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid command format");
     }
+    return ESP_OK;
+}
+
+// /* API: Керування пристроєм */
+// esp_err_t api_control_handler(httpd_req_t *req)
+// {
+//     char buf[100];
+//     int len = httpd_req_recv(req, buf, sizeof(buf));
+//     if (len <= 0) return ESP_FAIL;
+//     buf[len] = '\0';
+    
+//     uint16_t addr;
+//     uint8_t endpoint, cmd;
+//     if (sscanf(buf, "%hx,%hhu,%hhu", &addr, &endpoint, &cmd) == 3) {
+//         ESP_LOGI(TAG, "Web Control: addr=0x%04x, ep=%d, cmd=%d", addr, endpoint, cmd);
+//         send_on_off_command(addr, endpoint, cmd);
+//         const char* resp = "{\"message\":\"Command sent\"}";
+//         httpd_resp_set_type(req, "application/json");
+//         httpd_resp_send(req, resp, strlen(resp));
+//     } else {
+//         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid command format");
+//     }
+//     return ESP_OK;
+// }
+
+/* НОВИЙ ОБРОБНИК: Видалення пристрою через API */
+esp_err_t api_delete_device_handler(httpd_req_t *req) {
+    char buf[32];
+    int len = httpd_req_recv(req, buf, sizeof(buf) - 1);
+    if (len <= 0) return ESP_FAIL;
+    buf[len] = '\0';
+
+    // Очікуємо адресу у форматі 0x1234 або просто число
+    uint16_t addr = (uint16_t)strtol(buf, NULL, 16);
+    delete_device(addr);
+    
+    const char* resp = "{\"status\":\"ok\"}";
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, resp);
     return ESP_OK;
 }
 
@@ -269,6 +339,10 @@ void start_web_server(void)
 
         httpd_uri_t uri_control = { .uri = "/api/control", .method = HTTP_POST, .handler = api_control_handler };
         httpd_register_uri_handler(server, &uri_control);
+
+        // РЕЄСТРАЦІЯ ВИДАЛЕННЯ
+        httpd_uri_t uri_delete = { .uri = "/api/delete", .method = HTTP_POST, .handler = api_delete_device_handler };
+        httpd_register_uri_handler(server, &uri_delete);
 
         httpd_uri_t uri_favicon = { .uri = "/favicon.ico", .method = HTTP_GET, .handler = favicon_handler };
         httpd_register_uri_handler(server, &uri_favicon);

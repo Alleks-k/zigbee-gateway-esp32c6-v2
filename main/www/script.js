@@ -38,11 +38,15 @@ function update() {
                         const li = document.createElement("li");
                         li.className = "device-item";
                         const hexAddr = "0x" + device.short_addr.toString(16).toUpperCase();
+                        
+                        // Додано кнопку видалення до оригінальної розмітки
                         li.innerHTML = '<div class="device-info"><strong>' + device.name + '</strong>' +
                                        '<small>' + hexAddr + '</small></div>' +
                                        '<div class="device-controls">' +
                                        '<button class="btn-on" onclick="control(' + device.short_addr + ', 1, 1)">Ввімк</button>' +
-                                       '<button class="btn-off" onclick="control(' + device.short_addr + ', 1, 0)">Вимк</button></div>';
+                                       '<button class="btn-off" onclick="control(' + device.short_addr + ', 1, 0)">Вимк</button>' +
+                                       '<button class="btn-delete" style="background:#ff4d4d;color:white;margin-left:5px;border:none;padding:5px 10px;border-radius:4px;cursor:pointer;" onclick="deleteDevice(\'' + hexAddr + '\')">Видалити</button>' +
+                                       '</div>';
                         devicesList.appendChild(li);
                     });
                 }
@@ -99,6 +103,27 @@ function control(addr, endpoint, cmd) {
     })
     .catch(function() {
         showToast("Помилка команди");
+    });
+}
+
+// НОВА ФУНКЦІЯ: Видалення пристрою
+function deleteDevice(addr) {
+    if (!confirm("Видалити пристрій " + addr + "?")) return;
+    
+    fetch("/api/delete", {
+        method: "POST",
+        body: addr
+    })
+    .then(function(response) {
+        if (response.ok) {
+            showToast("Пристрій видалено");
+            update();
+        } else {
+            showToast("Помилка видалення");
+        }
+    })
+    .catch(function() {
+        showToast("Шлюз недоступний");
     });
 }
 

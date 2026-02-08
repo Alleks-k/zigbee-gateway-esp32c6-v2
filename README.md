@@ -35,13 +35,10 @@ cd zigbee-gateway-esp32c6
 ```
 
 ### 2. Конфігурація Wi-Fi та Zigbee
-Запустіть меню конфігурації:
-```bash
-idf.py menuconfig
-```
-Перейдіть до розділу **Example Connection Configuration** та вкажіть:
-- **Wi-Fi SSID**
-- **Wi-Fi Password**
+1. Скопіюйте файл-приклад:
+   ```bash
+   cp main/wifi_credentials.h.example main/wifi_credentials.h
+2. Відкрийте main/wifi_credentials.h та впишіть назву своєї мережі та пароль.
 
 Також у розділі **ESP Zigbee gateway rcp update** можна налаштувати піни для RCP (якщо використовується зовнішній модуль) або залишити стандартні для вбудованого радіо.
 

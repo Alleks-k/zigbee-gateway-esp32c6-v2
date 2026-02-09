@@ -2,6 +2,7 @@
 #define WEB_SERVER_H
 
 #include "esp_http_server.h"
+#include "esp_zigbee_core.h"
 
 /* Зовнішні змінні зі статусом Zigbee */
 extern uint16_t pan_id;
@@ -12,7 +13,8 @@ extern uint16_t short_addr;
 #define MAX_DEVICES 10
 typedef struct {
     uint16_t short_addr;
-    char name[32]; // Збільшено з 20 до 32 для підтримки кирилиці
+    esp_zb_ieee_addr_t ieee_addr; 
+    char name[32]; 
 } zb_device_t;
 
 extern zb_device_t devices[MAX_DEVICES];
@@ -25,15 +27,16 @@ esp_err_t js_handler(httpd_req_t *req);
 esp_err_t api_status_handler(httpd_req_t *req);
 esp_err_t api_permit_join_handler(httpd_req_t *req);
 esp_err_t api_control_handler(httpd_req_t *req);
-esp_err_t api_delete_device_handler(httpd_req_t *req); // Додано
+esp_err_t api_delete_device_handler(httpd_req_t *req);
 esp_err_t favicon_handler(httpd_req_t *req);
 
 void start_web_server(void);
-void add_device(uint16_t addr);
-void delete_device(uint16_t addr); // Додано
+void add_device_with_ieee(uint16_t addr, esp_zb_ieee_addr_t ieee);
+void delete_device(uint16_t addr);
 
 /* Керування Zigbee */
 void send_on_off_command(uint16_t short_addr, uint8_t endpoint, uint8_t on_off);
+void send_leave_command(uint16_t short_addr, esp_zb_ieee_addr_t ieee_addr);
 
 /* NVS функції */
 void save_devices_to_nvs();

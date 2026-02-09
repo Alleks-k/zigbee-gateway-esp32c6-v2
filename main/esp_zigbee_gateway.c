@@ -1,4 +1,3 @@
-
 #include <fcntl.h>
 #include <string.h>
 #include "esp_check.h"
@@ -30,19 +29,16 @@
 
 static const char *TAG = "ESP_ZB_GATEWAY";
 
-/* Глобальні дані для статусу мережі */
 uint16_t pan_id = 0;
 uint8_t channel = 0;
 uint16_t short_addr = 0;
 
-/* Production configuration app data */
 typedef struct app_production_config_s {
     uint16_t version;
     uint16_t manuf_code;
     char manuf_name[16];
 } app_production_config_t;
 
-/* mDNS сервіс */
 void start_mdns_service(void)
 {
     esp_err_t err = mdns_init();
@@ -56,7 +52,6 @@ void start_mdns_service(void)
     ESP_LOGI(TAG, "mDNS started: http://zigbee-gw.local");
 }
 
-/* Консоль */
 #if CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
 esp_err_t esp_zb_gateway_console_init(void)
 {
@@ -74,7 +69,6 @@ esp_err_t esp_zb_gateway_console_init(void)
 }
 #endif
 
-/* Керування RCP (оновлення прошивки копроцесора) */
 #if(CONFIG_ZIGBEE_GW_AUTO_UPDATE_RCP)
 static void esp_zb_gateway_update_rcp(void)
 {
@@ -115,7 +109,6 @@ static void bdb_start_top_level_commissioning_cb(uint8_t mode_mask)
     esp_zb_bdb_start_top_level_commissioning(mode_mask);
 }
 
-/* Команда On/Off через Zigbee */
 void send_on_off_command(uint16_t short_addr, uint8_t endpoint, uint8_t on_off) {
     esp_zb_zcl_on_off_cmd_t cmd_req = {
         .zcl_basic_cmd = {
@@ -129,7 +122,22 @@ void send_on_off_command(uint16_t short_addr, uint8_t endpoint, uint8_t on_off) 
     esp_zb_zcl_on_off_cmd_req(&cmd_req);
 }
 
-/* Обробник сигналів Zigbee Stack */
+/**
+ * @brief Відправка команди Leave
+ */
+void send_leave_command(uint16_t short_addr, esp_zb_ieee_addr_t ieee_addr) {
+    esp_zb_zdo_mgmt_leave_req_param_t leave_req;
+    memset(&leave_req, 0, sizeof(esp_zb_zdo_mgmt_leave_req_param_t));
+    
+    leave_req.dst_nwk_addr = short_addr; 
+    memcpy(leave_req.device_address, ieee_addr, sizeof(esp_zb_ieee_addr_t));
+    leave_req.remove_children = false;
+    leave_req.rejoin = false; // ПРИМУСОВЕ ВИДАЛЕННЯ БЕЗ ПОВЕРНЕННЯ
+
+    ESP_LOGI(TAG, "Sending Leave Request to 0x%04x", short_addr);
+    esp_zb_zdo_device_leave_req(&leave_req, NULL, NULL);
+}
+
 void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
 {
     uint32_t *p_sg_p       = signal_struct->p_app_signal;
@@ -176,17 +184,10 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
 
     case ESP_ZB_ZDO_SIGNAL_DEVICE_ANNCE: {
         esp_zb_zdo_signal_device_annce_params_t *params = (esp_zb_zdo_signal_device_annce_params_t *)esp_zb_app_signal_get_params(p_sg_p);
-        ESP_LOGI(TAG, "New device: 0x%04hx", params->device_short_addr);
-        add_device(params->device_short_addr);
+        ESP_LOGI(TAG, "New device joined: 0x%04hx", params->device_short_addr);
+        add_device_with_ieee(params->device_short_addr, params->ieee_addr);
         break;
     }
-
-    case ESP_ZB_NWK_SIGNAL_PERMIT_JOIN_STATUS:
-        if (err_status == ESP_OK) {
-            uint8_t status = *(uint8_t *)esp_zb_app_signal_get_params(p_sg_p);
-            ESP_LOGI(TAG, "Permit Join status: %d", status);
-        }
-        break;
 
     default:
         ESP_LOGI(TAG, "ZDO signal: 0x%x, status: %s", sig_type, esp_err_to_name(err_status));
@@ -214,7 +215,6 @@ static esp_err_t check_ot_rcp_version(void)
 }
 #endif
 
-/* Основне завдання Zigbee */
 static void esp_zb_task(void *pvParameters)
 {
 #if CONFIG_OPENTHREAD_SPINEL_ONLY
@@ -250,21 +250,16 @@ static void esp_zb_task(void *pvParameters)
 
 void app_main(void)
 {
-    /* 1. Базова ініціалізація системних ресурсів */
     ESP_ERROR_CHECK(nvs_flash_init());
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
-
-    /* 2. Підключення до Wi-Fi (блокує виконання до отримання IP) */
     ESP_ERROR_CHECK(wifi_init_sta_and_wait());
 
-    /* 3. Ініціалізація сховища для Web UI */
     esp_vfs_spiffs_conf_t www_conf = {
         .base_path = "/www", .partition_label = "www", .max_files = 5, .format_if_mount_failed = true
     };
     ESP_ERROR_CHECK(esp_vfs_spiffs_register(&www_conf));
 
-    /* 4. Запуск сервісів (доступні відразу після Wi-Fi) */
     start_mdns_service();
     start_web_server();
 
@@ -272,7 +267,6 @@ void app_main(void)
     esp_zb_gateway_console_init();
 #endif
 
-    /* 5. Налаштування платформи Zigbee (Тільки після готовності мережі) */
     esp_zb_platform_config_t config = {
         .radio_config = ESP_ZB_DEFAULT_RADIO_CONFIG(),
         .host_config = ESP_ZB_DEFAULT_HOST_CONFIG(),
@@ -285,6 +279,5 @@ void app_main(void)
     esp_rcp_update_init(&rcp_update_config);
 #endif
 
-    /* 6. Запуск основного Zigbee завдання */
     xTaskCreate(esp_zb_task, "Zigbee_main", 8192, NULL, 5, NULL);
 }

@@ -55,14 +55,16 @@ void load_devices_from_nvs() {
     }
 }
 
-void add_device(uint16_t addr) {
+/* Функція додавання пристрою з IEEE адресою */
+void add_device_with_ieee(uint16_t addr, esp_zb_ieee_addr_t ieee) {
     if (devices_mutex != NULL) {
         xSemaphoreTake(devices_mutex, portMAX_DELAY);
     }
 
     for (int i = 0; i < device_count; i++) {
         if (devices[i].short_addr == addr) {
-            ESP_LOGI(TAG, "Device 0x%04x is already in the list", addr);
+            ESP_LOGI(TAG, "Device 0x%04x is already in the list, updating IEEE", addr);
+            memcpy(devices[i].ieee_addr, ieee, sizeof(esp_zb_ieee_addr_t));
             if (devices_mutex != NULL) {
                 xSemaphoreGive(devices_mutex);
             }
@@ -72,6 +74,7 @@ void add_device(uint16_t addr) {
 
     if (device_count < MAX_DEVICES) {
         devices[device_count].short_addr = addr;
+        memcpy(devices[device_count].ieee_addr, ieee, sizeof(esp_zb_ieee_addr_t));
         snprintf(devices[device_count].name, sizeof(devices[device_count].name), "Пристрій 0x%04x", addr);
         device_count++;
         
@@ -86,7 +89,7 @@ void add_device(uint16_t addr) {
     }
 }
 
-/* НОВА ФУНКЦІЯ: Видалення пристрою */
+/* Функція видалення пристрою */
 void delete_device(uint16_t addr) {
     if (devices_mutex != NULL) {
         xSemaphoreTake(devices_mutex, portMAX_DELAY);
@@ -101,7 +104,14 @@ void delete_device(uint16_t addr) {
     }
 
     if (found_idx != -1) {
-        // Зсуваємо масив, щоб видалити елемент
+        // 1. Закриваємо мережу, щоб пристрій не підключився автоматично назад
+        esp_zb_bdb_open_network(0);
+        ESP_LOGW(TAG, "Network closed to prevent immediate re-pairing");
+
+        // 2. Надсилаємо команду Leave пристрою
+        send_leave_command(devices[found_idx].short_addr, devices[found_idx].ieee_addr);
+
+        // 3. Видаляємо з локального списку
         for (int i = found_idx; i < device_count - 1; i++) {
             devices[i] = devices[i + 1];
         }
@@ -192,12 +202,11 @@ esp_err_t js_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
-/* API: Статус у JSON (ВИПРАВЛЕНО: прямий запит до SDK) */
+/* API: Статус у JSON */
 esp_err_t api_status_handler(httpd_req_t *req)
 {
     cJSON *root = cJSON_CreateObject();
     
-    // Запитуємо актуальні дані безпосередньо у Zigbee SDK
     cJSON_AddNumberToObject(root, "pan_id", esp_zb_get_pan_id());
     cJSON_AddNumberToObject(root, "channel", esp_zb_get_current_channel());
     cJSON_AddNumberToObject(root, "short_addr", esp_zb_get_short_address());
@@ -251,7 +260,6 @@ esp_err_t api_control_handler(httpd_req_t *req)
     uint16_t addr;
     uint8_t endpoint, cmd;
     
-    /* ВИПРАВЛЕНО: Використовуємо %hu (unsigned short decimal) замість %hx */
     if (sscanf(buf, "%hu,%hhu,%hhu", &addr, &endpoint, &cmd) == 3) {
         ESP_LOGI(TAG, "Web Control: addr=0x%04x, ep=%d, cmd=%d", addr, endpoint, cmd);
         send_on_off_command(addr, endpoint, cmd);
@@ -264,36 +272,13 @@ esp_err_t api_control_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
-// /* API: Керування пристроєм */
-// esp_err_t api_control_handler(httpd_req_t *req)
-// {
-//     char buf[100];
-//     int len = httpd_req_recv(req, buf, sizeof(buf));
-//     if (len <= 0) return ESP_FAIL;
-//     buf[len] = '\0';
-    
-//     uint16_t addr;
-//     uint8_t endpoint, cmd;
-//     if (sscanf(buf, "%hx,%hhu,%hhu", &addr, &endpoint, &cmd) == 3) {
-//         ESP_LOGI(TAG, "Web Control: addr=0x%04x, ep=%d, cmd=%d", addr, endpoint, cmd);
-//         send_on_off_command(addr, endpoint, cmd);
-//         const char* resp = "{\"message\":\"Command sent\"}";
-//         httpd_resp_set_type(req, "application/json");
-//         httpd_resp_send(req, resp, strlen(resp));
-//     } else {
-//         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid command format");
-//     }
-//     return ESP_OK;
-// }
-
-/* НОВИЙ ОБРОБНИК: Видалення пристрою через API */
+/* API: Видалення пристрою */
 esp_err_t api_delete_device_handler(httpd_req_t *req) {
     char buf[32];
     int len = httpd_req_recv(req, buf, sizeof(buf) - 1);
     if (len <= 0) return ESP_FAIL;
     buf[len] = '\0';
 
-    // Очікуємо адресу у форматі 0x1234 або просто число
     uint16_t addr = (uint16_t)strtol(buf, NULL, 16);
     delete_device(addr);
     
@@ -303,7 +288,7 @@ esp_err_t api_delete_device_handler(httpd_req_t *req) {
     return ESP_OK;
 }
 
-/* Обробник для favicon (щоб уникнути помилок 404 в браузері) */
+/* Обробник для favicon */
 esp_err_t favicon_handler(httpd_req_t *req)
 {
     httpd_resp_set_status(req, "204 No Content");
@@ -340,7 +325,6 @@ void start_web_server(void)
         httpd_uri_t uri_control = { .uri = "/api/control", .method = HTTP_POST, .handler = api_control_handler };
         httpd_register_uri_handler(server, &uri_control);
 
-        // РЕЄСТРАЦІЯ ВИДАЛЕННЯ
         httpd_uri_t uri_delete = { .uri = "/api/delete", .method = HTTP_POST, .handler = api_delete_device_handler };
         httpd_register_uri_handler(server, &uri_delete);
 

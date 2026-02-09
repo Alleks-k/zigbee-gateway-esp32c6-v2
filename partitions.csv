@@ -1,8 +1,12 @@
 # Name,      Type,  SubType, Offset,   Size
 nvs,         data,  nvs,     0x9000,   0x6000
 phy_init,    data,  phy,     0xf000,   0x1000
-factory,     app,   factory, ,         0x180000
-zb_storage,  data,  fat,     ,         0x4000
-zb_fct,      data,  fat,     ,         0x400
-rcp_fw,      data,  spiffs,  ,         0xA0000
-www,         data,  spiffs,  ,         1M
+# Основна програма - 4 МБ (величезний запас)
+factory,     app,   factory, 0x10000,  0x400000
+# Сховище Zigbee параметрів
+zb_storage,  data,  fat,     ,         0x10000
+zb_fct,      data,  fat,     ,         0x4000
+# Прошивка для RCP (радіо-модуля) - 1 МБ
+rcp_fw,      data,  spiffs,  ,         0x100000
+# Веб-інтерфейс (файли сайту) - 4 МБ
+www,         data,  spiffs,  ,         0x400000

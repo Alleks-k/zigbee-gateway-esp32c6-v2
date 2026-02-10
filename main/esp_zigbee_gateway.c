@@ -11,12 +11,11 @@
 #include "esp_zigbee_type.h"
 #include "nvs_flash.h"
 #include "wifi_init.h"
-#include "esp_rcp_update.h"
+#include "rcp_tool.h"
 #include "esp_coexist.h"
 #include "esp_zigbee_gateway.h"
 #include "esp_http_server.h"
 #include "web_server.h" 
-#include "mdns.h"
 #include <zcl/esp_zigbee_zcl_core.h>
 
 #include "esp_vfs_dev.h"
@@ -39,19 +38,6 @@ typedef struct app_production_config_s {
     char manuf_name[16];
 } app_production_config_t;
 
-void start_mdns_service(void)
-{
-    esp_err_t err = mdns_init();
-    if (err) {
-        ESP_LOGE(TAG, "mDNS Init failed: %d", err);
-        return;
-    }
-    mdns_hostname_set("zigbee-gw");
-    mdns_instance_name_set("ESP32C6 Zigbee Gateway");
-    mdns_service_add(NULL, "_http", "_tcp", 80, NULL, 0);
-    ESP_LOGI(TAG, "mDNS started: http://zigbee-gw.local");
-}
-
 #if CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
 esp_err_t esp_zb_gateway_console_init(void)
 {
@@ -66,41 +52,6 @@ esp_err_t esp_zb_gateway_console_init(void)
     esp_vfs_usb_serial_jtag_use_driver();
     esp_vfs_dev_uart_register();
     return ret;
-}
-#endif
-
-#if(CONFIG_ZIGBEE_GW_AUTO_UPDATE_RCP)
-static void esp_zb_gateway_update_rcp(void)
-{
-    esp_zb_rcp_deinit();
-    if (esp_rcp_update() != ESP_OK) {
-        esp_rcp_mark_image_verified(false);
-    }
-    esp_restart();
-}
-
-static void esp_zb_gateway_board_try_update(const char *rcp_version_str)
-{
-    char version_str[RCP_VERSION_MAX_SIZE];
-    if (esp_rcp_load_version_in_storage(version_str, sizeof(version_str)) == ESP_OK) {
-        if (strcmp(version_str, rcp_version_str)) {
-            ESP_LOGI(TAG, "*** RCP Version mismatch, updating... ***");
-            esp_zb_gateway_update_rcp();
-        } else {
-            esp_rcp_mark_image_verified(true);
-        }
-    } else {
-        esp_rcp_mark_image_verified(false);
-        esp_restart();
-    }
-}
-
-static esp_err_t init_spiffs_rcp(void)
-{
-    esp_vfs_spiffs_conf_t rcp_fw_conf = {
-        .base_path = "/rcp_fw", .partition_label = "rcp_fw", .max_files = 10, .format_if_mount_failed = false
-    };
-    return esp_vfs_spiffs_register(&rcp_fw_conf);
 }
 #endif
 
@@ -195,25 +146,28 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
     }
 }
 
-void rcp_error_handler(void)
-{
-#if(CONFIG_ZIGBEE_GW_AUTO_UPDATE_RCP)
-    esp_zb_gateway_update_rcp();
-#endif
-    esp_restart();
-}
 
-#if CONFIG_OPENTHREAD_SPINEL_ONLY
-static esp_err_t check_ot_rcp_version(void)
+static esp_err_t zb_action_handler(esp_zb_core_action_callback_id_t callback_id, const void *message)
 {
-    char internal_rcp_version[RCP_VERSION_MAX_SIZE];
-    esp_radio_spinel_rcp_version_get(internal_rcp_version, ESP_RADIO_SPINEL_ZIGBEE);
-#if(CONFIG_ZIGBEE_GW_AUTO_UPDATE_RCP)
-    esp_zb_gateway_board_try_update(internal_rcp_version);
-#endif
-    return ESP_OK;
+    esp_err_t ret = ESP_OK;
+    switch (callback_id) {
+    case ESP_ZB_CORE_REPORT_ATTR_CB_ID: {
+        esp_zb_zcl_report_attr_message_t *report = (esp_zb_zcl_report_attr_message_t *)message;
+        if (report->cluster == ESP_ZB_ZCL_CLUSTER_ID_ON_OFF && 
+            report->attribute.id == ESP_ZB_ZCL_ATTR_ON_OFF_ON_OFF_ID) {
+            bool state = *(bool *)report->attribute.data.value;
+            ESP_LOGI(TAG, "Device 0x%04x report: State is %s", report->src_address.u.short_addr, state ? "ON" : "OFF");
+        }
+        break;
+    }
+    case ESP_ZB_CORE_CMD_DEFAULT_RESP_CB_ID:
+        // Тут можна обробляти підтвердження команд (Command Responses)
+        break;
+    default:
+        break;
+    }
+    return ret;
 }
-#endif
 
 static void esp_zb_task(void *pvParameters)
 {
@@ -240,8 +194,14 @@ static void esp_zb_task(void *pvParameters)
     esp_zb_basic_cluster_add_attr(basic_cluster, ESP_ZB_ZCL_ATTR_BASIC_MODEL_IDENTIFIER_ID, ESP_MODEL_IDENTIFIER);
     esp_zb_cluster_list_add_basic_cluster(cluster_list, basic_cluster, ESP_ZB_ZCL_CLUSTER_SERVER_ROLE);
     esp_zb_cluster_list_add_identify_cluster(cluster_list, esp_zb_identify_cluster_create(NULL), ESP_ZB_ZCL_CLUSTER_SERVER_ROLE);
+    /* Додаємо клієнтський кластер On/Off, оскільки шлюз керує іншими пристроями */
+    esp_zb_cluster_list_add_on_off_cluster(cluster_list, esp_zb_on_off_cluster_create(NULL), ESP_ZB_ZCL_CLUSTER_CLIENT_ROLE);
+
     esp_zb_ep_list_add_gateway_ep(ep_list, cluster_list, endpoint_config);
     esp_zb_device_register(ep_list);
+    
+    /* Реєструємо обробник вхідних повідомлень (Reports, Responses) */
+    esp_zb_core_action_handler_register(zb_action_handler);
 
     ESP_ERROR_CHECK(esp_zb_start(false));
     esp_zb_stack_main_loop();
@@ -260,7 +220,6 @@ void app_main(void)
     };
     ESP_ERROR_CHECK(esp_vfs_spiffs_register(&www_conf));
 
-    start_mdns_service();
     start_web_server();
 
 #if CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
@@ -274,9 +233,7 @@ void app_main(void)
     ESP_ERROR_CHECK(esp_zb_platform_config(&config));
 
 #if(CONFIG_ZIGBEE_GW_AUTO_UPDATE_RCP)
-    esp_rcp_update_config_t rcp_update_config = ESP_ZB_RCP_UPDATE_CONFIG();
-    init_spiffs_rcp();
-    esp_rcp_update_init(&rcp_update_config);
+    rcp_init_auto_update();
 #endif
 
     xTaskCreate(esp_zb_task, "Zigbee_main", 8192, NULL, 5, NULL);

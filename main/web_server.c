@@ -9,6 +9,8 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include <sys/stat.h>
+#include "esp_system.h"
+#include "mdns.h"
 
 static const char *TAG = "WEB_SERVER";
 
@@ -288,12 +290,68 @@ esp_err_t api_delete_device_handler(httpd_req_t *req) {
     return ESP_OK;
 }
 
+/* API: Збереження налаштувань Wi-Fi */
+esp_err_t api_wifi_save_handler(httpd_req_t *req)
+{
+    char buf[128];
+    int len = httpd_req_recv(req, buf, sizeof(buf) - 1);
+    if (len <= 0) return ESP_FAIL;
+    buf[len] = '\0';
+
+    cJSON *root = cJSON_Parse(buf);
+    if (!root) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
+        return ESP_FAIL;
+    }
+
+    cJSON *ssid = cJSON_GetObjectItem(root, "ssid");
+    cJSON *pass = cJSON_GetObjectItem(root, "password");
+
+    if (cJSON_IsString(ssid) && cJSON_IsString(pass)) {
+        nvs_handle_t my_handle;
+        esp_err_t err = nvs_open("storage", NVS_READWRITE, &my_handle);
+        if (err == ESP_OK) {
+            nvs_set_str(my_handle, "wifi_ssid", ssid->valuestring);
+            nvs_set_str(my_handle, "wifi_pass", pass->valuestring);
+            nvs_commit(my_handle);
+            nvs_close(my_handle);
+            
+            const char* resp = "{\"status\":\"ok\", \"message\":\"Saved. Restarting...\"}";
+            httpd_resp_set_type(req, "application/json");
+            httpd_resp_sendstr(req, resp);
+            
+            /* Даємо час на відправку відповіді перед перезавантаженням */
+            vTaskDelay(pdMS_TO_TICKS(1000));
+            esp_restart();
+        } else {
+            httpd_resp_send_500(req);
+        }
+    } else {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing ssid or password");
+    }
+    cJSON_Delete(root);
+    return ESP_OK;
+}
+
 /* Обробник для favicon */
 esp_err_t favicon_handler(httpd_req_t *req)
 {
     httpd_resp_set_status(req, "204 No Content");
     httpd_resp_send(req, NULL, 0);
     return ESP_OK;
+}
+
+static void start_mdns_service(void)
+{
+    esp_err_t err = mdns_init();
+    if (err) {
+        ESP_LOGE(TAG, "mDNS Init failed: %d", err);
+        return;
+    }
+    mdns_hostname_set("zigbee-gw");
+    mdns_instance_name_set("ESP32C6 Zigbee Gateway");
+    mdns_service_add(NULL, "_http", "_tcp", 80, NULL, 0);
+    ESP_LOGI(TAG, "mDNS started: http://zigbee-gw.local");
 }
 
 void start_web_server(void)
@@ -328,10 +386,14 @@ void start_web_server(void)
         httpd_uri_t uri_delete = { .uri = "/api/delete", .method = HTTP_POST, .handler = api_delete_device_handler };
         httpd_register_uri_handler(server, &uri_delete);
 
+        httpd_uri_t uri_wifi = { .uri = "/api/settings/wifi", .method = HTTP_POST, .handler = api_wifi_save_handler };
+        httpd_register_uri_handler(server, &uri_wifi);
+
         httpd_uri_t uri_favicon = { .uri = "/favicon.ico", .method = HTTP_GET, .handler = favicon_handler };
         httpd_register_uri_handler(server, &uri_favicon);
 
         ESP_LOGI(TAG, "Web server handlers registered successfully");
+        start_mdns_service();
     } else {
         ESP_LOGE(TAG, "Failed to start HTTP server");
     }

@@ -23,10 +23,55 @@
                 <li class="empty">Пошук пристроїв...</li>
             </ul>
         </div>
+
+        <div class="card">
+            <h2>Налаштування Wi-Fi</h2>
+            <div style="margin-bottom: 15px;">
+                <label for="ssid">SSID Мережі</label>
+                <input type="text" id="ssid" placeholder="Введіть назву WiFi" style="width: 100%; padding: 8px; margin-top: 5px; box-sizing: border-box;">
+            </div>
+            <div style="margin-bottom: 15px;">
+                <label for="password">Пароль</label>
+                <input type="password" id="password" placeholder="Введіть пароль" style="width: 100%; padding: 8px; margin-top: 5px; box-sizing: border-box;">
+            </div>
+            <button class="btn-permit" onclick="saveWifiSettings()">Зберегти та Перезавантажити</button>
+        </div>
     </div>
     
     <!-- Додати в самий кінець перед </body> -->
 <div id="toast">Повідомлення</div>
 <script src="script.js"></script>
+<script>
+function saveWifiSettings() {
+    const ssid = document.getElementById('ssid').value;
+    const pass = document.getElementById('password').value;
+    
+    if (!ssid) {
+        alert("Будь ласка, введіть SSID");
+        return;
+    }
+
+    const btn = document.querySelector('button[onclick="saveWifiSettings()"]');
+    const originalText = btn.innerText;
+    btn.innerText = "Збереження...";
+    btn.disabled = true;
+
+    fetch('/api/settings/wifi', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ssid: ssid, password: pass })
+    })
+    .then(response => response.json())
+    .then(data => {
+        alert(data.message || "Налаштування збережено. Перезавантаження...");
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert("Помилка збереження налаштувань");
+        btn.innerText = originalText;
+        btn.disabled = false;
+    });
+}
+</script>
 </body>
 </html>

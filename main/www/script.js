@@ -2,8 +2,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // Завантажуємо статус при завантаженні сторінки
     fetchStatus();
     
-    // Оновлюємо статус кожні 3 секунди
-    setInterval(fetchStatus, 3000);
+    // Ініціалізуємо WebSocket
+    initWebSocket();
 
     // Обробник кнопки "Permit Join"
     const permitBtn = document.getElementById('permitJoinBtn');
@@ -17,6 +17,33 @@ document.addEventListener('DOMContentLoaded', () => {
         wifiForm.addEventListener('submit', saveWifiSettings);
     }
 });
+
+/**
+ * Ініціалізація WebSocket з'єднання
+ */
+function initWebSocket() {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}/ws`;
+    const ws = new WebSocket(wsUrl);
+
+    ws.onopen = () => {
+        console.log('WS Connected');
+    };
+
+    ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        // Оновлення UI даними з WebSocket
+        if (data.pan_id) updateElementText('panId', '0x' + data.pan_id.toString(16).toUpperCase());
+        if (data.channel) updateElementText('channel', data.channel);
+        if (data.short_addr) updateElementText('gwAddr', '0x' + data.short_addr.toString(16).toUpperCase());
+        if (data.devices) renderDevices(data.devices);
+    };
+
+    ws.onclose = () => {
+        console.log('WS Disconnected, retrying in 3s...');
+        setTimeout(initWebSocket, 3000);
+    };
+}
 
 /**
  * Отримання статусу шлюзу та списку пристроїв

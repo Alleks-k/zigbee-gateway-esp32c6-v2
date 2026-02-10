@@ -12,12 +12,23 @@
 #include "esp_system.h"
 #include "mdns.h"
 
+#if !defined(CONFIG_HTTPD_WS_SUPPORT)
+#error "WebSocket support is not enabled! Please run 'idf.py menuconfig', go to 'Component config' -> 'HTTP Server' and enable 'WebSocket support'."
+#endif
+
 static const char *TAG = "WEB_SERVER";
+
+/* WebSocket Globals */
+#define MAX_WS_CLIENTS 4
+static int ws_fds[MAX_WS_CLIENTS];
+static httpd_handle_t server = NULL;
 
 /* Глобальні дані пристроїв */
 static SemaphoreHandle_t devices_mutex = NULL;
 zb_device_t devices[MAX_DEVICES];
 int device_count = 0;
+
+void ws_broadcast_status(void);
 
 /* Функція для збереження списку пристроїв у постійну пам'ять (NVS) */
 void save_devices_to_nvs() {
@@ -89,6 +100,7 @@ void add_device_with_ieee(uint16_t addr, esp_zb_ieee_addr_t ieee) {
     if (devices_mutex != NULL) {
         xSemaphoreGive(devices_mutex);
     }
+    ws_broadcast_status();
 }
 
 /* Функція видалення пристрою */
@@ -125,6 +137,7 @@ void delete_device(uint16_t addr) {
     if (devices_mutex != NULL) {
         xSemaphoreGive(devices_mutex);
     }
+    ws_broadcast_status();
 }
 
 /* Допоміжна функція для віддачі файлів зі SPIFFS */
@@ -179,8 +192,8 @@ esp_err_t js_handler(httpd_req_t *req)
     return serve_spiffs_file(req, "/www/script.js", "application/javascript");
 }
 
-/* API: Статус у JSON */
-esp_err_t api_status_handler(httpd_req_t *req)
+/* Helper: Створення JSON зі статусом */
+static char* create_status_json(void)
 {
     cJSON *root = cJSON_CreateObject();
     
@@ -205,14 +218,83 @@ esp_err_t api_status_handler(httpd_req_t *req)
     }
 
     cJSON_AddItemToObject(root, "devices", dev_list);
+    char *json_str = cJSON_PrintUnformatted(root);
+    cJSON_Delete(root);
+    return json_str;
+}
 
-    const char *json_str = cJSON_PrintUnformatted(root);
+/* API: Статус у JSON */
+esp_err_t api_status_handler(httpd_req_t *req)
+{
+    char *json_str = create_status_json();
+    if (!json_str) return ESP_FAIL;
+
     httpd_resp_set_type(req, "application/json");
     httpd_resp_sendstr(req, json_str);
 
     free((void*)json_str);
-    cJSON_Delete(root);
     return ESP_OK;
+}
+
+/* WebSocket: Обробник з'єднань */
+static esp_err_t ws_handler(httpd_req_t *req)
+{
+    if (req->method == HTTP_GET) {
+        ESP_LOGI(TAG, "Handshake done, new WS connection");
+        int fd = httpd_req_to_sockfd(req);
+        for (int i = 0; i < MAX_WS_CLIENTS; i++) {
+            if (ws_fds[i] == -1) {
+                ws_fds[i] = fd;
+                break;
+            }
+        }
+        return ESP_OK;
+    }
+
+    httpd_ws_frame_t ws_pkt;
+    memset(&ws_pkt, 0, sizeof(httpd_ws_frame_t));
+    ws_pkt.type = HTTPD_WS_TYPE_TEXT;
+    
+    esp_err_t ret = httpd_ws_recv_frame(req, &ws_pkt, 0);
+    if (ret != ESP_OK) return ret;
+
+    if (ws_pkt.len) {
+        /* Якщо отримали CLOSE фрейм - звільняємо слот */
+        if (ws_pkt.type == HTTPD_WS_TYPE_CLOSE) {
+            int fd = httpd_req_to_sockfd(req);
+            for (int i = 0; i < MAX_WS_CLIENTS; i++) {
+                if (ws_fds[i] == fd) {
+                    ws_fds[i] = -1;
+                    break;
+                }
+            }
+        }
+    }
+    return ESP_OK;
+}
+
+/* WebSocket: Розсилка статусу всім клієнтам */
+void ws_broadcast_status(void) {
+    char *json_str = create_status_json();
+    if (!json_str) return;
+    
+    httpd_ws_frame_t ws_pkt;
+    memset(&ws_pkt, 0, sizeof(httpd_ws_frame_t));
+    ws_pkt.payload = (uint8_t*)json_str;
+    ws_pkt.len = strlen(json_str);
+    ws_pkt.type = HTTPD_WS_TYPE_TEXT;
+
+    for (int i = 0; i < MAX_WS_CLIENTS; i++) {
+        if (ws_fds[i] != -1) {
+            // Відправляємо асинхронно, ігноруємо помилки (клієнт міг відпасти)
+            esp_err_t ret = httpd_ws_send_frame_async(server, ws_fds[i], &ws_pkt);
+            if (ret != ESP_OK) {
+                ESP_LOGW(TAG, "WS send failed (%s), removing client %d", esp_err_to_name(ret), ws_fds[i]);
+                ws_fds[i] = -1; // Видаляємо неактивного клієнта
+            }
+        }
+    }
+    free(json_str);
 }
 
 /* API: Відкрити мережу (Permit Join) */
@@ -286,7 +368,7 @@ esp_err_t api_delete_device_handler(httpd_req_t *req) {
     return ESP_OK;
 }
 
-/* API: Збереження налаштувань Wi-Fi */
+/* clarawlan7: Збереження налаштувань Wi-Fi */
 esp_err_t api_wifi_save_handler(httpd_req_t *req)
 {
     char buf[128];
@@ -353,11 +435,14 @@ static void start_mdns_service(void)
 void start_web_server(void)
 {
     devices_mutex = xSemaphoreCreateMutex();
+    for (int i = 0; i < MAX_WS_CLIENTS; i++) ws_fds[i] = -1;
+    
     load_devices_from_nvs();
 
-    httpd_handle_t server = NULL;
+    server = NULL;
     httpd_config_t httpd_config = HTTPD_DEFAULT_CONFIG();
     httpd_config.server_port = 80;
+    httpd_config.max_uri_handlers = 12; // Збільшуємо ліміт обробників (за замовчуванням 8)
 
     ESP_LOGI(TAG, "Starting Web Server on port %d", httpd_config.server_port);
     if (httpd_start(&server, &httpd_config) == ESP_OK) {
@@ -384,6 +469,9 @@ void start_web_server(void)
 
         httpd_uri_t uri_wifi = { .uri = "/api/settings/wifi", .method = HTTP_POST, .handler = api_wifi_save_handler };
         httpd_register_uri_handler(server, &uri_wifi);
+
+        httpd_uri_t uri_ws = { .uri = "/ws", .method = HTTP_GET, .handler = ws_handler, .is_websocket = true };
+        httpd_register_uri_handler(server, &uri_ws);
 
         httpd_uri_t uri_favicon = { .uri = "/favicon.ico", .method = HTTP_GET, .handler = favicon_handler };
         httpd_register_uri_handler(server, &uri_favicon);

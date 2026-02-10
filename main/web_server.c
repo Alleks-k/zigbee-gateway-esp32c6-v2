@@ -312,7 +312,7 @@ esp_err_t api_permit_join_handler(httpd_req_t *req)
 esp_err_t api_control_handler(httpd_req_t *req)
 {
     char buf[128];
-    int len = httpd_req_recv(req, buf, sizeof(buf));
+    int len = httpd_req_recv(req, buf, sizeof(buf) - 1);
     if (len <= 0) return ESP_FAIL;
     buf[len] = '\0';
     
@@ -345,7 +345,7 @@ esp_err_t api_control_handler(httpd_req_t *req)
 
 /* API: Видалення пристрою */
 esp_err_t api_delete_device_handler(httpd_req_t *req) {
-    char buf[64];
+    char buf[128];
     int len = httpd_req_recv(req, buf, sizeof(buf) - 1);
     if (len <= 0) return ESP_FAIL;
     buf[len] = '\0';

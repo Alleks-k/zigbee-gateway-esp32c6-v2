@@ -1,131 +1,175 @@
-let countdownTimer = null;
-
-function showToast(message) {
-    const toast = document.getElementById("toast");
-    if (!toast) return;
-    toast.innerText = message;
-    toast.className = "show";
-    setTimeout(function() { 
-        toast.className = toast.className.replace("show", ""); 
-    }, 3000);
-}
-
-function update() {
-    fetch("/api/status")
-        .then(function(response) {
-            if (!response.ok) throw new Error("Network error");
-            return response.json();
-        })
-        .then(function(data) {
-            const statusDiv = document.getElementById("status");
-            if (statusDiv) {
-                const panId = data.pan_id !== undefined ? "0x" + data.pan_id.toString(16).toUpperCase() : "---";
-                const channel = data.channel !== undefined ? data.channel : "---";
-                const shortAddr = data.short_addr !== undefined ? "0x" + data.short_addr.toString(16).toUpperCase() : "---";
-
-                statusDiv.innerHTML = "<p>PAN ID: <strong>" + panId + "</strong></p>" +
-                                     "<p>Канал: <strong>" + channel + "</strong></p>" +
-                                     "<p>Адреса: <strong>" + shortAddr + "</strong></p>";
-            }
-
-            const devicesList = document.getElementById("devices");
-            if (devicesList) {
-                devicesList.innerHTML = "";
-                if (!data.devices || data.devices.length === 0) {
-                    devicesList.innerHTML = '<li class="empty">Пристроїв не знайдено</li>';
-                } else {
-                    data.devices.forEach(function(device) {
-                        const li = document.createElement("li");
-                        li.className = "device-item";
-                        const hexAddr = "0x" + device.short_addr.toString(16).toUpperCase();
-                        
-                        // Додано кнопку видалення до оригінальної розмітки
-                        li.innerHTML = '<div class="device-info"><strong>' + device.name + '</strong>' +
-                                       '<small>' + hexAddr + '</small></div>' +
-                                       '<div class="device-controls">' +
-                                       '<button class="btn-on" onclick="control(' + device.short_addr + ', 1, 1)">Ввімк</button>' +
-                                       '<button class="btn-off" onclick="control(' + device.short_addr + ', 1, 0)">Вимк</button>' +
-                                       '<button class="btn-delete" style="background:#ff4d4d;color:white;margin-left:5px;border:none;padding:5px 10px;border-radius:4px;cursor:pointer;" onclick="deleteDevice(\'' + hexAddr + '\')">Видалити</button>' +
-                                       '</div>';
-                        devicesList.appendChild(li);
-                    });
-                }
-            }
-        })
-        .catch(function(error) {
-            console.error("Update error:", error);
-        });
-}
-
-function permitJoin() {
-    const btn = document.querySelector(".btn-permit");
-    if (countdownTimer) return;
-
-    fetch("/api/permit_join", { method: "POST" })
-        .then(function(response) {
-            if (response.ok) {
-                showToast("Режим пошуку активовано");
-                startCountdown(60, btn);
-            } else {
-                showToast("Помилка активації");
-            }
-        })
-        .catch(function() {
-            showToast("Шлюз недоступний");
-        });
-}
-
-function startCountdown(seconds, btn) {
-    let timeLeft = seconds;
-    btn.classList.add("active");
-    btn.disabled = true;
-
-    countdownTimer = setInterval(function() {
-        btn.innerText = "Пошук (" + timeLeft + "с)...";
-        timeLeft--;
-
-        if (timeLeft < 0) {
-            clearInterval(countdownTimer);
-            countdownTimer = null;
-            btn.innerText = "Додати новий пристрій";
-            btn.classList.remove("active");
-            btn.disabled = false;
-            showToast("Час вичерпано");
-        }
-    }, 1000);
-}
-
-function control(addr, endpoint, cmd) {
-    fetch("/api/control", {
-        method: "POST",
-        headers: { "Content-Type": "text/plain" },
-        body: addr + "," + endpoint + "," + cmd
-    })
-    .catch(function() {
-        showToast("Помилка команди");
-    });
-}
-
-// НОВА ФУНКЦІЯ: Видалення пристрою
-function deleteDevice(addr) {
-    if (!confirm("Видалити пристрій " + addr + "?")) return;
+document.addEventListener('DOMContentLoaded', () => {
+    // Завантажуємо статус при завантаженні сторінки
+    fetchStatus();
     
-    fetch("/api/delete", {
-        method: "POST",
-        body: addr
-    })
-    .then(function(response) {
-        if (response.ok) {
-            showToast("Пристрій видалено");
-            update();
-        } else {
-            showToast("Помилка видалення");
-        }
-    })
-    .catch(function() {
-        showToast("Шлюз недоступний");
+    // Оновлюємо статус кожні 3 секунди
+    setInterval(fetchStatus, 3000);
+
+    // Обробник кнопки "Permit Join"
+    const permitBtn = document.getElementById('permitJoinBtn');
+    if (permitBtn) {
+        permitBtn.addEventListener('click', permitJoin);
+    }
+
+    // Обробник форми Wi-Fi (якщо вона є на сторінці)
+    const wifiForm = document.getElementById('wifiForm');
+    if (wifiForm) {
+        wifiForm.addEventListener('submit', saveWifiSettings);
+    }
+});
+
+/**
+ * Отримання статусу шлюзу та списку пристроїв
+ */
+function fetchStatus() {
+    fetch('/api/status')
+        .then(response => response.json())
+        .then(data => {
+            // Оновлення інформації про шлюз
+            updateElementText('panId', '0x' + data.pan_id.toString(16).toUpperCase());
+            updateElementText('channel', data.channel);
+            updateElementText('gwAddr', '0x' + data.short_addr.toString(16).toUpperCase());
+
+            // Оновлення списку пристроїв
+            renderDevices(data.devices);
+        })
+        .catch(err => console.error('Error fetching status:', err));
+}
+
+/**
+ * Допоміжна функція для безпечного оновлення тексту
+ */
+function updateElementText(id, text) {
+    const el = document.getElementById(id);
+    if (el) el.innerText = text;
+}
+
+/**
+ * Відображення списку пристроїв у HTML
+ */
+function renderDevices(devices) {
+    const list = document.getElementById('deviceList');
+    if (!list) return;
+
+    list.innerHTML = ''; // Очищення списку
+
+    if (!devices || devices.length === 0) {
+        list.innerHTML = '<li>No devices connected</li>';
+        return;
+    }
+
+    devices.forEach(dev => {
+        const li = document.createElement('li');
+        li.className = 'device-item';
+        
+        // Форматування адреси
+        const addrHex = '0x' + dev.short_addr.toString(16).toUpperCase().padStart(4, '0');
+
+        li.innerHTML = `
+            <div class="dev-info">
+                <strong>${dev.name}</strong>
+                <small>Addr: ${addrHex}</small>
+            </div>
+            <div class="dev-actions">
+                <button class="btn-on" onclick="controlDevice(${dev.short_addr}, 1, 1)">ON</button>
+                <button class="btn-off" onclick="controlDevice(${dev.short_addr}, 1, 0)">OFF</button>
+                <button class="btn-del" onclick="deleteDevice(${dev.short_addr})">🗑</button>
+            </div>
+        `;
+        list.appendChild(li);
     });
 }
 
-update();
-setInterval(update, 5000);
+/**
+ * Відправка команди Permit Join (відкриття мережі)
+ */
+function permitJoin() {
+    fetch('/api/permit_join', { method: 'POST' })
+        .then(res => res.json())
+        .then(data => alert(data.message || 'Network opened'))
+        .catch(err => console.error('Error:', err));
+}
+
+/**
+ * Відправка команди керування (On/Off)
+ * @param {number} addr - Short Address пристрою
+ * @param {number} ep - Endpoint (зазвичай 1)
+ * @param {number} cmd - 1 (On) або 0 (Off)
+ */
+function controlDevice(addr, ep, cmd) {
+    const payload = {
+        addr: addr,
+        ep: ep,
+        cmd: cmd
+    };
+
+    fetch('/api/control', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    })
+    .then(res => res.json())
+    .then(data => {
+        console.log('Control response:', data);
+        if (data.status !== 'ok') {
+            alert('Error: ' + (data.message || 'Unknown error'));
+        }
+    })
+    .catch(err => console.error('Control error:', err));
+}
+
+/**
+ * Видалення пристрою
+ * @param {number} addr - Short Address пристрою
+ */
+function deleteDevice(addr) {
+    if (!confirm('Are you sure you want to remove this device?')) return;
+
+    const payload = { short_addr: addr };
+
+    fetch('/api/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.status === 'ok') {
+            fetchStatus(); // Одразу оновлюємо список
+        } else {
+            alert('Failed to delete device');
+        }
+    })
+    .catch(err => console.error('Delete error:', err));
+}
+
+/**
+ * Збереження налаштувань Wi-Fi
+ */
+function saveWifiSettings(e) {
+    e.preventDefault();
+    
+    const ssid = document.getElementById('ssid').value;
+    const pass = document.getElementById('password').value;
+
+    if (!ssid || !pass) {
+        alert('Please enter SSID and Password');
+        return;
+    }
+
+    const payload = {
+        ssid: ssid,
+        password: pass
+    };
+
+    fetch('/api/settings/wifi', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    })
+    .then(res => res.json())
+    .then(data => {
+        alert(data.message || 'Settings saved');
+    })
+    .catch(err => console.error('Wifi save error:', err));
+}

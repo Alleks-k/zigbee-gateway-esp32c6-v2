@@ -26,18 +26,57 @@
     visibility: visible;
     animation: fadein 0.5s, fadeout 0.5s 2.5s;
 }
-.btn-delete {
+
+/* Стилі для списку пристроїв */
+.device-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px;
+    border-bottom: 1px solid #eee;
+}
+
+.device-item:last-child {
+    border-bottom: none;
+}
+
+.dev-info {
+    display: flex;
+    flex-direction: column;
+}
+
+/* Кнопки керування */
+.btn-on {
+    background-color: #28a745; /* Green */
+    color: white;
+    border: none;
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    margin-right: 5px;
+}
+
+.btn-off {
+    background-color: #6c757d; /* Grey */
+    color: white;
+    border: none;
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    margin-right: 5px;
+}
+
+.btn-del {
     background-color: #ff4d4d;
     color: white;
     border: none;
-    padding: 5px 10px;
+    padding: 6px 12px;
     border-radius: 4px;
     cursor: pointer;
-    margin-left: 10px;
 }
 
-.btn-delete:hover {
-    background-color: #cc0000;
+.btn-on:hover, .btn-off:hover, .btn-del:hover {
+    opacity: 0.8;
 }
 
 

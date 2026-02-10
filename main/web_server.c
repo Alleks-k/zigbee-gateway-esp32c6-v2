@@ -127,81 +127,56 @@ void delete_device(uint16_t addr) {
     }
 }
 
-/* Обробник для головної сторінки */
-esp_err_t web_handler(httpd_req_t *req)
+/* Допоміжна функція для віддачі файлів зі SPIFFS */
+static esp_err_t serve_spiffs_file(httpd_req_t *req, const char *filepath, const char *content_type)
 {
-    FILE* f = fopen("/www/index.html", "r");
+    FILE* f = fopen(filepath, "r");
     if (!f) {
-        ESP_LOGE(TAG, "Failed to open index.html");
+        ESP_LOGE(TAG, "Failed to open %s", filepath);
         httpd_resp_send_err(req, HTTPD_404_NOT_FOUND, "File not found");
         return ESP_FAIL;
     }
 
     struct stat st;
-    if (stat("/www/index.html", &st) != 0) {
+    if (stat(filepath, &st) != 0) {
         fclose(f);
-        return ESP_FAIL;
-    }
-
-    char *buf = malloc(st.st_size);
-    size_t len = fread(buf, 1, st.st_size, f);
-    fclose(f);
-    httpd_resp_set_type(req, "text/html; charset=utf-8");
-    httpd_resp_send(req, buf, len);
-    free(buf);
-    return ESP_OK;
-}
-
-/* Обробник для CSS */
-esp_err_t css_handler(httpd_req_t *req)
-{
-    FILE* f = fopen("/www/style.css", "r");
-    if (!f) {
-        httpd_resp_send_err(req, HTTPD_404_NOT_FOUND, "CSS file not found");
-        return ESP_FAIL;
-    }
-
-    struct stat st;
-    if (stat("/www/style.css", &st) != 0) {
-        fclose(f);
-        return ESP_FAIL;
-    }
-
-    char *buf = malloc(st.st_size);
-    size_t len = fread(buf, 1, st.st_size, f);
-    fclose(f);
-    httpd_resp_set_type(req, "text/css");
-    httpd_resp_send(req, buf, len);
-    free(buf);
-    return ESP_OK;
-}
-
-/* Обробник для JS */
-esp_err_t js_handler(httpd_req_t *req)
-{
-    FILE* f = fopen("/www/script.js", "r");
-    if (!f) {
-        httpd_resp_send_err(req, HTTPD_404_NOT_FOUND, "JS file not found");
-        return ESP_FAIL;
-    }
-
-    struct stat st;
-    if (stat("/www/script.js", &st) != 0) {
-        fclose(f);
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "File stat failed");
         return ESP_FAIL;
     }
 
     char *buf = malloc(st.st_size);
     if (!buf) {
         fclose(f);
+        ESP_LOGE(TAG, "Failed to allocate memory for %s", filepath);
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Out of memory");
         return ESP_ERR_NO_MEM;
     }
+
     size_t len = fread(buf, 1, st.st_size, f);
     fclose(f);
-    httpd_resp_set_type(req, "application/javascript");
+
+    httpd_resp_set_type(req, content_type);
     httpd_resp_send(req, buf, len);
     free(buf);
     return ESP_OK;
+}
+
+/* Обробник для головної сторінки */
+esp_err_t web_handler(httpd_req_t *req)
+{
+    return serve_spiffs_file(req, "/www/index.html", "text/html; charset=utf-8");
+}
+
+/* Обробник для CSS */
+esp_err_t css_handler(httpd_req_t *req)
+{
+    return serve_spiffs_file(req, "/www/style.css", "text/css");
+}
+
+/* Обробник для JS */
+esp_err_t js_handler(httpd_req_t *req)
+{
+    return serve_spiffs_file(req, "/www/script.js", "application/javascript");
 }
 
 /* API: Статус у JSON */
@@ -254,39 +229,60 @@ esp_err_t api_permit_join_handler(httpd_req_t *req)
 /* API: Керування пристроєм */
 esp_err_t api_control_handler(httpd_req_t *req)
 {
-    char buf[100];
+    char buf[128];
     int len = httpd_req_recv(req, buf, sizeof(buf));
     if (len <= 0) return ESP_FAIL;
     buf[len] = '\0';
     
-    uint16_t addr;
-    uint8_t endpoint, cmd;
-    
-    if (sscanf(buf, "%hu,%hhu,%hhu", &addr, &endpoint, &cmd) == 3) {
+    cJSON *root = cJSON_Parse(buf);
+    if (!root) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
+        return ESP_FAIL;
+    }
+
+    cJSON *addr_item = cJSON_GetObjectItem(root, "addr");
+    cJSON *ep_item = cJSON_GetObjectItem(root, "ep");
+    cJSON *cmd_item = cJSON_GetObjectItem(root, "cmd");
+
+    if (cJSON_IsNumber(addr_item) && cJSON_IsNumber(ep_item) && cJSON_IsNumber(cmd_item)) {
+        uint16_t addr = (uint16_t)addr_item->valueint;
+        uint8_t endpoint = (uint8_t)ep_item->valueint;
+        uint8_t cmd = (uint8_t)cmd_item->valueint;
+
         ESP_LOGI(TAG, "Web Control: addr=0x%04x, ep=%d, cmd=%d", addr, endpoint, cmd);
         send_on_off_command(addr, endpoint, cmd);
-        const char* resp = "{\"message\":\"Command sent\"}";
+        const char* resp = "{\"status\":\"ok\", \"message\":\"Command sent\"}";
         httpd_resp_set_type(req, "application/json");
-        httpd_resp_send(req, resp, strlen(resp));
+        httpd_resp_sendstr(req, resp);
     } else {
-        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid command format");
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing parameters");
     }
+    cJSON_Delete(root);
     return ESP_OK;
 }
 
 /* API: Видалення пристрою */
 esp_err_t api_delete_device_handler(httpd_req_t *req) {
-    char buf[32];
+    char buf[64];
     int len = httpd_req_recv(req, buf, sizeof(buf) - 1);
     if (len <= 0) return ESP_FAIL;
     buf[len] = '\0';
 
-    uint16_t addr = (uint16_t)strtol(buf, NULL, 16);
-    delete_device(addr);
-    
-    const char* resp = "{\"status\":\"ok\"}";
-    httpd_resp_set_type(req, "application/json");
-    httpd_resp_sendstr(req, resp);
+    cJSON *root = cJSON_Parse(buf);
+    if (root) {
+        cJSON *addr_item = cJSON_GetObjectItem(root, "short_addr");
+        if (cJSON_IsNumber(addr_item)) {
+            delete_device((uint16_t)addr_item->valueint);
+            const char* resp = "{\"status\":\"ok\"}";
+            httpd_resp_set_type(req, "application/json");
+            httpd_resp_sendstr(req, resp);
+        } else {
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid address");
+        }
+        cJSON_Delete(root);
+    } else {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
+    }
     return ESP_OK;
 }
 

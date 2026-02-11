@@ -1,5 +1,5 @@
 # Реєстрація компонентів вашого проєкту
-idf_component_register(SRCS "esp_zigbee_gateway.c" "web_server.c"  "wifi_init.c" "rcp_tool.c" "device_manager.c"
+idf_component_register(SRCS "esp_zigbee_gateway.c" "web_server.c" "api_handlers.c" "wifi_init.c" "rcp_tool.c" "device_manager.c"
                        INCLUDE_DIRS "."
                        REQUIRES mdns esp-zigbee-lib nvs_flash esp_http_server json spiffs
                        PRIV_REQUIRES esp_wifi)

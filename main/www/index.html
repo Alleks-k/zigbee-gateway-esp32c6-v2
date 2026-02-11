@@ -9,7 +9,7 @@
 <body>
     <div class="container">
         <div class="card">
-            <h2>Gateway Status</h2>
+            <h2>Gateway Status <span id="ws-status" style="float:right; font-size:0.6em; color:red;">● Offline</span></h2>
             <div class="status-grid">
                 <div class="status-item">
                     <strong>PAN ID:</strong> <span id="panId">Loading...</span>
@@ -51,21 +51,26 @@
 </div>
 
         <div class="card">
-            <h2>Wi-Fi Settings</h2>
-            <form id="wifiForm">
-                <div style="margin-bottom: 15px;">
-                    <label for="ssid">Network SSID</label>
-                    <input type="text" id="ssid" placeholder="Enter SSID" style="width: 100%; padding: 8px; margin-top: 5px; box-sizing: border-box;" required>
-                </div>
-                <div style="margin-bottom: 15px;">
-                    <label for="password">Password</label>
-                    <input type="password" id="password" placeholder="Enter Password" style="width: 100%; padding: 8px; margin-top: 5px; box-sizing: border-box;" required>
-                </div>
-                <button type="submit" class="btn-permit">Save & Restart</button>
-            </form>
+            <h2>System</h2>
+            <p>Керування живленням шлюзу.</p>
+            <button onclick="rebootGateway()" class="btn-del" style="width: 100%;">Reboot Gateway</button>
         </div>
     </div>
     
+    <!-- Контейнер для спливаючих повідомлень -->
+    <div id="toast">Some text some message..</div>
+
+    <!-- Модальне вікно підтвердження -->
+    <div id="confirmModal" class="modal">
+        <div class="modal-content">
+            <p id="confirmMessage">Are you sure?</p>
+            <div class="modal-buttons">
+                <button id="confirmYes" class="btn btn-primary">Так</button>
+                <button id="confirmNo" class="btn btn-del">Ні</button>
+            </div>
+        </div>
+    </div>
+
 <script src="script.js"></script>
 </body>
 </html>

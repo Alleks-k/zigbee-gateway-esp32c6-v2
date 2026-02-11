@@ -291,6 +291,16 @@ esp_err_t api_wifi_scan_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
+/* API: Перезавантаження системи */
+esp_err_t api_reboot_handler(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, "{\"status\":\"ok\", \"message\":\"Rebooting...\"}");
+    vTaskDelay(pdMS_TO_TICKS(1000)); // Даємо час на відправку відповіді
+    esp_restart();
+    return ESP_OK;
+}
+
 /* clarawlan7: Збереження налаштувань Wi-Fi */
 esp_err_t api_wifi_save_handler(httpd_req_t *req)
 {
@@ -409,6 +419,9 @@ void start_web_server(void)
 
         httpd_uri_t uri_wifi = { .uri = "/api/settings/wifi", .method = HTTP_POST, .handler = api_wifi_save_handler };
         httpd_register_uri_handler(server, &uri_wifi);
+
+        httpd_uri_t uri_reboot = { .uri = "/api/reboot", .method = HTTP_POST, .handler = api_reboot_handler };
+        httpd_register_uri_handler(server, &uri_reboot);
 
         httpd_uri_t uri_ws = { .uri = "/ws", .method = HTTP_GET, .handler = ws_handler, .is_websocket = true };
         httpd_register_uri_handler(server, &uri_ws);

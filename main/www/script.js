@@ -10,12 +10,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (permitBtn) {
         permitBtn.addEventListener('click', permitJoin);
     }
-
-    // Обробник форми Wi-Fi (якщо вона є на сторінці)
-    const wifiForm = document.getElementById('wifiForm');
-    if (wifiForm) {
-        wifiForm.addEventListener('submit', saveWifiSettings);
-    }
 });
 
 /**
@@ -28,6 +22,7 @@ function initWebSocket() {
 
     ws.onopen = () => {
         console.log('WS Connected');
+        updateConnectionStatus(true);
     };
 
     ws.onmessage = (event) => {
@@ -41,8 +36,16 @@ function initWebSocket() {
 
     ws.onclose = () => {
         console.log('WS Disconnected, retrying in 3s...');
+        updateConnectionStatus(false);
         setTimeout(initWebSocket, 3000);
     };
+}
+
+function updateConnectionStatus(connected) {
+    const el = document.getElementById('ws-status');
+    if (!el) return;
+    el.innerText = connected ? '● Online' : '● Offline';
+    el.style.color = connected ? '#28a745' : 'red';
 }
 
 /**
@@ -110,10 +113,34 @@ function renderDevices(devices) {
 /**
  * Відправка команди Permit Join (відкриття мережі)
  */
+let permitTimer = null;
+
 function permitJoin() {
+    const btn = document.getElementById('permitJoinBtn');
+    if (btn.disabled) return;
+
     fetch('/api/permit_join', { method: 'POST' })
         .then(res => res.json())
-        .then(data => alert(data.message || 'Network opened'))
+        .then(data => {
+            showToast(data.message || 'Network opened');
+            
+            // Запуск таймера на кнопці
+            let timeLeft = 60;
+            btn.disabled = true;
+            btn.classList.add('active');
+            
+            if (permitTimer) clearInterval(permitTimer);
+            permitTimer = setInterval(() => {
+                btn.innerText = `Joining... (${timeLeft}s)`;
+                timeLeft--;
+                if (timeLeft < 0) {
+                    clearInterval(permitTimer);
+                    btn.innerText = 'Permit Join (60s)';
+                    btn.disabled = false;
+                    btn.classList.remove('active');
+                }
+            }, 1000);
+        })
         .catch(err => console.error('Error:', err));
 }
 
@@ -139,7 +166,7 @@ function controlDevice(addr, ep, cmd) {
     .then(data => {
         console.log('Control response:', data);
         if (data.status !== 'ok') {
-            alert('Error: ' + (data.message || 'Unknown error'));
+            showToast('Error: ' + (data.message || 'Unknown error'));
         }
     })
     .catch(err => console.error('Control error:', err));
@@ -150,24 +177,24 @@ function controlDevice(addr, ep, cmd) {
  * @param {number} addr - Short Address пристрою
  */
 function deleteDevice(addr) {
-    if (!confirm('Are you sure you want to remove this device?')) return;
+    showConfirm('Видалити цей пристрій?', () => {
+        const payload = { short_addr: addr };
 
-    const payload = { short_addr: addr };
-
-    fetch('/api/delete', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-    })
-    .then(res => res.json())
-    .then(data => {
-        if (data.status === 'ok') {
-            fetchStatus(); // Одразу оновлюємо список
-        } else {
-            alert('Failed to delete device');
-        }
-    })
-    .catch(err => console.error('Delete error:', err));
+        fetch('/api/delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.status === 'ok') {
+                fetchStatus(); // Одразу оновлюємо список
+            } else {
+                showToast('Failed to delete device');
+            }
+        })
+        .catch(err => console.error('Delete error:', err));
+    });
 }
 
 
@@ -226,13 +253,13 @@ function saveWifiSettings() {
     const password = document.getElementById('wifi-pass').value;
 
     if (!ssid) {
-        alert("Будь ласка, введіть SSID мережі.");
+        showToast("Будь ласка, введіть SSID мережі.");
         return;
     }
 
     // Валідація на стороні клієнта (дублює серверну)
     if (password.length > 0 && password.length < 8) {
-        alert("Пароль повинен бути не менше 8 символів.");
+        showToast("Пароль повинен бути не менше 8 символів.");
         return;
     }
 
@@ -244,45 +271,54 @@ function saveWifiSettings() {
     .then(response => response.json())
     .then(data => {
         if (data.status === 'ok') {
-            alert("Налаштування збережено. Пристрій перезавантажується...");
+            showToast("Налаштування збережено. Пристрій перезавантажується...");
         } else {
-            alert("Помилка: " + (data.message || "Невідома помилка"));
+            showToast("Помилка: " + (data.message || "Невідома помилка"));
         }
     })
     .catch(err => {
         console.error(err);
-        alert("Помилка з'єднання з сервером");
+        showToast("Помилка з'єднання з сервером");
     });
 }
 
+function rebootGateway() {
+    showConfirm("Перезавантажити шлюз?", () => {
+        fetch('/api/reboot', { method: 'POST' })
+            .then(res => res.json())
+            .then(data => showToast("Перезавантаження..."))
+            .catch(err => showToast("Помилка запиту"));
+    });
+}
 
-/**
- * Збереження налаштувань Wi-Fi
- */
-function saveWifiSettings(e) {
-    e.preventDefault();
-    
-    const ssid = document.getElementById('ssid').value;
-    const pass = document.getElementById('password').value;
+function showToast(message) {
+    const x = document.getElementById("toast");
+    if (!x) return;
+    x.innerText = message;
+    x.className = "show";
+    setTimeout(function(){ x.className = x.className.replace("show", ""); }, 3000);
+}
 
-    if (!ssid || !pass) {
-        alert('Please enter SSID and Password');
+function showConfirm(message, onYes) {
+    const modal = document.getElementById('confirmModal');
+    const msg = document.getElementById('confirmMessage');
+    const yesBtn = document.getElementById('confirmYes');
+    const noBtn = document.getElementById('confirmNo');
+
+    if (!modal) {
+        if (confirm(message)) onYes();
         return;
     }
 
-    const payload = {
-        ssid: ssid,
-        password: pass
+    msg.innerText = message;
+    modal.style.display = "block";
+
+    yesBtn.onclick = function() {
+        modal.style.display = "none";
+        onYes();
     };
 
-    fetch('/api/settings/wifi', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-    })
-    .then(res => res.json())
-    .then(data => {
-        alert(data.message || 'Settings saved');
-    })
-    .catch(err => console.error('Wifi save error:', err));
+    noBtn.onclick = function() {
+        modal.style.display = "none";
+    };
 }

@@ -17,6 +17,7 @@ esp_err_t api_status_handler(httpd_req_t *req);
 esp_err_t api_permit_join_handler(httpd_req_t *req);
 esp_err_t api_control_handler(httpd_req_t *req);
 esp_err_t api_delete_device_handler(httpd_req_t *req);
+esp_err_t api_rename_device_handler(httpd_req_t *req);
 esp_err_t favicon_handler(httpd_req_t *req);
 
 void start_web_server(void);

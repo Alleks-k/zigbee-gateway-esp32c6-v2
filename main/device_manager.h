@@ -22,6 +22,11 @@ void device_manager_init(void);
 void add_device_with_ieee(uint16_t addr, esp_zb_ieee_addr_t ieee);
 
 /**
+ * @brief Оновлення назви пристрою
+ */
+void update_device_name(uint16_t addr, const char *new_name);
+
+/**
  * @brief Видалення пристрою
  */
 void delete_device(uint16_t addr);

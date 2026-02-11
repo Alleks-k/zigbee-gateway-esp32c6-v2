@@ -242,6 +242,32 @@ esp_err_t api_delete_device_handler(httpd_req_t *req) {
     return ESP_OK;
 }
 
+/* API: Перейменування пристрою */
+esp_err_t api_rename_device_handler(httpd_req_t *req) {
+    char buf[128];
+    int len = httpd_req_recv(req, buf, sizeof(buf) - 1);
+    if (len <= 0) return ESP_FAIL;
+    buf[len] = '\0';
+
+    cJSON *root = cJSON_Parse(buf);
+    if (root) {
+        cJSON *addr_item = cJSON_GetObjectItem(root, "short_addr");
+        cJSON *name_item = cJSON_GetObjectItem(root, "name");
+        if (cJSON_IsNumber(addr_item) && cJSON_IsString(name_item)) {
+            update_device_name((uint16_t)addr_item->valueint, name_item->valuestring);
+            const char* resp = "{\"status\":\"ok\"}";
+            httpd_resp_set_type(req, "application/json");
+            httpd_resp_sendstr(req, resp);
+        } else {
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid params");
+        }
+        cJSON_Delete(root);
+    } else {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
+    }
+    return ESP_OK;
+}
+
 /* API: Сканування Wi-Fi мереж */
 esp_err_t api_wifi_scan_handler(httpd_req_t *req)
 {
@@ -413,6 +439,9 @@ void start_web_server(void)
 
         httpd_uri_t uri_delete = { .uri = "/api/delete", .method = HTTP_POST, .handler = api_delete_device_handler };
         httpd_register_uri_handler(server, &uri_delete);
+
+        httpd_uri_t uri_rename = { .uri = "/api/rename", .method = HTTP_POST, .handler = api_rename_device_handler };
+        httpd_register_uri_handler(server, &uri_rename);
 
         httpd_uri_t uri_scan = { .uri = "/api/wifi/scan", .method = HTTP_GET, .handler = api_wifi_scan_handler };
         httpd_register_uri_handler(server, &uri_scan);

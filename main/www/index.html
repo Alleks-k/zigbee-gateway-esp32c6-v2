@@ -71,6 +71,19 @@
         </div>
     </div>
 
+    <!-- Модальне вікно редагування -->
+    <div id="editModal" class="modal">
+        <div class="modal-content">
+            <h3>Rename Device</h3>
+            <input type="text" id="editNameInput" placeholder="New Name" style="width: 80%; padding: 8px; margin: 10px 0;">
+            <input type="hidden" id="editAddrInput">
+            <div class="modal-buttons">
+                <button onclick="saveDeviceName()" class="btn btn-primary">Save</button>
+                <button onclick="closeEditModal()" class="btn btn-del">Cancel</button>
+            </div>
+        </div>
+    </div>
+
 <script src="script.js"></script>
 </body>
 </html>

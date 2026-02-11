@@ -1,3 +1,70 @@
+/* Базові стилі та скидання */
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background-color: #f4f4f9;
+    margin: 0;
+    padding: 0;
+    color: #333;
+    line-height: 1.6;
+}
+
+h2 {
+    margin-top: 0;
+    font-size: 1.25rem;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 10px;
+    margin-bottom: 15px;
+}
+
+/* Адаптивний контейнер (Grid) */
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 15px;
+    display: grid;
+    grid-template-columns: 1fr; /* За замовчуванням 1 колонка (мобільні) */
+    gap: 20px;
+}
+
+/* Стилі карток */
+.card {
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    padding: 20px;
+    height: fit-content;
+}
+
+/* Сітка статусів (PAN ID, Channel, Addr) */
+.status-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+.status-item {
+    background: #f8f9fa;
+    padding: 8px;
+    border-radius: 6px;
+    text-align: center;
+    font-size: 0.9rem;
+    border: 1px solid #eee;
+}
+
+/* Поля вводу */
+.form-group {
+    margin-bottom: 15px;
+}
+
+input[type="text"], input[type="password"] {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    box-sizing: border-box; /* Щоб padding не збільшував ширину */
+}
+
 /* Стиль для кнопки в режимі пошуку */
 .btn-permit.active {
     background-color: #ffc107;
@@ -75,12 +142,24 @@
     cursor: pointer;
 }
 
-.btn-on:hover, .btn-off:hover, .btn-del:hover {
+.btn-edit {
+    background-color: #17a2b8; /* Info Blue */
+    color: white;
+    border: none;
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    margin-right: 5px;
+    margin-bottom: 5px; /* Відступ для мобільних, якщо кнопки переносяться */
+}
+
+.btn-on:hover, .btn-off:hover, .btn-del:hover, .btn-edit:hover {
     opacity: 0.8;
 }
 .input-row {
     display: flex;
     gap: 10px;
+    align-items: center;
 }
 
 .scan-results {
@@ -144,6 +223,60 @@
     margin-top: 20px;
     display: flex;
     justify-content: space-around;
+}
+
+/* --- Media Queries (Адаптивність) --- */
+
+/* Планшети (від 600px) */
+@media (min-width: 600px) {
+    .container {
+        grid-template-columns: repeat(2, 1fr); /* 2 колонки */
+    }
+    
+    /* Картка пристроїв може займати всю ширину, якщо їх багато */
+    .card:nth-child(2) { 
+        grid-column: span 2; 
+    }
+}
+
+/* Десктопи (від 992px) */
+@media (min-width: 992px) {
+    .container {
+        grid-template-columns: repeat(3, 1fr); /* 3 колонки */
+    }
+    
+    /* Скидаємо розтягування картки пристроїв для 3 колонок */
+    .card:nth-child(2) { 
+        grid-column: auto; 
+        grid-row: span 2; /* Хай займає 2 рядки по висоті */
+    }
+}
+
+/* Мобільні (дуже малі екрани) */
+@media (max-width: 400px) {
+    .status-grid {
+        grid-template-columns: 1fr; /* Статуси в стовпчик */
+    }
+    
+    .input-row {
+        flex-direction: column; /* Кнопка сканування під полем вводу */
+    }
+    
+    .input-row button {
+        width: 100%;
+    }
+    
+    .dev-actions {
+        margin-top: 10px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px;
+    }
+    
+    .device-item {
+        flex-direction: column;
+        align-items: flex-start;
+    }
 }
 
 @keyframes fadein { from {bottom: 0; opacity: 0;} to {bottom: 30px; opacity: 1;} }

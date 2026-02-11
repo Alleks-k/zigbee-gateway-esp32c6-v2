@@ -103,6 +103,7 @@ function renderDevices(devices) {
             <div class="dev-actions">
                 <button class="btn-on" onclick="controlDevice(${dev.short_addr}, 1, 1)">ON</button>
                 <button class="btn-off" onclick="controlDevice(${dev.short_addr}, 1, 0)">OFF</button>
+                <button class="btn-edit" onclick="openEditModal(${dev.short_addr}, '${dev.name.replace(/'/g, "\\'")}')">✎</button>
                 <button class="btn-del" onclick="deleteDevice(${dev.short_addr})">🗑</button>
             </div>
         `;
@@ -321,4 +322,54 @@ function showConfirm(message, onYes) {
     noBtn.onclick = function() {
         modal.style.display = "none";
     };
+}
+
+/* --- Функції редагування імені --- */
+
+function openEditModal(addr, currentName) {
+    const modal = document.getElementById('editModal');
+    const nameInput = document.getElementById('editNameInput');
+    const addrInput = document.getElementById('editAddrInput');
+
+    if (modal && nameInput && addrInput) {
+        nameInput.value = currentName;
+        addrInput.value = addr;
+        modal.style.display = "block";
+        nameInput.focus();
+    }
+}
+
+function closeEditModal() {
+    const modal = document.getElementById('editModal');
+    if (modal) modal.style.display = "none";
+}
+
+function saveDeviceName() {
+    const nameInput = document.getElementById('editNameInput');
+    const addrInput = document.getElementById('editAddrInput');
+    
+    const newName = nameInput.value.trim();
+    const addr = parseInt(addrInput.value);
+
+    if (!newName) {
+        showToast("Name cannot be empty");
+        return;
+    }
+
+    fetch('/api/rename', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ short_addr: addr, name: newName })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.status === 'ok') {
+            closeEditModal();
+            fetchStatus(); // Оновлюємо список
+            showToast("Renamed successfully");
+        } else {
+            showToast("Error renaming device");
+        }
+    })
+    .catch(err => console.error(err));
 }

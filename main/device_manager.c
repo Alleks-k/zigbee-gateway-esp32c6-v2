@@ -45,6 +45,23 @@ static void load_devices_from_nvs() {
     }
 }
 
+void update_device_name(uint16_t addr, const char *new_name) {
+    if (devices_mutex != NULL) xSemaphoreTake(devices_mutex, portMAX_DELAY);
+
+    for (int i = 0; i < device_count; i++) {
+        if (devices[i].short_addr == addr) {
+            strncpy(devices[i].name, new_name, sizeof(devices[i].name) - 1);
+            devices[i].name[sizeof(devices[i].name) - 1] = '\0'; // Гарантуємо null-термінатор
+            ESP_LOGI(TAG, "Device 0x%04x renamed to '%s'", addr, devices[i].name);
+            save_devices_to_nvs();
+            break;
+        }
+    }
+
+    if (devices_mutex != NULL) xSemaphoreGive(devices_mutex);
+    ws_broadcast_status();
+}
+
 void device_manager_init(void) {
     if (devices_mutex == NULL) {
         devices_mutex = xSemaphoreCreateMutex();

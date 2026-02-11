@@ -30,6 +30,25 @@
                 <li class="empty">Scanning for devices...</li>
             </ul>
         </div>
+<div class="card">
+    <h2>Налаштування Wi-Fi</h2>
+    <div class="form-group">
+        <label for="wifi-ssid">SSID Мережі</label>
+        <div class="input-row">
+            <input type="text" id="wifi-ssid" placeholder="Введіть назву або скануйте">
+            <button onclick="scanWifi()" class="btn">Сканувати</button>
+        </div>
+        <!-- Контейнер для результатів сканування -->
+        <div id="wifi-scan-results" class="scan-results" style="display:none;"></div>
+    </div>
+    
+    <div class="form-group">
+        <label for="wifi-pass">Пароль</label>
+        <input type="password" id="wifi-pass" placeholder="Введіть пароль">
+    </div>
+    
+    <button onclick="saveWifiSettings()" class="btn btn-primary">Зберегти та підключитись</button>
+</div>
 
         <div class="card">
             <h2>Wi-Fi Settings</h2>

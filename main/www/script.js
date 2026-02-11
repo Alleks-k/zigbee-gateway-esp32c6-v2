@@ -170,6 +170,92 @@ function deleteDevice(addr) {
     .catch(err => console.error('Delete error:', err));
 }
 
+
+function scanWifi() {
+    const resultsDiv = document.getElementById('wifi-scan-results');
+    const ssidInput = document.getElementById('wifi-ssid');
+    
+    resultsDiv.style.display = 'block';
+    resultsDiv.innerHTML = '<div class="scan-item">Сканування...</div>';
+
+    fetch('/api/wifi/scan')
+        .then(response => {
+            if (!response.ok) throw new Error('Scan failed');
+            return response.json();
+        })
+        .then(networks => {
+            resultsDiv.innerHTML = '';
+            if (networks.length === 0) {
+                resultsDiv.innerHTML = '<div class="scan-item">Мереж не знайдено</div>';
+                return;
+            }
+
+            // Сортуємо за рівнем сигналу (RSSI від більшого до меншого)
+            networks.sort((a, b) => b.rssi - a.rssi);
+
+            networks.forEach(net => {
+                const div = document.createElement('div');
+                div.className = 'scan-item';
+                
+                // 0 = OPEN, інші значення = захищена мережа
+                const lockIcon = net.auth === 0 ? '🔓' : '🔒';
+                
+                div.innerHTML = `
+                    <span>${lockIcon} <strong>${net.ssid}</strong></span>
+                    <span class="scan-rssi">${net.rssi} dBm</span>
+                `;
+                
+                // При кліку підставляємо SSID у поле вводу
+                div.onclick = function() {
+                    ssidInput.value = net.ssid;
+                    resultsDiv.style.display = 'none';
+                    document.getElementById('wifi-pass').focus();
+                };
+                
+                resultsDiv.appendChild(div);
+            });
+        })
+        .catch(err => {
+            console.error(err);
+            resultsDiv.innerHTML = '<div class="scan-item" style="color:red;">Помилка сканування</div>';
+        });
+}
+
+function saveWifiSettings() {
+    const ssid = document.getElementById('wifi-ssid').value;
+    const password = document.getElementById('wifi-pass').value;
+
+    if (!ssid) {
+        alert("Будь ласка, введіть SSID мережі.");
+        return;
+    }
+
+    // Валідація на стороні клієнта (дублює серверну)
+    if (password.length > 0 && password.length < 8) {
+        alert("Пароль повинен бути не менше 8 символів.");
+        return;
+    }
+
+    fetch('/api/settings/wifi', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ssid: ssid, password: password })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'ok') {
+            alert("Налаштування збережено. Пристрій перезавантажується...");
+        } else {
+            alert("Помилка: " + (data.message || "Невідома помилка"));
+        }
+    })
+    .catch(err => {
+        console.error(err);
+        alert("Помилка з'єднання з сервером");
+    });
+}
+
+
 /**
  * Збереження налаштувань Wi-Fi
  */

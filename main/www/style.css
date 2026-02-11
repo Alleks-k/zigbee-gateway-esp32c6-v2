@@ -78,6 +78,44 @@
 .btn-on:hover, .btn-off:hover, .btn-del:hover {
     opacity: 0.8;
 }
+.input-row {
+    display: flex;
+    gap: 10px;
+}
+
+.scan-results {
+    margin-top: 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    max-height: 200px;
+    overflow-y: auto;
+    background: #f9f9f9;
+}
+
+.scan-item {
+    padding: 10px;
+    border-bottom: 1px solid #eee;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.scan-item:last-child {
+    border-bottom: none;
+}
+
+.scan-item:hover {
+    background-color: #e6f7ff;
+}
+
+.scan-rssi {
+    font-size: 0.85em;
+    color: #666;
+    background: #eee;
+    padding: 2px 6px;
+    border-radius: 10px;
+}
 
 
 @keyframes fadein { from {bottom: 0; opacity: 0;} to {bottom: 30px; opacity: 1;} }

@@ -1,4 +1,5 @@
 #include "web_server.h"
+#include "esp_wifi.h"
 #include "esp_log.h"
 #include "esp_zigbee_gateway.h"
 #include "device_manager.h"
@@ -241,6 +242,55 @@ esp_err_t api_delete_device_handler(httpd_req_t *req) {
     return ESP_OK;
 }
 
+/* API: Сканування Wi-Fi мереж */
+esp_err_t api_wifi_scan_handler(httpd_req_t *req)
+{
+    wifi_scan_config_t scan_config = {
+        .ssid = 0,
+        .bssid = 0,
+        .channel = 0,
+        .show_hidden = true
+    };
+
+    /* Запускаємо сканування (блокуюче, чекаємо завершення) */
+    esp_err_t err = esp_wifi_scan_start(&scan_config, true);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "WiFi scan failed: %s", esp_err_to_name(err));
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Scan failed");
+        return ESP_FAIL;
+    }
+
+    uint16_t ap_count = 0;
+    esp_wifi_scan_get_ap_num(&ap_count);
+
+    wifi_ap_record_t *ap_info = (wifi_ap_record_t *)malloc(sizeof(wifi_ap_record_t) * ap_count);
+    if (!ap_info) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Out of memory");
+        return ESP_FAIL;
+    }
+
+    ESP_ERROR_CHECK(esp_wifi_scan_get_ap_records(&ap_count, ap_info));
+
+    cJSON *root = cJSON_CreateArray();
+    for (int i = 0; i < ap_count; i++) {
+        cJSON *item = cJSON_CreateObject();
+        cJSON_AddStringToObject(item, "ssid", (char *)ap_info[i].ssid);
+        cJSON_AddNumberToObject(item, "rssi", ap_info[i].rssi);
+        cJSON_AddNumberToObject(item, "auth", ap_info[i].authmode);
+        cJSON_AddItemToArray(root, item);
+    }
+
+    free(ap_info);
+    char *json_str = cJSON_PrintUnformatted(root);
+    cJSON_Delete(root);
+
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, json_str);
+    free(json_str);
+
+    return ESP_OK;
+}
+
 /* clarawlan7: Збереження налаштувань Wi-Fi */
 esp_err_t api_wifi_save_handler(httpd_req_t *req)
 {
@@ -353,6 +403,9 @@ void start_web_server(void)
 
         httpd_uri_t uri_delete = { .uri = "/api/delete", .method = HTTP_POST, .handler = api_delete_device_handler };
         httpd_register_uri_handler(server, &uri_delete);
+
+        httpd_uri_t uri_scan = { .uri = "/api/wifi/scan", .method = HTTP_GET, .handler = api_wifi_scan_handler };
+        httpd_register_uri_handler(server, &uri_scan);
 
         httpd_uri_t uri_wifi = { .uri = "/api/settings/wifi", .method = HTTP_POST, .handler = api_wifi_save_handler };
         httpd_register_uri_handler(server, &uri_wifi);

@@ -16,6 +16,7 @@
 #include "esp_zigbee_gateway.h"
 #include "esp_http_server.h"
 #include "web_server.h" 
+#include "device_manager.h"
 #include <zcl/esp_zigbee_zcl_core.h>
 
 #include "esp_vfs_dev.h"

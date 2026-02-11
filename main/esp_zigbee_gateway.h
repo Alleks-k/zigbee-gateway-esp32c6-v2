@@ -66,3 +66,6 @@
         .uart_port = 1, .uart_baudrate = 115200, .reset_pin = HOST_RESET_PIN_TO_RCP_RESET, .boot_pin = HOST_BOOT_PIN_TO_RCP_BOOT,   \
         .update_baudrate = 460800, .firmware_dir = "/rcp_fw/ot_rcp", .target_chip = ESP32H2_CHIP,                                   \
     }
+
+void send_on_off_command(uint16_t short_addr, uint8_t endpoint, uint8_t on_off);
+void send_leave_command(uint16_t short_addr, esp_zb_ieee_addr_t ieee_addr);

@@ -9,17 +9,6 @@ extern uint16_t pan_id;
 extern uint8_t channel;
 extern uint16_t short_addr;
 
-/* Структура для пристроїв */
-#define MAX_DEVICES 10
-typedef struct {
-    uint16_t short_addr;
-    esp_zb_ieee_addr_t ieee_addr; 
-    char name[32]; 
-} zb_device_t;
-
-extern zb_device_t devices[MAX_DEVICES];
-extern int device_count;
-
 /* Прототипи функцій сервера */
 esp_err_t web_handler(httpd_req_t *req);
 esp_err_t css_handler(httpd_req_t *req);
@@ -31,15 +20,6 @@ esp_err_t api_delete_device_handler(httpd_req_t *req);
 esp_err_t favicon_handler(httpd_req_t *req);
 
 void start_web_server(void);
-void add_device_with_ieee(uint16_t addr, esp_zb_ieee_addr_t ieee);
-void delete_device(uint16_t addr);
-
-/* Керування Zigbee */
-void send_on_off_command(uint16_t short_addr, uint8_t endpoint, uint8_t on_off);
-void send_leave_command(uint16_t short_addr, esp_zb_ieee_addr_t ieee_addr);
-
-/* NVS функції */
-void save_devices_to_nvs();
-void load_devices_from_nvs();
+void ws_broadcast_status(void);
 
 #endif

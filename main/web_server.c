@@ -6,6 +6,7 @@
 #include "cJSON.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
+#include <stdbool.h>
 #include <sys/stat.h>
 #include "esp_system.h"
 #include "mdns.h"
@@ -20,6 +21,7 @@ static const char *TAG = "WEB_SERVER";
 #define MAX_WS_CLIENTS 4
 static int ws_fds[MAX_WS_CLIENTS];
 static httpd_handle_t server = NULL;
+static SemaphoreHandle_t ws_mutex = NULL;
 
 // Функції пристроїв перенесено в device_manager.c
 
@@ -40,20 +42,18 @@ static esp_err_t serve_spiffs_file(httpd_req_t *req, const char *filepath, const
         return ESP_FAIL;
     }
 
-    char *buf = malloc(st.st_size);
-    if (!buf) {
-        fclose(f);
-        ESP_LOGE(TAG, "Failed to allocate memory for %s", filepath);
-        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Out of memory");
-        return ESP_ERR_NO_MEM;
-    }
-
-    size_t len = fread(buf, 1, st.st_size, f);
-    fclose(f);
-
     httpd_resp_set_type(req, content_type);
-    httpd_resp_send(req, buf, len);
-    free(buf);
+    char buf[1024];
+    size_t len = 0;
+    while ((len = fread(buf, 1, sizeof(buf), f)) > 0) {
+        if (httpd_resp_send_chunk(req, buf, len) != ESP_OK) {
+            fclose(f);
+            httpd_resp_sendstr_chunk(req, NULL);
+            return ESP_FAIL;
+        }
+    }
+    fclose(f);
+    httpd_resp_send_chunk(req, NULL, 0);
     return ESP_OK;
 }
 
@@ -81,11 +81,25 @@ static esp_err_t ws_handler(httpd_req_t *req)
     if (req->method == HTTP_GET) {
         ESP_LOGI(TAG, "Handshake done, new WS connection");
         int fd = httpd_req_to_sockfd(req);
+        bool added = false;
+        if (ws_mutex) {
+            xSemaphoreTake(ws_mutex, portMAX_DELAY);
+        }
         for (int i = 0; i < MAX_WS_CLIENTS; i++) {
             if (ws_fds[i] == -1) {
                 ws_fds[i] = fd;
+                added = true;
                 break;
             }
+        }
+        if (ws_mutex) {
+            xSemaphoreGive(ws_mutex);
+        }
+        if (!added) {
+            ESP_LOGW(TAG, "WS client rejected: max clients reached (%d)", MAX_WS_CLIENTS);
+            httpd_resp_set_status(req, "503 Service Unavailable");
+            httpd_resp_send(req, "WS clients limit reached", HTTPD_RESP_USE_STRLEN);
+            return ESP_OK;
         }
         return ESP_OK;
     }
@@ -97,23 +111,39 @@ static esp_err_t ws_handler(httpd_req_t *req)
     esp_err_t ret = httpd_ws_recv_frame(req, &ws_pkt, 0);
     if (ret != ESP_OK) return ret;
 
-    if (ws_pkt.len) {
-        /* Якщо отримали CLOSE фрейм - звільняємо слот */
-        if (ws_pkt.type == HTTPD_WS_TYPE_CLOSE) {
-            int fd = httpd_req_to_sockfd(req);
-            for (int i = 0; i < MAX_WS_CLIENTS; i++) {
-                if (ws_fds[i] == fd) {
-                    ws_fds[i] = -1;
-                    break;
-                }
+    /* Якщо отримали CLOSE фрейм - звільняємо слот */
+    if (ws_pkt.type == HTTPD_WS_TYPE_CLOSE) {
+        int fd = httpd_req_to_sockfd(req);
+        if (ws_mutex) {
+            xSemaphoreTake(ws_mutex, portMAX_DELAY);
+        }
+        for (int i = 0; i < MAX_WS_CLIENTS; i++) {
+            if (ws_fds[i] == fd) {
+                ws_fds[i] = -1;
+                break;
             }
+        }
+        if (ws_mutex) {
+            xSemaphoreGive(ws_mutex);
         }
     }
     return ESP_OK;
 }
 
+static bool register_uri_handler_checked(httpd_handle_t srv, const httpd_uri_t *uri)
+{
+    esp_err_t ret = httpd_register_uri_handler(srv, uri);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to register URI %s: %s", uri->uri, esp_err_to_name(ret));
+        return false;
+    }
+    return true;
+}
+
 /* WebSocket: Розсилка статусу всім клієнтам */
 void ws_broadcast_status(void) {
+    if (!server) return;
+
     char *json_str = create_status_json();
     if (!json_str) return;
     
@@ -123,6 +153,9 @@ void ws_broadcast_status(void) {
     ws_pkt.len = strlen(json_str);
     ws_pkt.type = HTTPD_WS_TYPE_TEXT;
 
+    if (ws_mutex) {
+        xSemaphoreTake(ws_mutex, portMAX_DELAY);
+    }
     for (int i = 0; i < MAX_WS_CLIENTS; i++) {
         if (ws_fds[i] != -1) {
             // Відправляємо асинхронно, ігноруємо помилки (клієнт міг відпасти)
@@ -132,6 +165,9 @@ void ws_broadcast_status(void) {
                 ws_fds[i] = -1; // Видаляємо неактивного клієнта
             }
         }
+    }
+    if (ws_mutex) {
+        xSemaphoreGive(ws_mutex);
     }
     free(json_str);
 }
@@ -154,60 +190,77 @@ static void start_mdns_service(void)
     mdns_hostname_set("zigbee-gw");
     mdns_instance_name_set("ESP32C6 Zigbee Gateway");
     mdns_service_add(NULL, "_http", "_tcp", 80, NULL, 0);
-    ESP_LOGI(TAG, "mDNS started: http://zigbee-gw.local");
+    ESP_LOGI(TAG, "mDNS started: http://zigbee-gw2.local");
 }
 
 void start_web_server(void)
 {
     for (int i = 0; i < MAX_WS_CLIENTS; i++) ws_fds[i] = -1;
+
+    if (!ws_mutex) {
+        ws_mutex = xSemaphoreCreateMutex();
+        if (!ws_mutex) {
+            ESP_LOGE(TAG, "Failed to create WS mutex");
+            return;
+        }
+    }
     
     device_manager_init();
 
     server = NULL;
     httpd_config_t httpd_config = HTTPD_DEFAULT_CONFIG();
     httpd_config.server_port = 80;
-    httpd_config.max_uri_handlers = 12; // Збільшуємо ліміт обробників (за замовчуванням 8)
+    httpd_config.max_uri_handlers = 16; // Потрібно щонайменше 13 URI, залишаємо запас
 
     ESP_LOGI(TAG, "Starting Web Server on port %d", httpd_config.server_port);
     if (httpd_start(&server, &httpd_config) == ESP_OK) {
+        bool ok = true;
+
         httpd_uri_t uri_get = { .uri = "/", .method = HTTP_GET, .handler = web_handler };
-        httpd_register_uri_handler(server, &uri_get);
+        ok &= register_uri_handler_checked(server, &uri_get);
 
         httpd_uri_t uri_css = { .uri = "/style.css", .method = HTTP_GET, .handler = css_handler };
-        httpd_register_uri_handler(server, &uri_css);
+        ok &= register_uri_handler_checked(server, &uri_css);
 
         httpd_uri_t uri_js = { .uri = "/script.js", .method = HTTP_GET, .handler = js_handler };
-        httpd_register_uri_handler(server, &uri_js);
+        ok &= register_uri_handler_checked(server, &uri_js);
 
         httpd_uri_t uri_status = { .uri = "/api/status", .method = HTTP_GET, .handler = api_status_handler };
-        httpd_register_uri_handler(server, &uri_status);
+        ok &= register_uri_handler_checked(server, &uri_status);
 
         httpd_uri_t uri_permit = { .uri = "/api/permit_join", .method = HTTP_POST, .handler = api_permit_join_handler };
-        httpd_register_uri_handler(server, &uri_permit);
+        ok &= register_uri_handler_checked(server, &uri_permit);
 
         httpd_uri_t uri_control = { .uri = "/api/control", .method = HTTP_POST, .handler = api_control_handler };
-        httpd_register_uri_handler(server, &uri_control);
+        ok &= register_uri_handler_checked(server, &uri_control);
 
         httpd_uri_t uri_delete = { .uri = "/api/delete", .method = HTTP_POST, .handler = api_delete_device_handler };
-        httpd_register_uri_handler(server, &uri_delete);
+        ok &= register_uri_handler_checked(server, &uri_delete);
 
         httpd_uri_t uri_rename = { .uri = "/api/rename", .method = HTTP_POST, .handler = api_rename_device_handler };
-        httpd_register_uri_handler(server, &uri_rename);
+        ok &= register_uri_handler_checked(server, &uri_rename);
 
         httpd_uri_t uri_scan = { .uri = "/api/wifi/scan", .method = HTTP_GET, .handler = api_wifi_scan_handler };
-        httpd_register_uri_handler(server, &uri_scan);
+        ok &= register_uri_handler_checked(server, &uri_scan);
 
         httpd_uri_t uri_wifi = { .uri = "/api/settings/wifi", .method = HTTP_POST, .handler = api_wifi_save_handler };
-        httpd_register_uri_handler(server, &uri_wifi);
+        ok &= register_uri_handler_checked(server, &uri_wifi);
 
         httpd_uri_t uri_reboot = { .uri = "/api/reboot", .method = HTTP_POST, .handler = api_reboot_handler };
-        httpd_register_uri_handler(server, &uri_reboot);
+        ok &= register_uri_handler_checked(server, &uri_reboot);
 
         httpd_uri_t uri_ws = { .uri = "/ws", .method = HTTP_GET, .handler = ws_handler, .is_websocket = true };
-        httpd_register_uri_handler(server, &uri_ws);
+        ok &= register_uri_handler_checked(server, &uri_ws);
 
         httpd_uri_t uri_favicon = { .uri = "/favicon.ico", .method = HTTP_GET, .handler = favicon_handler };
-        httpd_register_uri_handler(server, &uri_favicon);
+        ok &= register_uri_handler_checked(server, &uri_favicon);
+
+        if (!ok) {
+            ESP_LOGE(TAG, "Web server init failed: one or more URI handlers were not registered");
+            httpd_stop(server);
+            server = NULL;
+            return;
+        }
 
         ESP_LOGI(TAG, "Web server handlers registered successfully");
         start_mdns_service();

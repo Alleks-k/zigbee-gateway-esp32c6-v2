@@ -145,6 +145,33 @@ esp_err_t api_rename_device_handler(httpd_req_t *req) {
 /* API: Сканування Wi-Fi мереж */
 esp_err_t api_wifi_scan_handler(httpd_req_t *req)
 {
+    wifi_mode_t mode;
+    esp_err_t mode_ret = esp_wifi_get_mode(&mode);
+    if (mode_ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to get WiFi mode: %s", esp_err_to_name(mode_ret));
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "WiFi mode unavailable");
+        return ESP_FAIL;
+    }
+
+    /* Scan requires STA capability; in fallback AP-only mode switch to APSTA. */
+    if (mode == WIFI_MODE_AP) {
+        esp_err_t ret = esp_wifi_set_mode(WIFI_MODE_APSTA);
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to switch AP->APSTA for scan: %s", esp_err_to_name(ret));
+            httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Cannot enable scan mode");
+            return ESP_FAIL;
+        }
+        /* Prevent background STA connect attempt from blocking scans. */
+        esp_wifi_disconnect();
+        ESP_LOGI(TAG, "WiFi mode switched to APSTA for network scan");
+        /* Give driver time to settle after mode switch before first scan. */
+        vTaskDelay(pdMS_TO_TICKS(200));
+    } else if (mode == WIFI_MODE_APSTA || mode == WIFI_MODE_STA) {
+        /* Scan is rejected while STA is connecting. Ensure it is idle. */
+        esp_wifi_disconnect();
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
+
     wifi_scan_config_t scan_config = {
         .ssid = 0,
         .bssid = 0,
@@ -153,7 +180,20 @@ esp_err_t api_wifi_scan_handler(httpd_req_t *req)
     };
 
     /* Запускаємо сканування (блокуюче, чекаємо завершення) */
-    esp_err_t err = esp_wifi_scan_start(&scan_config, true);
+    esp_err_t err = ESP_FAIL;
+    for (int attempt = 0; attempt < 3; attempt++) {
+        err = esp_wifi_scan_start(&scan_config, true);
+        if (err == ESP_OK) {
+            break;
+        }
+        if (err == ESP_ERR_WIFI_STATE) {
+            ESP_LOGW(TAG, "WiFi scan attempt %d failed: STA busy, retrying", attempt + 1);
+            esp_wifi_disconnect();
+            vTaskDelay(pdMS_TO_TICKS(250));
+            continue;
+        }
+        break;
+    }
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "WiFi scan failed: %s", esp_err_to_name(err));
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Scan failed");

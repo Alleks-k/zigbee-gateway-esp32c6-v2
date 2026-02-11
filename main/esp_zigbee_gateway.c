@@ -214,7 +214,11 @@ void app_main(void)
     ESP_ERROR_CHECK(nvs_flash_init());
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
-    ESP_ERROR_CHECK(wifi_init_sta_and_wait());
+    esp_err_t wifi_ret = wifi_init_sta_and_wait();
+    if (wifi_ret != ESP_OK) {
+        ESP_LOGE(TAG, "Wi-Fi STA connection failed (%s). Continuing without network.",
+                 esp_err_to_name(wifi_ret));
+    }
 
     esp_vfs_spiffs_conf_t www_conf = {
         .base_path = "/www", .partition_label = "www", .max_files = 5, .format_if_mount_failed = true
@@ -222,6 +226,11 @@ void app_main(void)
     ESP_ERROR_CHECK(esp_vfs_spiffs_register(&www_conf));
 
     start_web_server();
+
+    if (wifi_is_fallback_ap_active()) {
+        ESP_LOGW(TAG, "Fallback AP mode active: Zigbee stack startup is postponed to keep web setup stable");
+        return;
+    }
 
 #if CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
     esp_zb_gateway_console_init();

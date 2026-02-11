@@ -244,7 +244,7 @@ esp_err_t api_delete_device_handler(httpd_req_t *req) {
 /* clarawlan7: Збереження налаштувань Wi-Fi */
 esp_err_t api_wifi_save_handler(httpd_req_t *req)
 {
-    char buf[128];
+    char buf[256];
     int len = httpd_req_recv(req, buf, sizeof(buf) - 1);
     if (len <= 0) return ESP_FAIL;
     buf[len] = '\0';
@@ -259,6 +259,21 @@ esp_err_t api_wifi_save_handler(httpd_req_t *req)
     cJSON *pass = cJSON_GetObjectItem(root, "password");
 
     if (cJSON_IsString(ssid) && cJSON_IsString(pass)) {
+        size_t ssid_len = strlen(ssid->valuestring);
+        size_t pass_len = strlen(pass->valuestring);
+
+        if (ssid_len == 0 || ssid_len > 32) {
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid SSID length (1-32)");
+            cJSON_Delete(root);
+            return ESP_OK;
+        }
+
+        if (pass_len < 8 || pass_len > 64) {
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid Password length (8-64)");
+            cJSON_Delete(root);
+            return ESP_OK;
+        }
+
         nvs_handle_t my_handle;
         esp_err_t err = nvs_open("storage", NVS_READWRITE, &my_handle);
         if (err == ESP_OK) {

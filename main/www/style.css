@@ -16,6 +16,14 @@ h2 {
     margin-bottom: 15px;
 }
 
+/* Іконки SVG */
+.icon {
+    width: 18px;
+    height: 18px;
+    vertical-align: text-bottom;
+    fill: currentColor;
+}
+
 /* Адаптивний контейнер (Grid) */
 .container {
     max-width: 1200px;
@@ -121,6 +129,9 @@ input[type="text"], input[type="password"] {
     border-radius: 4px;
     cursor: pointer;
     margin-right: 5px;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
 }
 
 .btn-off {
@@ -131,6 +142,9 @@ input[type="text"], input[type="password"] {
     border-radius: 4px;
     cursor: pointer;
     margin-right: 5px;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
 }
 
 .btn-del {
@@ -140,6 +154,9 @@ input[type="text"], input[type="password"] {
     padding: 6px 12px;
     border-radius: 4px;
     cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .btn-edit {
@@ -151,6 +168,9 @@ input[type="text"], input[type="password"] {
     cursor: pointer;
     margin-right: 5px;
     margin-bottom: 5px; /* Відступ для мобільних, якщо кнопки переносяться */
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .btn-on:hover, .btn-off:hover, .btn-del:hover, .btn-edit:hover {

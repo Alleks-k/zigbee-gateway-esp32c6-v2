@@ -1,3 +1,14 @@
+const ICONS = {
+    on: '<svg class="icon" viewBox="0 0 24 24"><path d="M9 21c0 .55.45 1 1 1h4c.55 0 1-.45 1-1v-1H9v1zm3-19C8.14 2 5 5.14 5 9c0 2.38 1.19 4.47 3 5.74V17c0 .55.45 1 1 1h6c.55 0 1-.45 1-1v-2.26c1.81-1.27 3-3.36 3-5.74 0-3.86-3.14-7-7-7z"/></svg>',
+    off: '<svg class="icon" viewBox="0 0 24 24"><path d="M9 21c0 .55.45 1 1 1h4c.55 0 1-.45 1-1v-1H9v1zm3-19C8.14 2 5 5.14 5 9c0 2.38 1.19 4.47 3 5.74V17c0 .55.45 1 1 1h6c.55 0 1-.45 1-1v-2.26c1.81-1.27 3-3.36 3-5.74 0-3.86-3.14-7-7-7zm2.85 11.1l-.85.6V16h-4v-2.3l-.85-.6C7.8 12.16 7 10.63 7 9c0-2.76 2.24-5 5-5s5 2.24 5 5c0 1.63-.8 3.16-2.15 4.1z"/></svg>',
+    edit: '<svg class="icon" viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>',
+    delete: '<svg class="icon" viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>',
+    lock: '<svg class="icon" viewBox="0 0 24 24"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/></svg>',
+    unlock: '<svg class="icon" viewBox="0 0 24 24"><path d="M12 17c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm6-9h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6h1.9c.55 0 1 .45 1 1s-.45 1-1 1H7c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm0 10H6V10h12v8z"/></svg>',
+    online: '<svg class="icon" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>',
+    offline: '<svg class="icon" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 15v-2h2v2h-2zm0-10v6h2V7h-2z"/></svg>'
+};
+
 document.addEventListener('DOMContentLoaded', () => {
     // Завантажуємо статус при завантаженні сторінки
     fetchStatus();
@@ -44,7 +55,7 @@ function initWebSocket() {
 function updateConnectionStatus(connected) {
     const el = document.getElementById('ws-status');
     if (!el) return;
-    el.innerText = connected ? '● Online' : '● Offline';
+    el.innerHTML = connected ? ICONS.online + ' Online' : ICONS.offline + ' Offline';
     el.style.color = connected ? '#28a745' : 'red';
 }
 
@@ -101,10 +112,10 @@ function renderDevices(devices) {
                 <small>Addr: ${addrHex}</small>
             </div>
             <div class="dev-actions">
-                <button class="btn-on" onclick="controlDevice(${dev.short_addr}, 1, 1)">ON</button>
-                <button class="btn-off" onclick="controlDevice(${dev.short_addr}, 1, 0)">OFF</button>
-                <button class="btn-edit" onclick="openEditModal(${dev.short_addr}, '${dev.name.replace(/'/g, "\\'")}')">✎</button>
-                <button class="btn-del" onclick="deleteDevice(${dev.short_addr})">🗑</button>
+                <button class="btn-on" onclick="controlDevice(${dev.short_addr}, 1, 1)">${ICONS.on} ON</button>
+                <button class="btn-off" onclick="controlDevice(${dev.short_addr}, 1, 0)">${ICONS.off} OFF</button>
+                <button class="btn-edit" onclick="openEditModal(${dev.short_addr}, '${dev.name.replace(/'/g, "\\'")}')">${ICONS.edit}</button>
+                <button class="btn-del" onclick="deleteDevice(${dev.short_addr})">${ICONS.delete}</button>
             </div>
         `;
         list.appendChild(li);
@@ -136,7 +147,7 @@ function permitJoin() {
                 timeLeft--;
                 if (timeLeft < 0) {
                     clearInterval(permitTimer);
-                    btn.innerText = 'Permit Join (60s)';
+                    btn.innerHTML = '<svg class="icon" viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg> Permit Join (60s)';
                     btn.disabled = false;
                     btn.classList.remove('active');
                 }
@@ -226,7 +237,7 @@ function scanWifi() {
                 div.className = 'scan-item';
                 
                 // 0 = OPEN, інші значення = захищена мережа
-                const lockIcon = net.auth === 0 ? '🔓' : '🔒';
+                const lockIcon = net.auth === 0 ? ICONS.unlock : ICONS.lock;
                 
                 div.innerHTML = `
                     <span>${lockIcon} <strong>${net.ssid}</strong></span>

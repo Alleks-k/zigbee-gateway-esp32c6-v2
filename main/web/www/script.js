@@ -23,6 +23,23 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 
+async function requestJson(url, options = {}) {
+    const response = await fetch(url, options);
+    const text = await response.text();
+    let data = {};
+    if (text) {
+        try {
+            data = JSON.parse(text);
+        } catch (_) {
+            data = { message: text };
+        }
+    }
+    if (!response.ok) {
+        throw new Error(data.message || `HTTP ${response.status}`);
+    }
+    return data;
+}
+
 /**
  * Ініціалізація WebSocket з'єднання
  */
@@ -158,8 +175,7 @@ function permitJoin() {
     const btn = document.getElementById('permitJoinBtn');
     if (btn.disabled) return;
 
-    fetch('/api/permit_join', { method: 'POST' })
-        .then(res => res.json())
+    requestJson('/api/permit_join', { method: 'POST' })
         .then(data => {
             showToast(data.message || 'Network opened');
             
@@ -179,7 +195,10 @@ function permitJoin() {
                 }
             }, 1000);
         })
-        .catch(err => console.error('Error:', err));
+        .catch(err => {
+            console.error('Error:', err);
+            showToast(err.message || 'Permit join failed');
+        });
 }
 
 /**
@@ -195,12 +214,11 @@ function controlDevice(addr, ep, cmd) {
         cmd: cmd
     };
 
-    fetch('/api/control', {
+    requestJson('/api/control', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
     })
-    .then(res => res.json())
     .then(data => {
         console.log('Control response:', data);
         if (data.status !== 'ok') {
@@ -218,12 +236,11 @@ function deleteDevice(addr) {
     showConfirm('Видалити цей пристрій?', () => {
         const payload = { short_addr: addr };
 
-        fetch('/api/delete', {
+        requestJson('/api/delete', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
         })
-        .then(res => res.json())
         .then(data => {
             if (data.status === 'ok') {
                 fetchStatus(); // Одразу оновлюємо список
@@ -295,18 +312,17 @@ function saveWifiSettings() {
         return;
     }
 
-    // Валідація на стороні клієнта (дублює серверну)
-    if (password.length > 0 && password.length < 8) {
-        showToast("Пароль повинен бути не менше 8 символів.");
+    // Валідація на стороні клієнта (синхронізовано з backend)
+    if (password.length < 8 || password.length > 64) {
+        showToast("Пароль повинен бути від 8 до 64 символів.");
         return;
     }
 
-    fetch('/api/settings/wifi', {
+    requestJson('/api/settings/wifi', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ssid: ssid, password: password })
     })
-    .then(response => response.json())
     .then(data => {
         if (data.status === 'ok') {
             showToast("Налаштування збережено. Пристрій перезавантажується...");
@@ -322,10 +338,17 @@ function saveWifiSettings() {
 
 function rebootGateway() {
     showConfirm("Перезавантажити шлюз?", () => {
-        fetch('/api/reboot', { method: 'POST' })
-            .then(res => res.json())
+        requestJson('/api/reboot', { method: 'POST' })
             .then(data => showToast("Перезавантаження..."))
             .catch(err => showToast("Помилка запиту"));
+    });
+}
+
+function factoryResetGateway() {
+    showConfirm("Скинути пристрій до заводських налаштувань?", () => {
+        requestJson('/api/factory_reset', { method: 'POST' })
+            .then(data => showToast(data.message || "Factory reset..."))
+            .catch(err => showToast(err.message || "Помилка factory reset"));
     });
 }
 
@@ -393,12 +416,11 @@ function saveDeviceName() {
         return;
     }
 
-    fetch('/api/rename', {
+    requestJson('/api/rename', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ short_addr: addr, name: newName })
     })
-    .then(res => res.json())
     .then(data => {
         if (data.status === 'ok') {
             closeEditModal();

@@ -44,5 +44,6 @@ Desktop.ini
 # Project specific security
 main/wifi_credentials.h
 main/net/wifi_credentials.h
+main/net/wifi_settings.h
 main/wifi_settings_local.h
 main/net/wifi_settings_local.h

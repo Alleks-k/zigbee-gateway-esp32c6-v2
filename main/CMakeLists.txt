@@ -2,6 +2,7 @@ set(main_srcs
     "core/rcp_tool.c"
     "core/device_manager.c"
     "core/gateway_events.c"
+    "core/zgw_service.c"
     "net/wifi_init.c"
     "net/wifi_sta.c"
     "net/wifi_ap_fallback.c"

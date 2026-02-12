@@ -14,7 +14,8 @@ static zb_device_t devices[MAX_DEVICES];
 static int device_count = 0;
 static esp_event_handler_instance_t s_dev_announce_handler = NULL;
 
-static void save_devices_to_nvs() {
+/* Caller must hold devices_mutex. */
+static void save_devices_to_nvs_locked(void) {
     nvs_handle_t my_handle;
     esp_err_t err = nvs_open("storage", NVS_READWRITE, &my_handle);
     if (err == ESP_OK) {
@@ -28,7 +29,8 @@ static void save_devices_to_nvs() {
     }
 }
 
-static void load_devices_from_nvs() {
+/* Caller must hold devices_mutex. */
+static void load_devices_from_nvs_locked(void) {
     nvs_handle_t my_handle;
     esp_err_t err = nvs_open("storage", NVS_READONLY, &my_handle);
     if (err == ESP_OK) {
@@ -85,7 +87,7 @@ void update_device_name(uint16_t addr, const char *new_name) {
             strncpy(devices[i].name, new_name, sizeof(devices[i].name) - 1);
             devices[i].name[sizeof(devices[i].name) - 1] = '\0'; // Гарантуємо null-термінатор
             ESP_LOGI(TAG, "Device 0x%04x renamed to '%s'", addr, devices[i].name);
-            save_devices_to_nvs();
+            save_devices_to_nvs_locked();
             break;
         }
     }
@@ -97,7 +99,13 @@ void update_device_name(uint16_t addr, const char *new_name) {
 void device_manager_init(void) {
     if (devices_mutex == NULL) {
         devices_mutex = xSemaphoreCreateMutex();
-        load_devices_from_nvs();
+        if (devices_mutex != NULL) {
+            xSemaphoreTake(devices_mutex, portMAX_DELAY);
+            load_devices_from_nvs_locked();
+            xSemaphoreGive(devices_mutex);
+        } else {
+            ESP_LOGE(TAG, "Failed to create devices mutex");
+        }
     }
     if (s_dev_announce_handler == NULL) {
         esp_err_t ret = esp_event_handler_instance_register(
@@ -126,7 +134,7 @@ void add_device_with_ieee(uint16_t addr, esp_zb_ieee_addr_t ieee) {
         snprintf(devices[device_count].name, sizeof(devices[device_count].name), "Пристрій 0x%04x", addr);
         device_count++;
         ESP_LOGI(TAG, "New device added: 0x%04x. Total: %d", addr, device_count);
-        save_devices_to_nvs();
+        save_devices_to_nvs_locked();
     } else {
         ESP_LOGW(TAG, "Maximum device limit reached (%d)", MAX_DEVICES);
     }
@@ -155,7 +163,7 @@ void delete_device(uint16_t addr) {
         }
         device_count--;
         ESP_LOGI(TAG, "Device 0x%04x removed. Remaining: %d", addr, device_count);
-        save_devices_to_nvs();
+        save_devices_to_nvs_locked();
     }
 
     if (devices_mutex != NULL) xSemaphoreGive(devices_mutex);

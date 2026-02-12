@@ -77,6 +77,26 @@ static bool append_json_escaped(char **cursor, size_t *remaining, const char *sr
     return true;
 }
 
+static esp_err_t append_devices_array(char **cursor, size_t *remaining)
+{
+    zb_device_t snapshot[MAX_DEVICES];
+    int count = device_manager_get_snapshot(snapshot, MAX_DEVICES);
+    for (int i = 0; i < count; i++) {
+        if (i > 0 && !append_literal(cursor, remaining, ",")) {
+            return ESP_ERR_NO_MEM;
+        }
+        if (!append_literal(cursor, remaining, "{\"name\":\"") ||
+            !append_json_escaped(cursor, remaining, snapshot[i].name) ||
+            !append_literal(cursor, remaining, "\",\"short_addr\":") ||
+            !append_u32(cursor, remaining, snapshot[i].short_addr) ||
+            !append_literal(cursor, remaining, "}"))
+        {
+            return ESP_ERR_NO_MEM;
+        }
+    }
+    return ESP_OK;
+}
+
 esp_err_t build_status_json_compact(char *out, size_t out_size, size_t *out_len)
 {
     if (!out || out_size < 2) {
@@ -97,20 +117,37 @@ esp_err_t build_status_json_compact(char *out, size_t out_size, size_t *out_len)
         return ESP_ERR_NO_MEM;
     }
 
-    zb_device_t snapshot[MAX_DEVICES];
-    int count = device_manager_get_snapshot(snapshot, MAX_DEVICES);
-    for (int i = 0; i < count; i++) {
-        if (i > 0 && !append_literal(&cursor, &remaining, ",")) {
-            return ESP_ERR_NO_MEM;
-        }
-        if (!append_literal(&cursor, &remaining, "{\"name\":\"") ||
-            !append_json_escaped(&cursor, &remaining, snapshot[i].name) ||
-            !append_literal(&cursor, &remaining, "\",\"short_addr\":") ||
-            !append_u32(&cursor, &remaining, snapshot[i].short_addr) ||
-            !append_literal(&cursor, &remaining, "}"))
-        {
-            return ESP_ERR_NO_MEM;
-        }
+    esp_err_t dev_ret = append_devices_array(&cursor, &remaining);
+    if (dev_ret != ESP_OK) {
+        return dev_ret;
+    }
+
+    if (!append_literal(&cursor, &remaining, "]}")) {
+        return ESP_ERR_NO_MEM;
+    }
+
+    if (out_len) {
+        *out_len = (size_t)(cursor - out);
+    }
+    return ESP_OK;
+}
+
+esp_err_t build_devices_json_compact(char *out, size_t out_size, size_t *out_len)
+{
+    if (!out || out_size < 2) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    char *cursor = out;
+    size_t remaining = out_size;
+
+    if (!append_literal(&cursor, &remaining, "{\"devices\":[")) {
+        return ESP_ERR_NO_MEM;
+    }
+
+    esp_err_t dev_ret = append_devices_array(&cursor, &remaining);
+    if (dev_ret != ESP_OK) {
+        return dev_ret;
     }
 
     if (!append_literal(&cursor, &remaining, "]}")) {

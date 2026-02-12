@@ -142,9 +142,9 @@ void ws_broadcast_status(void)
     }
 
     size_t json_len = 0;
-    esp_err_t build_ret = build_status_json_compact(s_ws_json_buf, sizeof(s_ws_json_buf), &json_len);
+    esp_err_t build_ret = build_devices_json_compact(s_ws_json_buf, sizeof(s_ws_json_buf), &json_len);
     if (build_ret != ESP_OK) {
-        ESP_LOGW(TAG, "Failed to build WS JSON payload: %s", esp_err_to_name(build_ret));
+        ESP_LOGW(TAG, "Failed to build WS delta JSON payload: %s", esp_err_to_name(build_ret));
         return;
     }
 

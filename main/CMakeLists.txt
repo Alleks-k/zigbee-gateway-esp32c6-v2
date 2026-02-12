@@ -1,11 +1,22 @@
 # Реєстрація компонентів вашого проєкту
-idf_component_register(SRCS "esp_zigbee_gateway.c" "web_server.c" "api_handlers.c" "wifi_init.c" "wifi_sta.c" "wifi_ap_fallback.c" "rcp_tool.c" "device_manager.c" "http_static.c" "ws_manager.c" "http_routes.c" "mdns_service.c"
-                       INCLUDE_DIRS "."
+idf_component_register(SRCS "core/esp_zigbee_gateway.c"
+                            "core/rcp_tool.c"
+                            "core/device_manager.c"
+                            "net/wifi_init.c"
+                            "net/wifi_sta.c"
+                            "net/wifi_ap_fallback.c"
+                            "web/web_server.c"
+                            "web/api_handlers.c"
+                            "web/http_routes.c"
+                            "web/http_static.c"
+                            "web/ws_manager.c"
+                            "web/mdns_service.c"
+                       INCLUDE_DIRS "." "core" "net" "web"
                        REQUIRES mdns esp-zigbee-lib nvs_flash esp_http_server json spiffs
                        PRIV_REQUIRES esp_wifi)
 
 # Генерація SPIFFS іміджу для папки www
-spiffs_create_partition_image(www www FLASH_IN_PROJECT)
+spiffs_create_partition_image(www web/www FLASH_IN_PROJECT)
 
 # Блок оновлення RCP (залишаємо як було у вас)
 if(CONFIG_ZIGBEE_GW_AUTO_UPDATE_RCP)

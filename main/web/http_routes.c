@@ -53,6 +53,9 @@ bool http_routes_register(httpd_handle_t server)
     httpd_uri_t uri_reboot = { .uri = "/api/reboot", .method = HTTP_POST, .handler = api_reboot_handler };
     ok &= register_uri_handler_checked(server, &uri_reboot);
 
+    httpd_uri_t uri_factory_reset = { .uri = "/api/factory_reset", .method = HTTP_POST, .handler = api_factory_reset_handler };
+    ok &= register_uri_handler_checked(server, &uri_factory_reset);
+
     httpd_uri_t uri_ws = { .uri = "/ws", .method = HTTP_GET, .handler = ws_handler, .is_websocket = true };
     ok &= register_uri_handler_checked(server, &uri_ws);
 

@@ -28,3 +28,4 @@ void zgw_service_wifi_scan_free(zgw_wifi_ap_info_t *list);
 esp_err_t zgw_service_wifi_save_credentials(const char *ssid, const char *password);
 void zgw_service_reboot(void);
 esp_err_t zgw_service_schedule_reboot(uint32_t delay_ms);
+esp_err_t zgw_service_factory_reset_and_reboot(uint32_t reboot_delay_ms);

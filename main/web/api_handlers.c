@@ -359,6 +359,19 @@ esp_err_t api_reboot_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
+esp_err_t api_factory_reset_handler(httpd_req_t *req)
+{
+    esp_err_t err = zgw_service_factory_reset_and_reboot(1000);
+    if (err != ESP_OK) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Factory reset failed");
+        return ESP_FAIL;
+    }
+
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, "{\"status\":\"ok\", \"message\":\"Factory reset done. Rebooting...\"}");
+    return ESP_OK;
+}
+
 /* Збереження налаштувань Wi-Fi */
 esp_err_t api_wifi_save_handler(httpd_req_t *req)
 {

@@ -164,3 +164,13 @@ esp_err_t zgw_service_schedule_reboot(uint32_t delay_ms)
     }
     return ESP_OK;
 }
+
+esp_err_t zgw_service_factory_reset_and_reboot(uint32_t reboot_delay_ms)
+{
+    esp_err_t err = settings_manager_factory_reset();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Factory reset failed: %s", esp_err_to_name(err));
+        return err;
+    }
+    return zgw_service_schedule_reboot(reboot_delay_ms);
+}

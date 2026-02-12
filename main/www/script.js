@@ -93,9 +93,11 @@ function renderDevices(devices) {
     if (!list) return;
 
     list.innerHTML = ''; // Очищення списку
+    const currentCount = devices ? devices.length : 0;
 
     if (!devices || devices.length === 0) {
         list.innerHTML = '<li>No devices connected</li>';
+        lastRenderedDeviceCount = 0;
         return;
     }
 
@@ -105,27 +107,52 @@ function renderDevices(devices) {
         
         // Форматування адреси
         const addrHex = '0x' + dev.short_addr.toString(16).toUpperCase().padStart(4, '0');
+        const rawName = (dev.name || 'Пристрій').trim();
+        const displayName = rawName.replace(/\s*0x[0-9a-fA-F]{1,4}\s*$/i, '').trim() || 'Пристрій';
 
         li.innerHTML = `
             <div class="dev-info">
-                <strong>${dev.name}</strong>
+                <strong>${displayName}</strong>
                 <small>Addr: ${addrHex}</small>
             </div>
             <div class="dev-actions">
                 <button class="btn-on" onclick="controlDevice(${dev.short_addr}, 1, 1)">${ICONS.on} ON</button>
                 <button class="btn-off" onclick="controlDevice(${dev.short_addr}, 1, 0)">${ICONS.off} OFF</button>
-                <button class="btn-edit" onclick="openEditModal(${dev.short_addr}, '${dev.name.replace(/'/g, "\\'")}')">${ICONS.edit}</button>
+                <button class="btn-edit" onclick="openEditModal(${dev.short_addr}, '${displayName.replace(/'/g, "\\'")}')">${ICONS.edit}</button>
                 <button class="btn-del" onclick="deleteDevice(${dev.short_addr})">${ICONS.delete}</button>
             </div>
         `;
         list.appendChild(li);
     });
+
+    if (permitJoinActive && currentCount > permitJoinStartDeviceCount) {
+        showToast('Пристрій додано, режим join завершено');
+        resetPermitJoinButton();
+    }
+    lastRenderedDeviceCount = currentCount;
 }
 
 /**
  * Відправка команди Permit Join (відкриття мережі)
  */
 let permitTimer = null;
+let permitJoinActive = false;
+let permitJoinStartDeviceCount = 0;
+let lastRenderedDeviceCount = -1;
+
+function resetPermitJoinButton() {
+    const btn = document.getElementById('permitJoinBtn');
+    if (!btn) return;
+    if (permitTimer) {
+        clearInterval(permitTimer);
+        permitTimer = null;
+    }
+    permitJoinActive = false;
+    permitJoinStartDeviceCount = 0;
+    btn.innerHTML = '<svg class="icon" viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg> Permit Join (60s)';
+    btn.disabled = false;
+    btn.classList.remove('active');
+}
 
 function permitJoin() {
     const btn = document.getElementById('permitJoinBtn');
@@ -138,6 +165,8 @@ function permitJoin() {
             
             // Запуск таймера на кнопці
             let timeLeft = 60;
+            permitJoinActive = true;
+            permitJoinStartDeviceCount = lastRenderedDeviceCount < 0 ? 0 : lastRenderedDeviceCount;
             btn.disabled = true;
             btn.classList.add('active');
             
@@ -146,10 +175,7 @@ function permitJoin() {
                 btn.innerText = `Joining... (${timeLeft}s)`;
                 timeLeft--;
                 if (timeLeft < 0) {
-                    clearInterval(permitTimer);
-                    btn.innerHTML = '<svg class="icon" viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg> Permit Join (60s)';
-                    btn.disabled = false;
-                    btn.classList.remove('active');
+                    resetPermitJoinButton();
                 }
             }, 1000);
         })

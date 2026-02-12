@@ -138,6 +138,12 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
         esp_zb_zdo_signal_device_annce_params_t *params = (esp_zb_zdo_signal_device_annce_params_t *)esp_zb_app_signal_get_params(p_sg_p);
         ESP_LOGI(TAG, "New device joined: 0x%04hx", params->device_short_addr);
         add_device_with_ieee(params->device_short_addr, params->ieee_addr);
+        esp_err_t close_ret = esp_zb_bdb_close_network();
+        if (close_ret == ESP_OK) {
+            ESP_LOGI(TAG, "Permit join closed after new device join");
+        } else {
+            ESP_LOGW(TAG, "Failed to close permit join: %s", esp_err_to_name(close_ret));
+        }
         break;
     }
 

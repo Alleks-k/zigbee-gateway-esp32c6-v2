@@ -120,6 +120,20 @@ input[type="text"], input[type="password"] {
     flex-direction: column;
 }
 
+.dev-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(74px, 1fr));
+    gap: 6px;
+    min-width: 160px;
+}
+
+.dev-actions button {
+    margin-right: 0;
+    margin-bottom: 0;
+    width: 100%;
+    justify-content: center;
+}
+
 /* Кнопки керування */
 .btn-on {
     background-color: #28a745; /* Green */

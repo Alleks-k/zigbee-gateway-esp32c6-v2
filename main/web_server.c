@@ -8,8 +8,10 @@
 #include "freertos/semphr.h"
 #include <stdbool.h>
 #include <sys/stat.h>
+#include <unistd.h>
 #include "esp_system.h"
 #include "mdns.h"
+#include "hostname_settings.h"
 
 #if !defined(CONFIG_HTTPD_WS_SUPPORT)
 #error "WebSocket support is not enabled! Please run 'idf.py menuconfig', go to 'Component config' -> 'HTTP Server' and enable 'WebSocket support'."
@@ -18,12 +20,35 @@
 static const char *TAG = "WEB_SERVER";
 
 /* WebSocket Globals */
-#define MAX_WS_CLIENTS 4
+#define MAX_WS_CLIENTS 8
 static int ws_fds[MAX_WS_CLIENTS];
 static httpd_handle_t server = NULL;
 static SemaphoreHandle_t ws_mutex = NULL;
 
 // Функції пристроїв перенесено в device_manager.c
+
+static void ws_remove_fd(int fd)
+{
+    if (ws_mutex) {
+        xSemaphoreTake(ws_mutex, portMAX_DELAY);
+    }
+    for (int i = 0; i < MAX_WS_CLIENTS; i++) {
+        if (ws_fds[i] == fd) {
+            ws_fds[i] = -1;
+            break;
+        }
+    }
+    if (ws_mutex) {
+        xSemaphoreGive(ws_mutex);
+    }
+}
+
+static void ws_httpd_close_fn(httpd_handle_t hd, int sockfd)
+{
+    (void)hd;
+    ws_remove_fd(sockfd);
+    close(sockfd);
+}
 
 /* Допоміжна функція для віддачі файлів зі SPIFFS */
 static esp_err_t serve_spiffs_file(httpd_req_t *req, const char *filepath, const char *content_type)
@@ -86,6 +111,12 @@ static esp_err_t ws_handler(httpd_req_t *req)
             xSemaphoreTake(ws_mutex, portMAX_DELAY);
         }
         for (int i = 0; i < MAX_WS_CLIENTS; i++) {
+            if (ws_fds[i] == fd) {
+                added = true;
+                break;
+            }
+        }
+        for (int i = 0; i < MAX_WS_CLIENTS && !added; i++) {
             if (ws_fds[i] == -1) {
                 ws_fds[i] = fd;
                 added = true;
@@ -99,7 +130,7 @@ static esp_err_t ws_handler(httpd_req_t *req)
             ESP_LOGW(TAG, "WS client rejected: max clients reached (%d)", MAX_WS_CLIENTS);
             httpd_resp_set_status(req, "503 Service Unavailable");
             httpd_resp_send(req, "WS clients limit reached", HTTPD_RESP_USE_STRLEN);
-            return ESP_OK;
+            return ESP_FAIL;
         }
         return ESP_OK;
     }
@@ -114,18 +145,7 @@ static esp_err_t ws_handler(httpd_req_t *req)
     /* Якщо отримали CLOSE фрейм - звільняємо слот */
     if (ws_pkt.type == HTTPD_WS_TYPE_CLOSE) {
         int fd = httpd_req_to_sockfd(req);
-        if (ws_mutex) {
-            xSemaphoreTake(ws_mutex, portMAX_DELAY);
-        }
-        for (int i = 0; i < MAX_WS_CLIENTS; i++) {
-            if (ws_fds[i] == fd) {
-                ws_fds[i] = -1;
-                break;
-            }
-        }
-        if (ws_mutex) {
-            xSemaphoreGive(ws_mutex);
-        }
+        ws_remove_fd(fd);
     }
     return ESP_OK;
 }
@@ -183,14 +203,16 @@ esp_err_t favicon_handler(httpd_req_t *req)
 static void start_mdns_service(void)
 {
     esp_err_t err = mdns_init();
-    if (err) {
+    if (err == ESP_ERR_INVALID_STATE) {
+        ESP_LOGW(TAG, "mDNS already initialized");
+    } else if (err) {
         ESP_LOGE(TAG, "mDNS Init failed: %d", err);
         return;
     }
-    mdns_hostname_set("zigbee-gw");
-    mdns_instance_name_set("ESP32C6 Zigbee Gateway");
+    mdns_hostname_set(GATEWAY_MDNS_HOSTNAME);
+    mdns_instance_name_set(GATEWAY_MDNS_INSTANCE);
     mdns_service_add(NULL, "_http", "_tcp", 80, NULL, 0);
-    ESP_LOGI(TAG, "mDNS started: http://zigbee-gw2.local");
+    ESP_LOGI(TAG, "mDNS started: http://%s.local", GATEWAY_MDNS_HOSTNAME);
 }
 
 void start_web_server(void)
@@ -211,6 +233,7 @@ void start_web_server(void)
     httpd_config_t httpd_config = HTTPD_DEFAULT_CONFIG();
     httpd_config.server_port = 80;
     httpd_config.max_uri_handlers = 16; // Потрібно щонайменше 13 URI, залишаємо запас
+    httpd_config.close_fn = ws_httpd_close_fn;
 
     ESP_LOGI(TAG, "Starting Web Server on port %d", httpd_config.server_port);
     if (httpd_start(&server, &httpd_config) == ESP_OK) {

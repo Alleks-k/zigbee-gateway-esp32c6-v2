@@ -5,7 +5,7 @@
 #include "string.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
-#include "web_server.h"         // Для ws_broadcast_status
+#include "ws_manager.h"         // Для ws_broadcast_status
 #include "esp_zigbee_gateway.h" // Для send_leave_command
 
 static const char *TAG = "DEV_MANAGER";

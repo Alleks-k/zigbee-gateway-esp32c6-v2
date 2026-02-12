@@ -1,4 +1,5 @@
 #include "wifi_ap_fallback.h"
+#include "wifi_settings.h"
 #include "esp_check.h"
 #include "esp_log.h"
 #include "esp_mac.h"
@@ -6,10 +7,6 @@
 #include <string.h>
 
 static const char *TAG = "wifi_init";
-
-#define FALLBACK_AP_CHANNEL   1
-#define FALLBACK_AP_MAX_CONN  4
-#define FALLBACK_AP_PASSWORD  "zigbeegw123"
 
 esp_err_t wifi_start_fallback_ap(wifi_runtime_ctx_t *ctx)
 {
@@ -28,13 +25,13 @@ esp_err_t wifi_start_fallback_ap(wifi_runtime_ctx_t *ctx)
     uint8_t ap_mac[6] = {0};
     char fallback_ssid[33];
     ESP_RETURN_ON_ERROR(esp_read_mac(ap_mac, ESP_MAC_WIFI_SOFTAP), TAG, "Failed to read SoftAP MAC");
-    snprintf(fallback_ssid, sizeof(fallback_ssid), "ZigbeeGW-%02X%02X", ap_mac[4], ap_mac[5]);
+    snprintf(fallback_ssid, sizeof(fallback_ssid), "%s%02X%02X", WIFI_AP_FALLBACK_SSID_PREFIX, ap_mac[4], ap_mac[5]);
 
     wifi_config_t ap_cfg = {
         .ap = {
-            .channel = FALLBACK_AP_CHANNEL,
-            .max_connection = FALLBACK_AP_MAX_CONN,
-            .authmode = WIFI_AUTH_WPA2_PSK,
+            .channel = WIFI_AP_FALLBACK_CHANNEL,
+            .max_connection = WIFI_AP_FALLBACK_MAX_CONNECTIONS,
+            .authmode = WIFI_AP_FALLBACK_AUTHMODE,
             .pmf_cfg = {
                 .required = false,
             },
@@ -42,7 +39,7 @@ esp_err_t wifi_start_fallback_ap(wifi_runtime_ctx_t *ctx)
     };
 
     strlcpy((char *)ap_cfg.ap.ssid, fallback_ssid, sizeof(ap_cfg.ap.ssid));
-    strlcpy((char *)ap_cfg.ap.password, FALLBACK_AP_PASSWORD, sizeof(ap_cfg.ap.password));
+    strlcpy((char *)ap_cfg.ap.password, WIFI_AP_FALLBACK_PASSWORD, sizeof(ap_cfg.ap.password));
     ap_cfg.ap.ssid_len = strlen(fallback_ssid);
 
     esp_err_t stop_ret = esp_wifi_stop();
@@ -57,16 +54,18 @@ esp_err_t wifi_start_fallback_ap(wifi_runtime_ctx_t *ctx)
                         TAG, "Failed to set AP protocol");
     ESP_RETURN_ON_ERROR(esp_wifi_set_bandwidth(WIFI_IF_AP, WIFI_BW_HT20),
                         TAG, "Failed to set AP bandwidth");
-    ESP_RETURN_ON_ERROR(esp_wifi_set_ps(WIFI_PS_NONE), TAG, "Failed to disable Wi-Fi power save");
+    if (WIFI_AP_FALLBACK_DISABLE_POWER_SAVE) {
+        ESP_RETURN_ON_ERROR(esp_wifi_set_ps(WIFI_PS_NONE), TAG, "Failed to disable Wi-Fi power save");
+    }
     ctx->fallback_ap_active = true;
 
     esp_netif_ip_info_t ap_ip;
     if (ctx->ap_netif && esp_netif_get_ip_info(ctx->ap_netif, &ap_ip) == ESP_OK) {
         ESP_LOGW(TAG, "Fallback AP started: SSID=%s, PASS=%s, IP=" IPSTR,
-                 fallback_ssid, FALLBACK_AP_PASSWORD, IP2STR(&ap_ip.ip));
+                 fallback_ssid, WIFI_AP_FALLBACK_PASSWORD, IP2STR(&ap_ip.ip));
     } else {
         ESP_LOGW(TAG, "Fallback AP started: SSID=%s, PASS=%s, IP=192.168.4.1",
-                 fallback_ssid, FALLBACK_AP_PASSWORD);
+                 fallback_ssid, WIFI_AP_FALLBACK_PASSWORD);
     }
 
     return ESP_OK;

@@ -63,6 +63,7 @@ void rcp_init_auto_update(void)
 
 void rcp_error_handler(void)
 {
+    ESP_LOGE(TAG, "RCP error handler triggered");
 #if CONFIG_ZIGBEE_GW_AUTO_UPDATE_RCP
     esp_zb_gateway_update_rcp();
 #endif

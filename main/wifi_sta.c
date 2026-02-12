@@ -1,12 +1,13 @@
 #include "wifi_sta.h"
 #include "wifi_credentials.h"
+#include "wifi_settings.h"
 #include "esp_log.h"
+#include "esp_check.h"
 #include "esp_wifi.h"
 #include "esp_event.h"
 #include "nvs.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
-#include <assert.h>
 #include <string.h>
 
 static const char *TAG = "wifi_init";
@@ -43,13 +44,15 @@ static void event_handler(void *arg, esp_event_base_t event_base, int32_t event_
             return;
         }
         wifi_event_sta_disconnected_t *disconn = (wifi_event_sta_disconnected_t *)event_data;
-        if (ctx->retry_num < 10) {
+        if (ctx->retry_num < WIFI_STA_MAX_RETRY) {
             esp_wifi_connect();
             ctx->retry_num++;
-            ESP_LOGW(TAG, "retry to connect to AP (attempt %d/10), reason=%d (%s)",
-                     ctx->retry_num, disconn->reason, wifi_reason_to_str(disconn->reason));
+            ESP_LOGW(TAG, "retry to connect to AP (attempt %d/%d), reason=%d (%s)",
+                     ctx->retry_num, WIFI_STA_MAX_RETRY, disconn->reason, wifi_reason_to_str(disconn->reason));
         } else {
-            xEventGroupSetBits(ctx->wifi_event_group, WIFI_FAIL_BIT);
+            if (ctx->wifi_event_group) {
+                xEventGroupSetBits(ctx->wifi_event_group, WIFI_FAIL_BIT);
+            }
         }
         ESP_LOGW(TAG, "connect to AP failed, reason=%d (%s)",
                  disconn->reason, wifi_reason_to_str(disconn->reason));
@@ -65,7 +68,9 @@ static void event_handler(void *arg, esp_event_base_t event_base, int32_t event_
         ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
         ESP_LOGI(TAG, "got ip:" IPSTR, IP2STR(&event->ip_info.ip));
         ctx->retry_num = 0;
-        xEventGroupSetBits(ctx->wifi_event_group, WIFI_CONNECTED_BIT);
+        if (ctx->wifi_event_group) {
+            xEventGroupSetBits(ctx->wifi_event_group, WIFI_CONNECTED_BIT);
+        }
     }
 }
 
@@ -98,45 +103,112 @@ esp_err_t wifi_sta_connect_and_wait(wifi_runtime_ctx_t *ctx)
 {
     ctx->fallback_ap_active = false;
     ctx->retry_num = 0;
+    ctx->instance_any_id = NULL;
+    ctx->instance_got_ip = NULL;
 
     ctx->wifi_event_group = xEventGroupCreate();
-    esp_netif_t *sta_netif = esp_netif_create_default_wifi_sta();
-    assert(sta_netif);
+    ESP_RETURN_ON_FALSE(ctx->wifi_event_group != NULL, ESP_ERR_NO_MEM, TAG, "Failed to create Wi-Fi event group");
+
+    esp_netif_t *sta_netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+    if (!sta_netif) {
+        sta_netif = esp_netif_create_default_wifi_sta();
+    }
+    ESP_RETURN_ON_FALSE(sta_netif != NULL, ESP_FAIL, TAG, "Failed to create default Wi-Fi STA netif");
 
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+    esp_err_t ret = esp_wifi_init(&cfg);
+    if (ret != ESP_OK && ret != ESP_ERR_WIFI_INIT_STATE) {
+        ESP_LOGE(TAG, "esp_wifi_init failed: %s", esp_err_to_name(ret));
+        vEventGroupDelete(ctx->wifi_event_group);
+        ctx->wifi_event_group = NULL;
+        return ret;
+    }
 
-    ESP_ERROR_CHECK(esp_event_handler_instance_register(
-        WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler, ctx, &ctx->instance_any_id));
-    ESP_ERROR_CHECK(esp_event_handler_instance_register(
-        IP_EVENT, IP_EVENT_STA_GOT_IP, &event_handler, ctx, &ctx->instance_got_ip));
+    ret = esp_event_handler_instance_register(
+        WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler, ctx, &ctx->instance_any_id);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "register WIFI_EVENT handler failed: %s", esp_err_to_name(ret));
+        vEventGroupDelete(ctx->wifi_event_group);
+        ctx->wifi_event_group = NULL;
+        return ret;
+    }
+
+    ret = esp_event_handler_instance_register(
+        IP_EVENT, IP_EVENT_STA_GOT_IP, &event_handler, ctx, &ctx->instance_got_ip);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "register IP_EVENT handler failed: %s", esp_err_to_name(ret));
+        esp_event_handler_instance_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, ctx->instance_any_id);
+        ctx->instance_any_id = NULL;
+        vEventGroupDelete(ctx->wifi_event_group);
+        ctx->wifi_event_group = NULL;
+        return ret;
+    }
 
     wifi_config_t wifi_config = {
         .sta = {
             .threshold.authmode = WIFI_AUTH_WPA2_PSK,
             .pmf_cfg = {
-                .capable = true,
-                .required = false,
+                .capable = WIFI_STA_PMF_CAPABLE,
+                .required = WIFI_STA_PMF_REQUIRED,
             },
         },
     };
+    wifi_config.sta.threshold.authmode = WIFI_STA_AUTHMODE_THRESHOLD;
 
     load_wifi_credentials(ctx, &wifi_config);
 
-    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
-    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
-    ESP_ERROR_CHECK(esp_wifi_start());
+    ESP_GOTO_ON_ERROR(esp_wifi_set_mode(WIFI_MODE_STA), fail, TAG, "Failed to set STA mode");
+    ESP_GOTO_ON_ERROR(esp_wifi_set_config(WIFI_IF_STA, &wifi_config), fail, TAG, "Failed to set STA config");
+    ESP_GOTO_ON_ERROR(esp_wifi_start(), fail, TAG, "Failed to start Wi-Fi STA");
 
     ESP_LOGI(TAG, "wifi_init_sta finished.");
 
     EventBits_t bits = xEventGroupWaitBits(
-        ctx->wifi_event_group, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT, pdFALSE, pdFALSE, portMAX_DELAY);
+        ctx->wifi_event_group,
+        WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
+        pdFALSE,
+        pdFALSE,
+        pdMS_TO_TICKS(WIFI_STA_CONNECT_TIMEOUT_MS));
 
     if (bits & WIFI_CONNECTED_BIT) {
         ESP_LOGI(TAG, "connected to ap SSID:%s", ctx->active_ssid);
         esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
         esp_wifi_set_bandwidth(WIFI_IF_STA, WIFI_BW_HT20);
-        return ESP_OK;
+        ret = ESP_OK;
+    } else {
+        if ((bits & WIFI_FAIL_BIT) == 0) {
+            ESP_LOGE(TAG, "Timed out waiting for Wi-Fi connection (%d ms)", WIFI_STA_CONNECT_TIMEOUT_MS);
+        }
+        ret = ESP_FAIL;
     }
-    return ESP_FAIL;
+
+    if (ctx->instance_got_ip) {
+        esp_event_handler_instance_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP, ctx->instance_got_ip);
+        ctx->instance_got_ip = NULL;
+    }
+    if (ctx->instance_any_id) {
+        esp_event_handler_instance_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, ctx->instance_any_id);
+        ctx->instance_any_id = NULL;
+    }
+    if (ctx->wifi_event_group) {
+        vEventGroupDelete(ctx->wifi_event_group);
+        ctx->wifi_event_group = NULL;
+    }
+
+    return ret;
+
+fail:
+    if (ctx->instance_got_ip) {
+        esp_event_handler_instance_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP, ctx->instance_got_ip);
+        ctx->instance_got_ip = NULL;
+    }
+    if (ctx->instance_any_id) {
+        esp_event_handler_instance_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, ctx->instance_any_id);
+        ctx->instance_any_id = NULL;
+    }
+    if (ctx->wifi_event_group) {
+        vEventGroupDelete(ctx->wifi_event_group);
+        ctx->wifi_event_group = NULL;
+    }
+    return ret;
 }

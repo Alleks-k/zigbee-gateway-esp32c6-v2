@@ -2,6 +2,7 @@
 
 #include "esp_zigbee_core.h"
 #include "cJSON.h"
+#include <stddef.h>
 
 #define MAX_DEVICES 10
 
@@ -36,3 +37,12 @@ void delete_device(uint16_t addr);
  * @note Викликаючий код повинен звільнити пам'ять (cJSON_Delete) для батьківського об'єкта
  */
 cJSON* device_manager_get_json_list(void);
+
+/**
+ * @brief Copy current devices to caller-provided buffer.
+ *
+ * @param out Array buffer to fill.
+ * @param max_items Max number of elements available in @p out.
+ * @return int Number of copied items.
+ */
+int device_manager_get_snapshot(zb_device_t *out, size_t max_items);

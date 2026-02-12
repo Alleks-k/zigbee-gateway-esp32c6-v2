@@ -3,6 +3,8 @@
 #include "gateway_events.h"
 #include "esp_log.h"
 #include "esp_event.h"
+#include "esp_heap_caps.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include <stdbool.h>
@@ -13,11 +15,17 @@
 static const char *TAG = "WS_MANAGER";
 
 #define MAX_WS_CLIENTS 8
+#define WS_JSON_BUF_SIZE 2048
+#define WS_MIN_DUP_BROADCAST_INTERVAL_US (250 * 1000)
 
 static int ws_fds[MAX_WS_CLIENTS];
 static httpd_handle_t s_server = NULL;
 static SemaphoreHandle_t s_ws_mutex = NULL;
 static esp_event_handler_instance_t s_list_changed_handler = NULL;
+static char s_ws_json_buf[WS_JSON_BUF_SIZE];
+static char s_last_ws_json[WS_JSON_BUF_SIZE];
+static size_t s_last_ws_json_len = 0;
+static int64_t s_last_ws_send_us = 0;
 
 static void ws_remove_fd(int fd)
 {
@@ -65,6 +73,9 @@ void ws_manager_init(httpd_handle_t server)
             ESP_LOGE(TAG, "Failed to register DEVICE_LIST_CHANGED handler: %s", esp_err_to_name(ret));
         }
     }
+
+    s_last_ws_json_len = 0;
+    s_last_ws_send_us = 0;
 }
 
 void ws_httpd_close_fn(httpd_handle_t hd, int sockfd)
@@ -130,15 +141,27 @@ void ws_broadcast_status(void)
         return;
     }
 
-    char *json_str = create_status_json();
-    if (!json_str) {
+    size_t json_len = 0;
+    esp_err_t build_ret = build_status_json_compact(s_ws_json_buf, sizeof(s_ws_json_buf), &json_len);
+    if (build_ret != ESP_OK) {
+        ESP_LOGW(TAG, "Failed to build WS JSON payload: %s", esp_err_to_name(build_ret));
         return;
     }
 
+    int64_t now_us = esp_timer_get_time();
+    bool same_payload = (json_len == s_last_ws_json_len) &&
+                        (json_len > 0) &&
+                        (memcmp(s_ws_json_buf, s_last_ws_json, json_len) == 0);
+    if (same_payload && (now_us - s_last_ws_send_us) < WS_MIN_DUP_BROADCAST_INTERVAL_US) {
+        return;
+    }
+
+    size_t heap_before = heap_caps_get_free_size(MALLOC_CAP_8BIT);
+
     httpd_ws_frame_t ws_pkt;
     memset(&ws_pkt, 0, sizeof(httpd_ws_frame_t));
-    ws_pkt.payload = (uint8_t *)json_str;
-    ws_pkt.len = strlen(json_str);
+    ws_pkt.payload = (uint8_t *)s_ws_json_buf;
+    ws_pkt.len = json_len;
     ws_pkt.type = HTTPD_WS_TYPE_TEXT;
 
     if (s_ws_mutex) {
@@ -157,5 +180,16 @@ void ws_broadcast_status(void)
         xSemaphoreGive(s_ws_mutex);
     }
 
-    free(json_str);
+    if (json_len < sizeof(s_last_ws_json)) {
+        memcpy(s_last_ws_json, s_ws_json_buf, json_len);
+        s_last_ws_json[json_len] = '\0';
+        s_last_ws_json_len = json_len;
+    } else {
+        s_last_ws_json_len = 0;
+    }
+    s_last_ws_send_us = now_us;
+
+    size_t heap_after = heap_caps_get_free_size(MALLOC_CAP_8BIT);
+    ESP_LOGD(TAG, "WS broadcast heap: before=%u after=%u delta=%d",
+             (unsigned)heap_before, (unsigned)heap_after, (int)(heap_after - heap_before));
 }

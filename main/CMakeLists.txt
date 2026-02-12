@@ -14,7 +14,7 @@ idf_component_register(SRCS "core/esp_zigbee_gateway.c"
                             "web/mdns_service.c"
                        INCLUDE_DIRS "." "core" "net" "web"
                        REQUIRES mdns esp-zigbee-lib nvs_flash esp_http_server json spiffs
-                       PRIV_REQUIRES esp_wifi)
+                       PRIV_REQUIRES esp_wifi esp_timer)
 
 # Генерація SPIFFS іміджу для папки www
 spiffs_create_partition_image(www web/www FLASH_IN_PROJECT)

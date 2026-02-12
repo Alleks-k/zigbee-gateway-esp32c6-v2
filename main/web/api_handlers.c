@@ -11,8 +11,117 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_system.h"
+#include <stdbool.h>
+#include <inttypes.h>
 
 static const char *TAG = "API_HANDLERS";
+
+static bool append_literal(char **cursor, size_t *remaining, const char *text)
+{
+    int written = snprintf(*cursor, *remaining, "%s", text);
+    if (written < 0 || (size_t)written >= *remaining) {
+        return false;
+    }
+    *cursor += written;
+    *remaining -= (size_t)written;
+    return true;
+}
+
+static bool append_u32(char **cursor, size_t *remaining, uint32_t value)
+{
+    int written = snprintf(*cursor, *remaining, "%" PRIu32, value);
+    if (written < 0 || (size_t)written >= *remaining) {
+        return false;
+    }
+    *cursor += written;
+    *remaining -= (size_t)written;
+    return true;
+}
+
+static bool append_json_escaped(char **cursor, size_t *remaining, const char *src)
+{
+    if (!src) {
+        return append_literal(cursor, remaining, "");
+    }
+
+    while (*src) {
+        unsigned char ch = (unsigned char)*src++;
+        if (ch == '"' || ch == '\\') {
+            if (*remaining < 3) {
+                return false;
+            }
+            *(*cursor)++ = '\\';
+            *(*cursor)++ = (char)ch;
+            *remaining -= 2;
+            continue;
+        }
+        if (ch < 0x20) {
+            if (*remaining < 7) {
+                return false;
+            }
+            int written = snprintf(*cursor, *remaining, "\\u%04x", (unsigned)ch);
+            if (written != 6) {
+                return false;
+            }
+            *cursor += written;
+            *remaining -= (size_t)written;
+            continue;
+        }
+        if (*remaining < 2) {
+            return false;
+        }
+        *(*cursor)++ = (char)ch;
+        (*remaining)--;
+    }
+    **cursor = '\0';
+    return true;
+}
+
+esp_err_t build_status_json_compact(char *out, size_t out_size, size_t *out_len)
+{
+    if (!out || out_size < 2) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    char *cursor = out;
+    size_t remaining = out_size;
+
+    if (!append_literal(&cursor, &remaining, "{\"pan_id\":") ||
+        !append_u32(&cursor, &remaining, esp_zb_get_pan_id()) ||
+        !append_literal(&cursor, &remaining, ",\"channel\":") ||
+        !append_u32(&cursor, &remaining, esp_zb_get_current_channel()) ||
+        !append_literal(&cursor, &remaining, ",\"short_addr\":") ||
+        !append_u32(&cursor, &remaining, esp_zb_get_short_address()) ||
+        !append_literal(&cursor, &remaining, ",\"devices\":["))
+    {
+        return ESP_ERR_NO_MEM;
+    }
+
+    zb_device_t snapshot[MAX_DEVICES];
+    int count = device_manager_get_snapshot(snapshot, MAX_DEVICES);
+    for (int i = 0; i < count; i++) {
+        if (i > 0 && !append_literal(&cursor, &remaining, ",")) {
+            return ESP_ERR_NO_MEM;
+        }
+        if (!append_literal(&cursor, &remaining, "{\"name\":\"") ||
+            !append_json_escaped(&cursor, &remaining, snapshot[i].name) ||
+            !append_literal(&cursor, &remaining, "\",\"short_addr\":") ||
+            !append_u32(&cursor, &remaining, snapshot[i].short_addr) ||
+            !append_literal(&cursor, &remaining, "}"))
+        {
+            return ESP_ERR_NO_MEM;
+        }
+    }
+
+    if (!append_literal(&cursor, &remaining, "]}")) {
+        return ESP_ERR_NO_MEM;
+    }
+
+    if (out_len) {
+        *out_len = (size_t)(cursor - out);
+    }
+    return ESP_OK;
+}
 
 /* Helper: Створення JSON зі статусом */
 char* create_status_json(void)

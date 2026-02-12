@@ -177,3 +177,25 @@ cJSON* device_manager_get_json_list(void) {
     if (devices_mutex != NULL) xSemaphoreGive(devices_mutex);
     return dev_list;
 }
+
+int device_manager_get_snapshot(zb_device_t *out, size_t max_items)
+{
+    if (!out || max_items == 0) {
+        return 0;
+    }
+
+    if (devices_mutex != NULL) {
+        xSemaphoreTake(devices_mutex, portMAX_DELAY);
+    }
+    int count = device_count;
+    if ((size_t)count > max_items) {
+        count = (int)max_items;
+    }
+    if (count > 0) {
+        memcpy(out, devices, sizeof(zb_device_t) * (size_t)count);
+    }
+    if (devices_mutex != NULL) {
+        xSemaphoreGive(devices_mutex);
+    }
+    return count;
+}

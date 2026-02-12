@@ -1,7 +1,6 @@
 #include "device_manager.h"
 #include "esp_log.h"
-#include "nvs_flash.h"
-#include "nvs.h"
+#include "settings_manager.h"
 #include "string.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
@@ -16,35 +15,28 @@ static esp_event_handler_instance_t s_dev_announce_handler = NULL;
 
 /* Caller must hold devices_mutex. */
 static void save_devices_to_nvs_locked(void) {
-    nvs_handle_t my_handle;
-    esp_err_t err = nvs_open("storage", NVS_READWRITE, &my_handle);
+    esp_err_t err = settings_manager_save_devices(devices, MAX_DEVICES, device_count);
     if (err == ESP_OK) {
-        nvs_set_i32(my_handle, "dev_count", device_count);
-        nvs_set_blob(my_handle, "dev_list", devices, sizeof(zb_device_t) * MAX_DEVICES);
-        err = nvs_commit(my_handle);
-        nvs_close(my_handle);
-        if (err == ESP_OK) {
-            ESP_LOGI(TAG, "Device list successfully saved to NVS");
-        }
+        ESP_LOGI(TAG, "Device list successfully saved to NVS");
+    } else {
+        ESP_LOGW(TAG, "Failed to save devices to NVS: %s", esp_err_to_name(err));
     }
 }
 
 /* Caller must hold devices_mutex. */
 static void load_devices_from_nvs_locked(void) {
-    nvs_handle_t my_handle;
-    esp_err_t err = nvs_open("storage", NVS_READONLY, &my_handle);
-    if (err == ESP_OK) {
-        int32_t count = 0;
-        nvs_get_i32(my_handle, "dev_count", &count);
-        device_count = (int)count;
-        
-        size_t size = sizeof(zb_device_t) * MAX_DEVICES;
-        nvs_get_blob(my_handle, "dev_list", devices, &size);
-        nvs_close(my_handle);
+    bool loaded = false;
+    int count = 0;
+    esp_err_t err = settings_manager_load_devices(devices, MAX_DEVICES, &count, &loaded);
+    if (err == ESP_OK && loaded) {
+        device_count = count;
         ESP_LOGI(TAG, "Loaded %d devices from NVS", device_count);
-    } else {
-        ESP_LOGW(TAG, "No device data found in NVS (First boot?)");
+    } else if (err == ESP_OK) {
         device_count = 0;
+        ESP_LOGW(TAG, "No device data found in NVS (First boot?)");
+    } else {
+        device_count = 0;
+        ESP_LOGW(TAG, "Failed to load device data: %s", esp_err_to_name(err));
     }
 }
 

@@ -1,13 +1,12 @@
 #include "zgw_service.h"
 #include "esp_zigbee_gateway.h"
+#include "settings_manager.h"
 #include "esp_wifi.h"
 #include "esp_system.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "nvs.h"
 #include <stdlib.h>
-#include <string.h>
 
 static const char *TAG = "ZGW_SERVICE";
 
@@ -148,31 +147,7 @@ void zgw_service_wifi_scan_free(zgw_wifi_ap_info_t *list)
 
 esp_err_t zgw_service_wifi_save_credentials(const char *ssid, const char *password)
 {
-    if (!ssid || !password) {
-        return ESP_ERR_INVALID_ARG;
-    }
-
-    size_t ssid_len = strlen(ssid);
-    size_t pass_len = strlen(password);
-    if (ssid_len == 0 || ssid_len > 32 || pass_len < 8 || pass_len > 64) {
-        return ESP_ERR_INVALID_ARG;
-    }
-
-    nvs_handle_t my_handle;
-    esp_err_t err = nvs_open("storage", NVS_READWRITE, &my_handle);
-    if (err != ESP_OK) {
-        return err;
-    }
-
-    err = nvs_set_str(my_handle, "wifi_ssid", ssid);
-    if (err == ESP_OK) {
-        err = nvs_set_str(my_handle, "wifi_pass", password);
-    }
-    if (err == ESP_OK) {
-        err = nvs_commit(my_handle);
-    }
-    nvs_close(my_handle);
-    return err;
+    return settings_manager_save_wifi_credentials(ssid, password);
 }
 
 void zgw_service_reboot(void)

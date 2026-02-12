@@ -1,11 +1,11 @@
 #include "wifi_sta.h"
 #include "wifi_credentials.h"
 #include "wifi_settings.h"
+#include "settings_manager.h"
 #include "esp_log.h"
 #include "esp_check.h"
 #include "esp_wifi.h"
 #include "esp_event.h"
-#include "nvs.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
 #include <string.h>
@@ -76,17 +76,16 @@ static void event_handler(void *arg, esp_event_base_t event_base, int32_t event_
 
 static void load_wifi_credentials(wifi_runtime_ctx_t *ctx, wifi_config_t *wifi_config)
 {
-    nvs_handle_t my_handle;
     bool loaded_from_nvs = false;
-    if (nvs_open("storage", NVS_READONLY, &my_handle) == ESP_OK) {
-        size_t ssid_len = sizeof(wifi_config->sta.ssid);
-        size_t pass_len = sizeof(wifi_config->sta.password);
-        if (nvs_get_str(my_handle, "wifi_ssid", (char *)wifi_config->sta.ssid, &ssid_len) == ESP_OK &&
-            nvs_get_str(my_handle, "wifi_pass", (char *)wifi_config->sta.password, &pass_len) == ESP_OK) {
-            loaded_from_nvs = true;
-            ESP_LOGI(TAG, "Loaded Wi-Fi settings from NVS");
-        }
-        nvs_close(my_handle);
+    esp_err_t err = settings_manager_load_wifi_credentials(
+        (char *)wifi_config->sta.ssid, sizeof(wifi_config->sta.ssid),
+        (char *)wifi_config->sta.password, sizeof(wifi_config->sta.password),
+        &loaded_from_nvs);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "Failed to load Wi-Fi settings from storage: %s", esp_err_to_name(err));
+    }
+    if (loaded_from_nvs) {
+        ESP_LOGI(TAG, "Loaded Wi-Fi settings from NVS");
     }
 
     if (!loaded_from_nvs) {

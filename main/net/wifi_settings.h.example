@@ -20,6 +20,6 @@
 #define WIFI_AP_FALLBACK_SSID_PREFIX          "ZigbeeGW-"
 #define WIFI_AP_FALLBACK_CHANNEL              1
 #define WIFI_AP_FALLBACK_MAX_CONNECTIONS      4
-#define WIFI_AP_FALLBACK_PASSWORD             "Zigbee-1234"
+#define WIFI_AP_FALLBACK_PASSWORD             "your-strong-pass"
 #define WIFI_AP_FALLBACK_AUTHMODE             WIFI_AUTH_WPA2_PSK
 #define WIFI_AP_FALLBACK_DISABLE_POWER_SAVE   true

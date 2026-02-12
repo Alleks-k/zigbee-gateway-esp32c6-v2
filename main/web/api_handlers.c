@@ -161,15 +161,9 @@ esp_err_t api_wifi_scan_handler(httpd_req_t *req)
             httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Cannot enable scan mode");
             return ESP_FAIL;
         }
-        /* Prevent background STA connect attempt from blocking scans. */
-        esp_wifi_disconnect();
         ESP_LOGI(TAG, "WiFi mode switched to APSTA for network scan");
         /* Give driver time to settle after mode switch before first scan. */
         vTaskDelay(pdMS_TO_TICKS(200));
-    } else if (mode == WIFI_MODE_APSTA || mode == WIFI_MODE_STA) {
-        /* Scan is rejected while STA is connecting. Ensure it is idle. */
-        esp_wifi_disconnect();
-        vTaskDelay(pdMS_TO_TICKS(100));
     }
 
     wifi_scan_config_t scan_config = {
@@ -188,7 +182,6 @@ esp_err_t api_wifi_scan_handler(httpd_req_t *req)
         }
         if (err == ESP_ERR_WIFI_STATE) {
             ESP_LOGW(TAG, "WiFi scan attempt %d failed: STA busy, retrying", attempt + 1);
-            esp_wifi_disconnect();
             vTaskDelay(pdMS_TO_TICKS(250));
             continue;
         }
@@ -202,6 +195,11 @@ esp_err_t api_wifi_scan_handler(httpd_req_t *req)
 
     uint16_t ap_count = 0;
     esp_wifi_scan_get_ap_num(&ap_count);
+    if (ap_count == 0) {
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_sendstr(req, "[]");
+        return ESP_OK;
+    }
 
     wifi_ap_record_t *ap_info = (wifi_ap_record_t *)malloc(sizeof(wifi_ap_record_t) * ap_count);
     if (!ap_info) {
@@ -209,7 +207,13 @@ esp_err_t api_wifi_scan_handler(httpd_req_t *req)
         return ESP_FAIL;
     }
 
-    ESP_ERROR_CHECK(esp_wifi_scan_get_ap_records(&ap_count, ap_info));
+    err = esp_wifi_scan_get_ap_records(&ap_count, ap_info);
+    if (err != ESP_OK) {
+        free(ap_info);
+        ESP_LOGE(TAG, "Failed to get scan records: %s", esp_err_to_name(err));
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Scan records failed");
+        return ESP_FAIL;
+    }
 
     cJSON *root = cJSON_CreateArray();
     for (int i = 0; i < ap_count; i++) {

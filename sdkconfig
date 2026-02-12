@@ -632,6 +632,12 @@ CONFIG_PARTITION_TABLE_MD5=y
 # end of Partition Table
 
 #
+# ESP Zigbee gateway tests
+#
+# CONFIG_ZGW_SELF_TEST_APP is not set
+# end of ESP Zigbee gateway tests
+
+#
 # Compiler options
 #
 CONFIG_COMPILER_OPTIMIZATION_DEBUG=y

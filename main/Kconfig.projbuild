@@ -27,3 +27,13 @@ menu "ESP Zigbee gateway rcp update"
             will be automatically updated upon version mismatch.
 
 endmenu
+
+menu "ESP Zigbee gateway tests"
+    config ZGW_SELF_TEST_APP
+        bool "Build self-test app instead of gateway app"
+        default n
+        help
+            Build a dedicated firmware image that runs lightweight Unity
+            self-tests on boot. Regular gateway app_main is not included
+            in this mode.
+endmenu

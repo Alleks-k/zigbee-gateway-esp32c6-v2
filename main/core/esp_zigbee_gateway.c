@@ -17,6 +17,8 @@
 #include "esp_http_server.h"
 #include "web_server.h" 
 #include "device_manager.h"
+#include "gateway_events.h"
+#include "esp_event.h"
 #include <zcl/esp_zigbee_zcl_core.h>
 
 #include "esp_vfs_dev.h"
@@ -28,6 +30,7 @@
 #endif
 
 static const char *TAG = "ESP_ZB_GATEWAY";
+static esp_event_handler_instance_t s_delete_req_handler = NULL;
 
 uint16_t pan_id = 0;
 uint8_t channel = 0;
@@ -90,6 +93,18 @@ void send_leave_command(uint16_t short_addr, esp_zb_ieee_addr_t ieee_addr) {
     esp_zb_zdo_device_leave_req(&leave_req, NULL, NULL);
 }
 
+static void device_delete_request_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data)
+{
+    (void)arg;
+    if (event_base != ZGW_EVENT || event_id != ZGW_EVENT_DEVICE_DELETE_REQUEST || event_data == NULL) {
+        return;
+    }
+
+    zgw_device_delete_request_event_t *evt = (zgw_device_delete_request_event_t *)event_data;
+    esp_zb_bdb_open_network(0);
+    send_leave_command(evt->short_addr, evt->ieee_addr);
+}
+
 void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
 {
     uint32_t *p_sg_p       = signal_struct->p_app_signal;
@@ -137,7 +152,14 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
     case ESP_ZB_ZDO_SIGNAL_DEVICE_ANNCE: {
         esp_zb_zdo_signal_device_annce_params_t *params = (esp_zb_zdo_signal_device_annce_params_t *)esp_zb_app_signal_get_params(p_sg_p);
         ESP_LOGI(TAG, "New device joined: 0x%04hx", params->device_short_addr);
-        add_device_with_ieee(params->device_short_addr, params->ieee_addr);
+        zgw_device_announce_event_t evt = {
+            .short_addr = params->device_short_addr,
+        };
+        memcpy(evt.ieee_addr, params->ieee_addr, sizeof(evt.ieee_addr));
+        esp_err_t post_ret = esp_event_post(ZGW_EVENT, ZGW_EVENT_DEVICE_ANNOUNCE, &evt, sizeof(evt), 0);
+        if (post_ret != ESP_OK) {
+            ESP_LOGW(TAG, "Failed to post DEVICE_ANNOUNCE event: %s", esp_err_to_name(post_ret));
+        }
         esp_err_t close_ret = esp_zb_bdb_close_network();
         if (close_ret == ESP_OK) {
             ESP_LOGI(TAG, "Permit join closed after new device join");
@@ -220,6 +242,14 @@ void app_main(void)
     ESP_ERROR_CHECK(nvs_flash_init());
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
+    if (s_delete_req_handler == NULL) {
+        ESP_ERROR_CHECK(esp_event_handler_instance_register(
+            ZGW_EVENT,
+            ZGW_EVENT_DEVICE_DELETE_REQUEST,
+            device_delete_request_event_handler,
+            NULL,
+            &s_delete_req_handler));
+    }
     esp_err_t wifi_ret = wifi_init_sta_and_wait();
     if (wifi_ret != ESP_OK) {
         ESP_LOGE(TAG, "Wi-Fi STA connection failed (%s). Continuing without network.",

@@ -1,6 +1,7 @@
 #include "http_static.h"
 #include "esp_log.h"
 #include <stdbool.h>
+#include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -9,6 +10,21 @@
 static const char *TAG = "HTTP_STATIC";
 /* Keep a small, bounded RAM footprint while streaming static files. */
 #define HTTP_FILE_CHUNK_SIZE 4096
+
+static char *alloc_chunk_buffer(size_t *out_size)
+{
+    static const size_t candidates[] = {HTTP_FILE_CHUNK_SIZE, 2048, 1024, 512};
+    for (size_t i = 0; i < sizeof(candidates) / sizeof(candidates[0]); i++) {
+        size_t chunk = candidates[i];
+        char *buf = (char *)malloc(chunk);
+        if (buf) {
+            *out_size = chunk;
+            return buf;
+        }
+    }
+    *out_size = 0;
+    return NULL;
+}
 
 static bool req_hdr_equals(httpd_req_t *req, const char *hdr_name, const char *expected)
 {
@@ -72,10 +88,21 @@ static esp_err_t serve_spiffs_file(httpd_req_t *req, const char *filepath, const
         httpd_resp_set_hdr(req, "Last-Modified", last_modified);
     }
 
-    char buf[HTTP_FILE_CHUNK_SIZE];
+    size_t chunk_size = 0;
+    char *buf = alloc_chunk_buffer(&chunk_size);
+    if (!buf) {
+        fclose(f);
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "No memory");
+        return ESP_ERR_NO_MEM;
+    }
+    if (chunk_size != HTTP_FILE_CHUNK_SIZE) {
+        ESP_LOGW(TAG, "Low memory: fallback chunk size %u bytes for %s", (unsigned)chunk_size, filepath);
+    }
+
     size_t len = 0;
-    while ((len = fread(buf, 1, sizeof(buf), f)) > 0) {
+    while ((len = fread(buf, 1, chunk_size, f)) > 0) {
         if (httpd_resp_send_chunk(req, buf, len) != ESP_OK) {
+            free(buf);
             fclose(f);
             httpd_resp_sendstr_chunk(req, NULL);
             return ESP_FAIL;
@@ -84,11 +111,13 @@ static esp_err_t serve_spiffs_file(httpd_req_t *req, const char *filepath, const
 
     if (ferror(f)) {
         ESP_LOGE(TAG, "Read error while streaming %s", filepath);
+        free(buf);
         fclose(f);
         httpd_resp_sendstr_chunk(req, NULL);
         return ESP_FAIL;
     }
 
+    free(buf);
     fclose(f);
     httpd_resp_send_chunk(req, NULL, 0);
     return ESP_OK;

@@ -1,6 +1,8 @@
 #include "ws_manager.h"
 #include "api_handlers.h"
+#include "gateway_events.h"
 #include "esp_log.h"
+#include "esp_event.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include <stdbool.h>
@@ -15,6 +17,7 @@ static const char *TAG = "WS_MANAGER";
 static int ws_fds[MAX_WS_CLIENTS];
 static httpd_handle_t s_server = NULL;
 static SemaphoreHandle_t s_ws_mutex = NULL;
+static esp_event_handler_instance_t s_list_changed_handler = NULL;
 
 static void ws_remove_fd(int fd)
 {
@@ -32,6 +35,15 @@ static void ws_remove_fd(int fd)
     }
 }
 
+static void device_list_changed_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data)
+{
+    (void)arg;
+    (void)event_data;
+    if (event_base == ZGW_EVENT && event_id == ZGW_EVENT_DEVICE_LIST_CHANGED) {
+        ws_broadcast_status();
+    }
+}
+
 void ws_manager_init(httpd_handle_t server)
 {
     s_server = server;
@@ -43,6 +55,14 @@ void ws_manager_init(httpd_handle_t server)
         s_ws_mutex = xSemaphoreCreateMutex();
         if (!s_ws_mutex) {
             ESP_LOGE(TAG, "Failed to create WS mutex");
+        }
+    }
+
+    if (s_list_changed_handler == NULL) {
+        esp_err_t ret = esp_event_handler_instance_register(
+            ZGW_EVENT, ZGW_EVENT_DEVICE_LIST_CHANGED, device_list_changed_handler, NULL, &s_list_changed_handler);
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to register DEVICE_LIST_CHANGED handler: %s", esp_err_to_name(ret));
         }
     }
 }

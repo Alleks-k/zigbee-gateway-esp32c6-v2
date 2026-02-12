@@ -5,13 +5,14 @@
 #include "string.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
-#include "ws_manager.h"         // Для ws_broadcast_status
-#include "esp_zigbee_gateway.h" // Для send_leave_command
+#include "esp_event.h"
+#include "gateway_events.h"
 
 static const char *TAG = "DEV_MANAGER";
 static SemaphoreHandle_t devices_mutex = NULL;
 static zb_device_t devices[MAX_DEVICES];
 static int device_count = 0;
+static esp_event_handler_instance_t s_dev_announce_handler = NULL;
 
 static void save_devices_to_nvs() {
     nvs_handle_t my_handle;
@@ -45,6 +46,37 @@ static void load_devices_from_nvs() {
     }
 }
 
+static void post_device_list_changed_event(void)
+{
+    esp_err_t ret = esp_event_post(ZGW_EVENT, ZGW_EVENT_DEVICE_LIST_CHANGED, NULL, 0, 0);
+    if (ret != ESP_OK) {
+        ESP_LOGW(TAG, "Failed to post DEVICE_LIST_CHANGED event: %s", esp_err_to_name(ret));
+    }
+}
+
+static void post_device_delete_request_event(uint16_t short_addr, esp_zb_ieee_addr_t ieee_addr)
+{
+    zgw_device_delete_request_event_t evt = {
+        .short_addr = short_addr,
+    };
+    memcpy(evt.ieee_addr, ieee_addr, sizeof(evt.ieee_addr));
+    esp_err_t ret = esp_event_post(ZGW_EVENT, ZGW_EVENT_DEVICE_DELETE_REQUEST, &evt, sizeof(evt), 0);
+    if (ret != ESP_OK) {
+        ESP_LOGW(TAG, "Failed to post DEVICE_DELETE_REQUEST event: %s", esp_err_to_name(ret));
+    }
+}
+
+static void device_announce_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data)
+{
+    (void)arg;
+    if (event_base != ZGW_EVENT || event_id != ZGW_EVENT_DEVICE_ANNOUNCE || event_data == NULL) {
+        return;
+    }
+
+    zgw_device_announce_event_t *evt = (zgw_device_announce_event_t *)event_data;
+    add_device_with_ieee(evt->short_addr, evt->ieee_addr);
+}
+
 void update_device_name(uint16_t addr, const char *new_name) {
     if (devices_mutex != NULL) xSemaphoreTake(devices_mutex, portMAX_DELAY);
 
@@ -59,13 +91,20 @@ void update_device_name(uint16_t addr, const char *new_name) {
     }
 
     if (devices_mutex != NULL) xSemaphoreGive(devices_mutex);
-    ws_broadcast_status();
+    post_device_list_changed_event();
 }
 
 void device_manager_init(void) {
     if (devices_mutex == NULL) {
         devices_mutex = xSemaphoreCreateMutex();
         load_devices_from_nvs();
+    }
+    if (s_dev_announce_handler == NULL) {
+        esp_err_t ret = esp_event_handler_instance_register(
+            ZGW_EVENT, ZGW_EVENT_DEVICE_ANNOUNCE, device_announce_event_handler, NULL, &s_dev_announce_handler);
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to register DEVICE_ANNOUNCE handler: %s", esp_err_to_name(ret));
+        }
     }
 }
 
@@ -93,24 +132,24 @@ void add_device_with_ieee(uint16_t addr, esp_zb_ieee_addr_t ieee) {
     }
 
     if (devices_mutex != NULL) xSemaphoreGive(devices_mutex);
-    ws_broadcast_status();
+    post_device_list_changed_event();
 }
 
 void delete_device(uint16_t addr) {
     if (devices_mutex != NULL) xSemaphoreTake(devices_mutex, portMAX_DELAY);
 
     int found_idx = -1;
+    zgw_device_delete_request_event_t req_evt = {0};
     for (int i = 0; i < device_count; i++) {
         if (devices[i].short_addr == addr) {
             found_idx = i;
+            req_evt.short_addr = devices[i].short_addr;
+            memcpy(req_evt.ieee_addr, devices[i].ieee_addr, sizeof(req_evt.ieee_addr));
             break;
         }
     }
 
     if (found_idx != -1) {
-        esp_zb_bdb_open_network(0); // Закриваємо мережу
-        send_leave_command(devices[found_idx].short_addr, devices[found_idx].ieee_addr);
-
         for (int i = found_idx; i < device_count - 1; i++) {
             devices[i] = devices[i + 1];
         }
@@ -120,7 +159,10 @@ void delete_device(uint16_t addr) {
     }
 
     if (devices_mutex != NULL) xSemaphoreGive(devices_mutex);
-    ws_broadcast_status();
+    if (found_idx != -1) {
+        post_device_delete_request_event(req_evt.short_addr, req_evt.ieee_addr);
+    }
+    post_device_list_changed_event();
 }
 
 cJSON* device_manager_get_json_list(void) {

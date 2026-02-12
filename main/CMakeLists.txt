@@ -2,6 +2,7 @@
 idf_component_register(SRCS "core/esp_zigbee_gateway.c"
                             "core/rcp_tool.c"
                             "core/device_manager.c"
+                            "core/gateway_events.c"
                             "net/wifi_init.c"
                             "net/wifi_sta.c"
                             "net/wifi_ap_fallback.c"

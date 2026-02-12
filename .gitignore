@@ -43,3 +43,4 @@ Desktop.ini
 
 # Project specific security
 main/wifi_credentials.h
+main/net/wifi_credentials.h

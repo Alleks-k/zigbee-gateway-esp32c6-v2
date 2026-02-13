@@ -6,7 +6,6 @@ set(main_srcs
     "core/zigbee_service.c"
     "core/wifi_service.c"
     "core/system_service.c"
-    "core/zgw_service.c"
     "net/wifi_init.c"
     "net/wifi_sta.c"
     "net/wifi_ap_fallback.c"
@@ -17,6 +16,10 @@ set(main_srcs
     "web/ws_manager.c"
     "web/mdns_service.c"
 )
+
+if(CONFIG_ZGW_ENABLE_LEGACY_SERVICE_FACADE)
+    list(APPEND main_srcs "core/zgw_service.c")
+endif()
 
 if(CONFIG_ZGW_SELF_TEST_APP)
     list(APPEND main_srcs "core/self_tests.c" "core/self_tests_app_main.c")

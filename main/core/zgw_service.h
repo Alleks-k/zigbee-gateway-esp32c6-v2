@@ -1,5 +1,9 @@
 #pragma once
 
+/* Legacy compatibility facade.
+ * Prefer direct includes of zigbee_service.h / wifi_service.h / system_service.h
+ * for new code.
+ */
 #include "zigbee_service.h"
 #include "wifi_service.h"
 #include "system_service.h"

@@ -8,6 +8,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include <stdbool.h>
+#include <inttypes.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -17,6 +18,7 @@ static const char *TAG = "WS_MANAGER";
 #define MAX_WS_CLIENTS 8
 #define WS_JSON_BUF_SIZE 2048
 #define WS_FRAME_BUF_SIZE 2200
+#define WS_PROTOCOL_VERSION 1
 #define WS_MIN_DUP_BROADCAST_INTERVAL_US (250 * 1000)
 #define WS_MIN_BROADCAST_INTERVAL_US (120 * 1000)
 #define WS_MIN_HEALTH_BROADCAST_INTERVAL_US (800 * 1000)
@@ -36,6 +38,7 @@ static char s_last_ws_health_json[WS_JSON_BUF_SIZE];
 static size_t s_last_ws_health_json_len = 0;
 static int64_t s_last_ws_health_send_us = 0;
 static char s_ws_frame_buf[WS_FRAME_BUF_SIZE];
+static uint32_t s_ws_seq = 0;
 
 static void ws_debounce_timer_cb(void *arg)
 {
@@ -79,15 +82,31 @@ static esp_err_t ws_send_frame_to_clients(const char *json, size_t json_len)
     return ESP_OK;
 }
 
+static uint32_t ws_next_seq(void)
+{
+    uint32_t seq = 0;
+    if (s_ws_mutex) {
+        xSemaphoreTake(s_ws_mutex, portMAX_DELAY);
+    }
+    s_ws_seq++;
+    seq = s_ws_seq;
+    if (s_ws_mutex) {
+        xSemaphoreGive(s_ws_mutex);
+    }
+    return seq;
+}
+
 static esp_err_t ws_wrap_event_payload(const char *type, const char *data_json, size_t data_len, size_t *out_len)
 {
     if (!type || !data_json || !out_len) {
         return ESP_ERR_INVALID_ARG;
     }
 
+    uint32_t seq = ws_next_seq();
+    uint64_t ts_ms = (uint64_t)(esp_timer_get_time() / 1000);
     int written = snprintf(s_ws_frame_buf, sizeof(s_ws_frame_buf),
-                           "{\"type\":\"%s\",\"data\":%.*s}",
-                           type, (int)data_len, data_json);
+                           "{\"version\":%d,\"seq\":%" PRIu32 ",\"ts\":%" PRIu64 ",\"type\":\"%s\",\"data\":%.*s}",
+                           WS_PROTOCOL_VERSION, seq, ts_ms, type, (int)data_len, data_json);
     if (written < 0 || (size_t)written >= sizeof(s_ws_frame_buf)) {
         return ESP_ERR_NO_MEM;
     }
@@ -174,6 +193,7 @@ void ws_manager_init(httpd_handle_t server)
     s_last_ws_devices_send_us = 0;
     s_last_ws_health_json_len = 0;
     s_last_ws_health_send_us = 0;
+    s_ws_seq = 0;
 }
 
 void ws_httpd_close_fn(httpd_handle_t hd, int sockfd)

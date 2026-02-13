@@ -9,6 +9,8 @@ const ICONS = {
     offline: '<svg class="icon" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 15v-2h2v2h-2zm0-10v6h2V7h-2z"/></svg>'
 };
 const API_BASE = '/api/v1';
+const WS_PROTOCOL_VERSION = 1;
+let lastWsSeq = 0;
 
 function apiUrl(path) {
     return API_BASE + path;
@@ -59,11 +61,21 @@ function initWebSocket() {
 
     ws.onopen = () => {
         console.log('WS Connected');
+        lastWsSeq = 0;
         updateConnectionStatus(true);
     };
 
     ws.onmessage = (event) => {
         const data = JSON.parse(event.data);
+        if (data && Number.isFinite(data.seq)) {
+            if (data.seq <= lastWsSeq) {
+                return;
+            }
+            lastWsSeq = data.seq;
+        }
+        if (data && data.version !== undefined && data.version !== WS_PROTOCOL_VERSION) {
+            console.warn('WS protocol version mismatch:', data.version);
+        }
 
         // New WS protocol: typed events
         if (data && data.type === 'devices_delta' && data.data && Array.isArray(data.data.devices)) {

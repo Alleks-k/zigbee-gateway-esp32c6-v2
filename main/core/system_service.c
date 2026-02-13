@@ -39,3 +39,22 @@ esp_err_t system_service_factory_reset_and_reboot(uint32_t reboot_delay_ms)
     }
     return system_service_schedule_reboot(reboot_delay_ms);
 }
+
+esp_err_t system_service_get_last_factory_reset_report(system_factory_reset_report_t *out_report)
+{
+    if (!out_report) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    settings_manager_factory_reset_report_t report = {0};
+    esp_err_t err = settings_manager_get_last_factory_reset_report(&report);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    out_report->wifi_err = report.wifi_err;
+    out_report->devices_err = report.devices_err;
+    out_report->zigbee_storage_err = report.zigbee_storage_err;
+    out_report->zigbee_fct_err = report.zigbee_fct_err;
+    return ESP_OK;
+}

@@ -332,8 +332,26 @@ esp_err_t api_factory_reset_handler(httpd_req_t *req)
         return http_error_send_esp(req, err, "Factory reset failed");
     }
 
+    system_factory_reset_report_t report = {0};
+    err = system_service_get_last_factory_reset_report(&report);
+    if (err != ESP_OK) {
+        return http_error_send_esp(req, err, "Factory reset status unavailable");
+    }
+
+    char resp[384];
+    int written = snprintf(resp, sizeof(resp),
+        "{\"status\":\"ok\",\"message\":\"Factory reset done. Rebooting...\","
+        "\"details\":{\"wifi\":\"%s\",\"devices\":\"%s\",\"zigbee_storage\":\"%s\",\"zigbee_fct\":\"%s\"}}",
+        esp_err_to_name(report.wifi_err),
+        esp_err_to_name(report.devices_err),
+        esp_err_to_name(report.zigbee_storage_err),
+        esp_err_to_name(report.zigbee_fct_err));
+    if (written < 0 || (size_t)written >= sizeof(resp)) {
+        return http_error_send_esp(req, ESP_ERR_NO_MEM, "Factory reset response too large");
+    }
+
     httpd_resp_set_type(req, "application/json");
-    httpd_resp_sendstr(req, "{\"status\":\"ok\", \"message\":\"Factory reset done. Rebooting...\"}");
+    httpd_resp_sendstr(req, resp);
     return ESP_OK;
 }
 

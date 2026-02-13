@@ -8,6 +8,12 @@
 
 static const char *TAG = "SETTINGS_MANAGER";
 static SemaphoreHandle_t s_settings_mutex = NULL;
+static settings_manager_factory_reset_report_t s_last_factory_reset_report = {
+    .wifi_err = ESP_ERR_INVALID_STATE,
+    .devices_err = ESP_ERR_INVALID_STATE,
+    .zigbee_storage_err = ESP_ERR_INVALID_STATE,
+    .zigbee_fct_err = ESP_ERR_INVALID_STATE,
+};
 
 static esp_err_t settings_lock(void)
 {
@@ -245,6 +251,11 @@ esp_err_t settings_manager_factory_reset(void)
              esp_err_to_name(zb_storage_err),
              esp_err_to_name(zb_fct_err));
 
+    s_last_factory_reset_report.wifi_err = wifi_err;
+    s_last_factory_reset_report.devices_err = devices_err;
+    s_last_factory_reset_report.zigbee_storage_err = zb_storage_err;
+    s_last_factory_reset_report.zigbee_fct_err = zb_fct_err;
+
     if (wifi_err != ESP_OK) {
         return wifi_err;
     }
@@ -257,5 +268,20 @@ esp_err_t settings_manager_factory_reset(void)
     if (zb_fct_err != ESP_OK && zb_fct_err != ESP_ERR_NOT_FOUND) {
         return zb_fct_err;
     }
+    return ESP_OK;
+}
+
+esp_err_t settings_manager_get_last_factory_reset_report(settings_manager_factory_reset_report_t *out_report)
+{
+    if (!out_report) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    esp_err_t err = settings_lock();
+    if (err != ESP_OK) {
+        return err;
+    }
+    *out_report = s_last_factory_reset_report;
+    settings_unlock();
     return ESP_OK;
 }

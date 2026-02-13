@@ -2,14 +2,17 @@ set(main_srcs
 )
 
 if(CONFIG_GATEWAY_SELF_TEST_APP)
-    list(APPEND main_srcs "core/self_tests.c" "core/self_tests_app_main.c")
+    list(APPEND main_srcs
+        "tests/self_tests.c"
+        "tests/e2e_self_tests.c"
+        "tests/self_tests_app_main.c")
 else()
     list(APPEND main_srcs "core/esp_zigbee_gateway.c")
 endif()
 
 # Реєстрація компонентів вашого проєкту
 idf_component_register(SRCS ${main_srcs}
-                       INCLUDE_DIRS "." "core"
+                       INCLUDE_DIRS "." "core" "tests"
                        REQUIRES mdns esp-zigbee-lib nvs_flash esp_http_server json spiffs unity gateway_core gateway_net gateway_web
                        PRIV_REQUIRES esp_wifi esp_timer)
 

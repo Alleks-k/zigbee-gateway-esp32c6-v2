@@ -40,6 +40,17 @@ static bool append_u32(char **cursor, size_t *remaining, uint32_t value)
     return true;
 }
 
+static bool append_i32(char **cursor, size_t *remaining, int32_t value)
+{
+    int written = snprintf(*cursor, *remaining, "%" PRId32, value);
+    if (written < 0 || (size_t)written >= *remaining) {
+        return false;
+    }
+    *cursor += written;
+    *remaining -= (size_t)written;
+    return true;
+}
+
 static bool append_json_escaped(char **cursor, size_t *remaining, const char *src)
 {
     if (!src) {
@@ -219,12 +230,16 @@ esp_err_t api_status_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
-esp_err_t api_health_handler(httpd_req_t *req)
+esp_err_t build_health_json_compact(char *out, size_t out_size, size_t *out_len)
 {
+    if (!out || out_size < 2) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
     gateway_network_state_t gw_state = {0};
     esp_err_t gw_ret = gateway_state_get_network(&gw_state);
     if (gw_ret != ESP_OK) {
-        return http_error_send_esp(req, gw_ret, "Gateway state unavailable");
+        return gw_ret;
     }
 
     int32_t schema_version = 0;
@@ -238,61 +253,72 @@ esp_err_t api_health_handler(httpd_req_t *req)
         active_ssid = "";
     }
 
-    cJSON *root = cJSON_CreateObject();
-    cJSON *data = cJSON_CreateObject();
-    cJSON *wifi = cJSON_CreateObject();
-    cJSON *zigbee = cJSON_CreateObject();
-    cJSON *web = cJSON_CreateObject();
-    cJSON *nvs = cJSON_CreateObject();
-    cJSON *heap = cJSON_CreateObject();
-    if (!root || !data || !wifi || !zigbee || !web || !nvs || !heap) {
-        cJSON_Delete(root);
-        cJSON_Delete(data);
-        cJSON_Delete(wifi);
-        cJSON_Delete(zigbee);
-        cJSON_Delete(web);
-        cJSON_Delete(nvs);
-        cJSON_Delete(heap);
-        return http_error_send_esp(req, ESP_ERR_NO_MEM, "Failed to allocate health response");
+    char *cursor = out;
+    size_t remaining = out_size;
+
+    if (!append_literal(&cursor, &remaining, "{\"wifi\":{")) {
+        return ESP_ERR_NO_MEM;
+    }
+    if (!append_literal(&cursor, &remaining, "\"sta_connected\":") ||
+        !append_literal(&cursor, &remaining, sta_connected ? "true" : "false") ||
+        !append_literal(&cursor, &remaining, ",\"fallback_ap_active\":") ||
+        !append_literal(&cursor, &remaining, fallback_ap ? "true" : "false") ||
+        !append_literal(&cursor, &remaining, ",\"loaded_from_nvs\":") ||
+        !append_literal(&cursor, &remaining, loaded_from_nvs ? "true" : "false") ||
+        !append_literal(&cursor, &remaining, ",\"active_ssid\":\"") ||
+        !append_json_escaped(&cursor, &remaining, active_ssid) ||
+        !append_literal(&cursor, &remaining, "\"},\"zigbee\":{") ||
+        !append_literal(&cursor, &remaining, "\"started\":") ||
+        !append_literal(&cursor, &remaining, gw_state.zigbee_started ? "true" : "false") ||
+        !append_literal(&cursor, &remaining, ",\"factory_new\":") ||
+        !append_literal(&cursor, &remaining, gw_state.factory_new ? "true" : "false") ||
+        !append_literal(&cursor, &remaining, ",\"pan_id\":") ||
+        !append_u32(&cursor, &remaining, gw_state.pan_id) ||
+        !append_literal(&cursor, &remaining, ",\"channel\":") ||
+        !append_u32(&cursor, &remaining, gw_state.channel) ||
+        !append_literal(&cursor, &remaining, ",\"short_addr\":") ||
+        !append_u32(&cursor, &remaining, gw_state.short_addr) ||
+        !append_literal(&cursor, &remaining, "},\"web\":{") ||
+        !append_literal(&cursor, &remaining, "\"ws_clients\":") ||
+        !append_u32(&cursor, &remaining, (uint32_t)ws_manager_get_client_count()) ||
+        !append_literal(&cursor, &remaining, ",\"ready\":true},\"nvs\":{") ||
+        !append_literal(&cursor, &remaining, "\"ok\":") ||
+        !append_literal(&cursor, &remaining, schema_ret == ESP_OK ? "true" : "false") ||
+        !append_literal(&cursor, &remaining, ",\"schema_version\":") ||
+        !append_i32(&cursor, &remaining, schema_ret == ESP_OK ? schema_version : -1) ||
+        !append_literal(&cursor, &remaining, "},\"heap\":{") ||
+        !append_literal(&cursor, &remaining, "\"free\":") ||
+        !append_u32(&cursor, &remaining, esp_get_free_heap_size()) ||
+        !append_literal(&cursor, &remaining, ",\"minimum_free\":") ||
+        !append_u32(&cursor, &remaining, esp_get_minimum_free_heap_size()) ||
+        !append_literal(&cursor, &remaining, "}}"))
+    {
+        return ESP_ERR_NO_MEM;
     }
 
-    cJSON_AddStringToObject(root, "status", "ok");
-    cJSON_AddItemToObject(root, "data", data);
+    if (out_len) {
+        *out_len = (size_t)(cursor - out);
+    }
+    return ESP_OK;
+}
 
-    cJSON_AddBoolToObject(wifi, "sta_connected", sta_connected);
-    cJSON_AddBoolToObject(wifi, "fallback_ap_active", fallback_ap);
-    cJSON_AddBoolToObject(wifi, "loaded_from_nvs", loaded_from_nvs);
-    cJSON_AddStringToObject(wifi, "active_ssid", active_ssid);
-    cJSON_AddItemToObject(data, "wifi", wifi);
+esp_err_t api_health_handler(httpd_req_t *req)
+{
+    char health_json[512];
+    size_t health_len = 0;
+    esp_err_t ret = build_health_json_compact(health_json, sizeof(health_json), &health_len);
+    if (ret != ESP_OK) {
+        return http_error_send_esp(req, ret, "Failed to build health payload");
+    }
 
-    cJSON_AddBoolToObject(zigbee, "started", gw_state.zigbee_started);
-    cJSON_AddBoolToObject(zigbee, "factory_new", gw_state.factory_new);
-    cJSON_AddNumberToObject(zigbee, "pan_id", gw_state.pan_id);
-    cJSON_AddNumberToObject(zigbee, "channel", gw_state.channel);
-    cJSON_AddNumberToObject(zigbee, "short_addr", gw_state.short_addr);
-    cJSON_AddItemToObject(data, "zigbee", zigbee);
-
-    cJSON_AddNumberToObject(web, "ws_clients", ws_manager_get_client_count());
-    cJSON_AddBoolToObject(web, "ready", true);
-    cJSON_AddItemToObject(data, "web", web);
-
-    cJSON_AddBoolToObject(nvs, "ok", schema_ret == ESP_OK);
-    cJSON_AddNumberToObject(nvs, "schema_version", schema_ret == ESP_OK ? schema_version : -1);
-    cJSON_AddItemToObject(data, "nvs", nvs);
-
-    cJSON_AddNumberToObject(heap, "free", esp_get_free_heap_size());
-    cJSON_AddNumberToObject(heap, "minimum_free", esp_get_minimum_free_heap_size());
-    cJSON_AddItemToObject(data, "heap", heap);
-
-    char *json_str = cJSON_PrintUnformatted(root);
-    cJSON_Delete(root);
-    if (!json_str) {
-        return http_error_send_esp(req, ESP_ERR_NO_MEM, "Failed to build health JSON");
+    char wrapped[640];
+    int written = snprintf(wrapped, sizeof(wrapped), "{\"status\":\"ok\",\"data\":%s}", health_json);
+    if (written < 0 || (size_t)written >= sizeof(wrapped) || (size_t)written < health_len) {
+        return http_error_send_esp(req, ESP_ERR_NO_MEM, "Failed to wrap health payload");
     }
 
     httpd_resp_set_type(req, "application/json");
-    httpd_resp_sendstr(req, json_str);
-    free(json_str);
+    httpd_resp_sendstr(req, wrapped);
     return ESP_OK;
 }
 

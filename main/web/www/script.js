@@ -17,6 +17,7 @@ function apiUrl(path) {
 document.addEventListener('DOMContentLoaded', () => {
     // Завантажуємо статус при завантаженні сторінки
     fetchStatus();
+    fetchHealth();
     
     // Ініціалізуємо WebSocket
     initWebSocket();
@@ -63,10 +64,21 @@ function initWebSocket() {
 
     ws.onmessage = (event) => {
         const data = JSON.parse(event.data);
-        // Оновлення UI даними з WebSocket
-        if (data.pan_id) updateElementText('panId', '0x' + data.pan_id.toString(16).toUpperCase());
-        if (data.channel) updateElementText('channel', data.channel);
-        if (data.short_addr) updateElementText('gwAddr', '0x' + data.short_addr.toString(16).toUpperCase());
+
+        // New WS protocol: typed events
+        if (data && data.type === 'devices_delta' && data.data && Array.isArray(data.data.devices)) {
+            renderDevices(data.data.devices);
+            return;
+        }
+        if (data && data.type === 'health_state' && data.data) {
+            applyHealthData(data.data);
+            return;
+        }
+
+        // Legacy fallback format
+        if (data.pan_id !== undefined) updateElementText('panId', '0x' + data.pan_id.toString(16).toUpperCase());
+        if (data.channel !== undefined) updateElementText('channel', data.channel);
+        if (data.short_addr !== undefined) updateElementText('gwAddr', '0x' + data.short_addr.toString(16).toUpperCase());
         if (data.devices) renderDevices(data.devices);
     };
 
@@ -100,6 +112,39 @@ function fetchStatus() {
             renderDevices(data.devices);
         })
         .catch(err => console.error('Error fetching status:', err));
+}
+
+function fetchHealth() {
+    requestJson(apiUrl('/health'))
+        .then(resp => {
+            const data = resp.data || {};
+            applyHealthData(data);
+        })
+        .catch(err => console.error('Error fetching health:', err));
+}
+
+function applyHealthData(data) {
+    if (!data || typeof data !== 'object') return;
+    if (data.zigbee) {
+        if (data.zigbee.pan_id !== undefined) updateElementText('panId', '0x' + Number(data.zigbee.pan_id).toString(16).toUpperCase());
+        if (data.zigbee.channel !== undefined) updateElementText('channel', data.zigbee.channel);
+        if (data.zigbee.short_addr !== undefined) updateElementText('gwAddr', '0x' + Number(data.zigbee.short_addr).toString(16).toUpperCase());
+        updateElementText('zbStarted', data.zigbee.started ? 'Started' : 'Stopped');
+    }
+
+    if (data.wifi) {
+        const state = data.wifi.fallback_ap_active
+            ? `Fallback AP (${data.wifi.active_ssid || '-'})`
+            : (data.wifi.sta_connected ? `STA Connected (${data.wifi.active_ssid || '-'})` : 'STA Disconnected');
+        updateElementText('wifiState', state);
+    }
+
+    if (data.nvs) {
+        updateElementText('nvsSchema', data.nvs.schema_version !== undefined ? String(data.nvs.schema_version) : '--');
+    }
+    if (data.heap && data.heap.free !== undefined) {
+        updateElementText('heapFree', `${Math.round(Number(data.heap.free) / 1024)} KB`);
+    }
 }
 
 /**

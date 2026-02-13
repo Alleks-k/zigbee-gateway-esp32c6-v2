@@ -1,6 +1,27 @@
 idf_component_register(
-    SRCS "gateway_core_placeholder.c"
-    INCLUDE_DIRS "include"
-    REQUIRES nvs_flash json esp-zigbee-lib
+    SRCS
+        "../../main/core/rcp_tool.c"
+        "../../main/core/device_manager.c"
+        "../../main/core/gateway_events.c"
+        "../../main/core/gateway_state.c"
+        "../../main/core/settings_manager.c"
+        "../../main/core/job_queue.c"
+        "../../main/core/zigbee_service.c"
+        "../../main/core/wifi_service.c"
+        "../../main/core/system_service.c"
+        "gateway_core_placeholder.c"
+    INCLUDE_DIRS
+        "include"
+        "../../main/core"
+    REQUIRES
+        nvs_flash
+        json
+        esp-zigbee-lib
+        esp_rcp_update
+        spiffs
+        esp_wifi
+        esp_event
+        esp_timer
+        esp_partition
+        esp_system
 )
-

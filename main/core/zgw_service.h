@@ -1,5 +1,11 @@
 #pragma once
 
+#include "sdkconfig.h"
+
+#if !CONFIG_ZGW_ENABLE_LEGACY_SERVICE_FACADE
+#error "zgw_service.h is disabled. Include zigbee_service.h / wifi_service.h / system_service.h directly."
+#endif
+
 /* Legacy compatibility facade.
  * Prefer direct includes of zigbee_service.h / wifi_service.h / system_service.h
  * for new code.

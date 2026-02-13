@@ -8,6 +8,11 @@ const ICONS = {
     online: '<svg class="icon" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>',
     offline: '<svg class="icon" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 15v-2h2v2h-2zm0-10v6h2V7h-2z"/></svg>'
 };
+const API_BASE = '/api/v1';
+
+function apiUrl(path) {
+    return API_BASE + path;
+}
 
 document.addEventListener('DOMContentLoaded', () => {
     // Завантажуємо статус при завантаженні сторінки
@@ -80,7 +85,7 @@ function updateConnectionStatus(connected) {
  * Отримання статусу шлюзу та списку пристроїв
  */
 function fetchStatus() {
-    fetch('/api/status')
+    fetch(apiUrl('/status'))
         .then(response => response.json())
         .then(data => {
             // Оновлення інформації про шлюз
@@ -175,7 +180,7 @@ function permitJoin() {
     const btn = document.getElementById('permitJoinBtn');
     if (btn.disabled) return;
 
-    requestJson('/api/permit_join', { method: 'POST' })
+    requestJson(apiUrl('/permit_join'), { method: 'POST' })
         .then(data => {
             showToast(data.message || 'Network opened');
             
@@ -214,7 +219,7 @@ function controlDevice(addr, ep, cmd) {
         cmd: cmd
     };
 
-    requestJson('/api/control', {
+    requestJson(apiUrl('/control'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -236,7 +241,7 @@ function deleteDevice(addr) {
     showConfirm('Видалити цей пристрій?', () => {
         const payload = { short_addr: addr };
 
-        requestJson('/api/delete', {
+        requestJson(apiUrl('/delete'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
@@ -260,7 +265,7 @@ function scanWifi() {
     resultsDiv.style.display = 'block';
     resultsDiv.innerHTML = '<div class="scan-item">Сканування...</div>';
 
-    fetch('/api/wifi/scan')
+    fetch(apiUrl('/wifi/scan'))
         .then(response => {
             if (!response.ok) throw new Error('Scan failed');
             return response.json();
@@ -318,7 +323,7 @@ function saveWifiSettings() {
         return;
     }
 
-    requestJson('/api/settings/wifi', {
+    requestJson(apiUrl('/settings/wifi'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ssid: ssid, password: password })
@@ -338,7 +343,7 @@ function saveWifiSettings() {
 
 function rebootGateway() {
     showConfirm("Перезавантажити шлюз?", () => {
-        requestJson('/api/reboot', { method: 'POST' })
+        requestJson(apiUrl('/reboot'), { method: 'POST' })
             .then(data => showToast("Перезавантаження..."))
             .catch(err => showToast("Помилка запиту"));
     });
@@ -346,7 +351,7 @@ function rebootGateway() {
 
 function factoryResetGateway() {
     showConfirm("Скинути пристрій до заводських налаштувань?", () => {
-        requestJson('/api/factory_reset', { method: 'POST' })
+        requestJson(apiUrl('/factory_reset'), { method: 'POST' })
             .then(data => showToast(data.message || "Factory reset..."))
             .catch(err => showToast(err.message || "Помилка factory reset"));
     });
@@ -416,7 +421,7 @@ function saveDeviceName() {
         return;
     }
 
-    requestJson('/api/rename', {
+    requestJson(apiUrl('/rename'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ short_addr: addr, name: newName })

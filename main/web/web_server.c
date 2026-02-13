@@ -19,7 +19,8 @@ void start_web_server(void)
     server = NULL;
     httpd_config_t httpd_config = HTTPD_DEFAULT_CONFIG();
     httpd_config.server_port = 80;
-    httpd_config.max_uri_handlers = 16; // Потрібно щонайменше 13 URI, залишаємо запас
+    // Static + WS + API(v1 + legacy aliases) require higher handler capacity.
+    httpd_config.max_uri_handlers = 32;
     httpd_config.close_fn = ws_httpd_close_fn;
 
     ESP_LOGI(TAG, "Starting Web Server on port %d", httpd_config.server_port);

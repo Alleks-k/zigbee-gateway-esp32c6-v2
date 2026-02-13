@@ -16,6 +16,14 @@ static bool register_uri_handler_checked(httpd_handle_t srv, const httpd_uri_t *
     return true;
 }
 
+#define REGISTER_API_ROUTE_BOTH(_server, _suffix, _method, _handler, _ok)                                       \
+    do {                                                                                                          \
+        httpd_uri_t uri_v1 = { .uri = "/api/v1" _suffix, .method = _method, .handler = _handler };              \
+        (_ok) &= register_uri_handler_checked((_server), &uri_v1);                                                \
+        httpd_uri_t uri_legacy = { .uri = "/api" _suffix, .method = _method, .handler = _handler };             \
+        (_ok) &= register_uri_handler_checked((_server), &uri_legacy);                                            \
+    } while (0)
+
 bool http_routes_register(httpd_handle_t server)
 {
     bool ok = true;
@@ -29,32 +37,15 @@ bool http_routes_register(httpd_handle_t server)
     httpd_uri_t uri_js = { .uri = "/script.js", .method = HTTP_GET, .handler = js_handler };
     ok &= register_uri_handler_checked(server, &uri_js);
 
-    httpd_uri_t uri_status = { .uri = "/api/status", .method = HTTP_GET, .handler = api_status_handler };
-    ok &= register_uri_handler_checked(server, &uri_status);
-
-    httpd_uri_t uri_permit = { .uri = "/api/permit_join", .method = HTTP_POST, .handler = api_permit_join_handler };
-    ok &= register_uri_handler_checked(server, &uri_permit);
-
-    httpd_uri_t uri_control = { .uri = "/api/control", .method = HTTP_POST, .handler = api_control_handler };
-    ok &= register_uri_handler_checked(server, &uri_control);
-
-    httpd_uri_t uri_delete = { .uri = "/api/delete", .method = HTTP_POST, .handler = api_delete_device_handler };
-    ok &= register_uri_handler_checked(server, &uri_delete);
-
-    httpd_uri_t uri_rename = { .uri = "/api/rename", .method = HTTP_POST, .handler = api_rename_device_handler };
-    ok &= register_uri_handler_checked(server, &uri_rename);
-
-    httpd_uri_t uri_scan = { .uri = "/api/wifi/scan", .method = HTTP_GET, .handler = api_wifi_scan_handler };
-    ok &= register_uri_handler_checked(server, &uri_scan);
-
-    httpd_uri_t uri_wifi = { .uri = "/api/settings/wifi", .method = HTTP_POST, .handler = api_wifi_save_handler };
-    ok &= register_uri_handler_checked(server, &uri_wifi);
-
-    httpd_uri_t uri_reboot = { .uri = "/api/reboot", .method = HTTP_POST, .handler = api_reboot_handler };
-    ok &= register_uri_handler_checked(server, &uri_reboot);
-
-    httpd_uri_t uri_factory_reset = { .uri = "/api/factory_reset", .method = HTTP_POST, .handler = api_factory_reset_handler };
-    ok &= register_uri_handler_checked(server, &uri_factory_reset);
+    REGISTER_API_ROUTE_BOTH(server, "/status", HTTP_GET, api_status_handler, ok);
+    REGISTER_API_ROUTE_BOTH(server, "/permit_join", HTTP_POST, api_permit_join_handler, ok);
+    REGISTER_API_ROUTE_BOTH(server, "/control", HTTP_POST, api_control_handler, ok);
+    REGISTER_API_ROUTE_BOTH(server, "/delete", HTTP_POST, api_delete_device_handler, ok);
+    REGISTER_API_ROUTE_BOTH(server, "/rename", HTTP_POST, api_rename_device_handler, ok);
+    REGISTER_API_ROUTE_BOTH(server, "/wifi/scan", HTTP_GET, api_wifi_scan_handler, ok);
+    REGISTER_API_ROUTE_BOTH(server, "/settings/wifi", HTTP_POST, api_wifi_save_handler, ok);
+    REGISTER_API_ROUTE_BOTH(server, "/reboot", HTTP_POST, api_reboot_handler, ok);
+    REGISTER_API_ROUTE_BOTH(server, "/factory_reset", HTTP_POST, api_factory_reset_handler, ok);
 
     httpd_uri_t uri_ws = { .uri = "/ws", .method = HTTP_GET, .handler = ws_handler, .is_websocket = true };
     ok &= register_uri_handler_checked(server, &uri_ws);

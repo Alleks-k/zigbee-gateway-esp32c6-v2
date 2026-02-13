@@ -6,12 +6,22 @@
 #include "freertos/semphr.h"
 #include "esp_event.h"
 #include "gateway_events.h"
+#include "gateway_state.h"
 
 static const char *TAG = "DEV_MANAGER";
 static SemaphoreHandle_t devices_mutex = NULL;
 static zb_device_t devices[MAX_DEVICES];
 static int device_count = 0;
 static esp_event_handler_instance_t s_dev_announce_handler = NULL;
+
+/* Caller must hold devices_mutex. */
+static void sync_gateway_state_devices_locked(void)
+{
+    esp_err_t err = gateway_state_set_devices(devices, device_count);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "Failed to sync device snapshot to gateway_state: %s", esp_err_to_name(err));
+    }
+}
 
 /* Caller must hold devices_mutex. */
 static void save_devices_to_nvs_locked(void) {
@@ -79,6 +89,7 @@ void update_device_name(uint16_t addr, const char *new_name) {
             strncpy(devices[i].name, new_name, sizeof(devices[i].name) - 1);
             devices[i].name[sizeof(devices[i].name) - 1] = '\0'; // Гарантуємо null-термінатор
             ESP_LOGI(TAG, "Device 0x%04x renamed to '%s'", addr, devices[i].name);
+            sync_gateway_state_devices_locked();
             save_devices_to_nvs_locked();
             break;
         }
@@ -94,6 +105,7 @@ void device_manager_init(void) {
         if (devices_mutex != NULL) {
             xSemaphoreTake(devices_mutex, portMAX_DELAY);
             load_devices_from_nvs_locked();
+            sync_gateway_state_devices_locked();
             xSemaphoreGive(devices_mutex);
         } else {
             ESP_LOGE(TAG, "Failed to create devices mutex");
@@ -115,6 +127,7 @@ void add_device_with_ieee(uint16_t addr, esp_zb_ieee_addr_t ieee) {
         if (devices[i].short_addr == addr) {
             ESP_LOGI(TAG, "Device 0x%04x is already in the list, updating IEEE", addr);
             memcpy(devices[i].ieee_addr, ieee, sizeof(esp_zb_ieee_addr_t));
+            sync_gateway_state_devices_locked();
             if (devices_mutex != NULL) xSemaphoreGive(devices_mutex);
             return;
         }
@@ -126,6 +139,7 @@ void add_device_with_ieee(uint16_t addr, esp_zb_ieee_addr_t ieee) {
         snprintf(devices[device_count].name, sizeof(devices[device_count].name), "Пристрій 0x%04x", addr);
         device_count++;
         ESP_LOGI(TAG, "New device added: 0x%04x. Total: %d", addr, device_count);
+        sync_gateway_state_devices_locked();
         save_devices_to_nvs_locked();
     } else {
         ESP_LOGW(TAG, "Maximum device limit reached (%d)", MAX_DEVICES);
@@ -155,6 +169,7 @@ void delete_device(uint16_t addr) {
         }
         device_count--;
         ESP_LOGI(TAG, "Device 0x%04x removed. Remaining: %d", addr, device_count);
+        sync_gateway_state_devices_locked();
         save_devices_to_nvs_locked();
     }
 

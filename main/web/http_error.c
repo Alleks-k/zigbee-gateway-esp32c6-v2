@@ -86,11 +86,24 @@ esp_err_t http_success_send(httpd_req_t *req, const char *message)
     }
 
     const char *msg = message ? message : "ok";
-    char body[192];
-    int written = snprintf(body, sizeof(body), "{\"status\":\"ok\",\"data\":{\"message\":\"%s\"}}", msg);
+    char data_obj[160];
+    int written = snprintf(data_obj, sizeof(data_obj), "{\"message\":\"%s\"}", msg);
+    if (written < 0 || (size_t)written >= sizeof(data_obj)) {
+        return http_success_send_data_json(req, "{\"message\":\"ok\"}");
+    }
+    return http_success_send_data_json(req, data_obj);
+}
+
+esp_err_t http_success_send_data_json(httpd_req_t *req, const char *data_json)
+{
+    if (!req || !data_json) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    char body[640];
+    int written = snprintf(body, sizeof(body), "{\"status\":\"ok\",\"data\":%s}", data_json);
     if (written < 0 || (size_t)written >= sizeof(body)) {
-        strncpy(body, "{\"status\":\"ok\",\"data\":{\"message\":\"ok\"}}", sizeof(body));
-        body[sizeof(body) - 1] = '\0';
+        return ESP_ERR_NO_MEM;
     }
 
     httpd_resp_set_type(req, "application/json");

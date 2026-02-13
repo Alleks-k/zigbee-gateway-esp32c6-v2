@@ -33,7 +33,7 @@ esp_err_t zigbee_service_send_on_off(uint16_t short_addr, uint8_t endpoint, uint
 
 int zigbee_service_get_devices_snapshot(zb_device_t *out, size_t max_items)
 {
-    return device_manager_get_snapshot(out, max_items);
+    return gateway_state_get_devices_snapshot(out, max_items);
 }
 
 esp_err_t zigbee_service_delete_device(uint16_t short_addr)

@@ -209,25 +209,12 @@ esp_err_t api_status_handler(httpd_req_t *req)
     if (!json_str) {
         return http_error_send_esp(req, ESP_ERR_NO_MEM, "Failed to build status payload");
     }
-
-    size_t payload_len = strlen(json_str);
-    size_t wrapped_len = payload_len + 32;
-    char *wrapped = (char *)malloc(wrapped_len);
-    if (!wrapped) {
-        free((void *)json_str);
-        return http_error_send_esp(req, ESP_ERR_NO_MEM, "Failed to wrap status payload");
-    }
-    int written = snprintf(wrapped, wrapped_len, "{\"status\":\"ok\",\"data\":%s}", json_str);
+    esp_err_t ret = http_success_send_data_json(req, json_str);
     free((void *)json_str);
-    if (written < 0 || (size_t)written >= wrapped_len) {
-        free(wrapped);
-        return http_error_send_esp(req, ESP_ERR_NO_MEM, "Failed to wrap status payload");
+    if (ret == ESP_ERR_NO_MEM) {
+        return http_error_send_esp(req, ret, "Failed to wrap status payload");
     }
-
-    httpd_resp_set_type(req, "application/json");
-    httpd_resp_sendstr(req, wrapped);
-    free(wrapped);
-    return ESP_OK;
+    return ret;
 }
 
 esp_err_t build_health_json_compact(char *out, size_t out_size, size_t *out_len)
@@ -311,15 +298,11 @@ esp_err_t api_health_handler(httpd_req_t *req)
         return http_error_send_esp(req, ret, "Failed to build health payload");
     }
 
-    char wrapped[640];
-    int written = snprintf(wrapped, sizeof(wrapped), "{\"status\":\"ok\",\"data\":%s}", health_json);
-    if (written < 0 || (size_t)written >= sizeof(wrapped) || (size_t)written < health_len) {
+    esp_err_t send_ret = http_success_send_data_json(req, health_json);
+    if (send_ret == ESP_ERR_NO_MEM) {
         return http_error_send_esp(req, ESP_ERR_NO_MEM, "Failed to wrap health payload");
     }
-
-    httpd_resp_set_type(req, "application/json");
-    httpd_resp_sendstr(req, wrapped);
-    return ESP_OK;
+    return send_ret;
 }
 
     /* API: Відкрити мережу (Permit Join) */
@@ -387,8 +370,7 @@ esp_err_t api_wifi_scan_handler(httpd_req_t *req)
     }
 
     if (count == 0) {
-        httpd_resp_set_type(req, "application/json");
-        return httpd_resp_sendstr(req, "{\"status\":\"ok\",\"data\":[]}");
+        return http_success_send_data_json(req, "[]");
     }
 
     cJSON *root = cJSON_CreateArray();
@@ -416,25 +398,12 @@ esp_err_t api_wifi_scan_handler(httpd_req_t *req)
         return http_error_send_esp(req, ESP_ERR_NO_MEM, "Failed to build scan JSON");
     }
 
-    size_t payload_len = strlen(json_str);
-    size_t wrapped_len = payload_len + 32;
-    char *wrapped = (char *)malloc(wrapped_len);
-    if (!wrapped) {
-        free(json_str);
-        return http_error_send_esp(req, ESP_ERR_NO_MEM, "Failed to wrap scan JSON");
-    }
-    int written = snprintf(wrapped, wrapped_len, "{\"status\":\"ok\",\"data\":%s}", json_str);
+    esp_err_t send_ret = http_success_send_data_json(req, json_str);
     free(json_str);
-    if (written < 0 || (size_t)written >= wrapped_len) {
-        free(wrapped);
+    if (send_ret == ESP_ERR_NO_MEM) {
         return http_error_send_esp(req, ESP_ERR_NO_MEM, "Failed to wrap scan JSON");
     }
-
-    httpd_resp_set_type(req, "application/json");
-    httpd_resp_sendstr(req, wrapped);
-    free(wrapped);
-
-    return ESP_OK;
+    return send_ret;
 }
 
     /* API: Перезавантаження системи */
@@ -459,21 +428,22 @@ esp_err_t api_factory_reset_handler(httpd_req_t *req)
         return http_error_send_esp(req, err, "Factory reset status unavailable");
     }
 
-    char resp[384];
-    int written = snprintf(resp, sizeof(resp),
-        "{\"status\":\"ok\",\"data\":{\"message\":\"Factory reset done. Rebooting...\","
+    char data_json[352];
+    int written = snprintf(data_json, sizeof(data_json),
+        "{\"message\":\"Factory reset done. Rebooting...\","
         "\"details\":{\"wifi\":\"%s\",\"devices\":\"%s\",\"zigbee_storage\":\"%s\",\"zigbee_fct\":\"%s\"}}}",
         esp_err_to_name(report.wifi_err),
         esp_err_to_name(report.devices_err),
         esp_err_to_name(report.zigbee_storage_err),
         esp_err_to_name(report.zigbee_fct_err));
-    if (written < 0 || (size_t)written >= sizeof(resp)) {
+    if (written < 0 || (size_t)written >= sizeof(data_json)) {
         return http_error_send_esp(req, ESP_ERR_NO_MEM, "Factory reset response too large");
     }
-
-    httpd_resp_set_type(req, "application/json");
-    httpd_resp_sendstr(req, resp);
-    return ESP_OK;
+    esp_err_t send_ret = http_success_send_data_json(req, data_json);
+    if (send_ret == ESP_ERR_NO_MEM) {
+        return http_error_send_esp(req, ESP_ERR_NO_MEM, "Factory reset response too large");
+    }
+    return send_ret;
 }
 
 /* Збереження налаштувань Wi-Fi */

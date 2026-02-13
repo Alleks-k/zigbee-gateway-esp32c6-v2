@@ -4,7 +4,6 @@
 #include "http_error.h"
 #include "gateway_state.h"
 #include "settings_manager.h"
-#include "wifi_init.h"
 #include "ws_manager.h"
 #include "esp_log.h"
 #include "esp_heap_caps.h"
@@ -228,14 +227,19 @@ esp_err_t build_health_json_compact(char *out, size_t out_size, size_t *out_len)
     if (gw_ret != ESP_OK) {
         return gw_ret;
     }
+    gateway_wifi_state_t wifi_state = {0};
+    esp_err_t wifi_ret = gateway_state_get_wifi(&wifi_state);
+    if (wifi_ret != ESP_OK) {
+        return wifi_ret;
+    }
 
     int32_t schema_version = 0;
     esp_err_t schema_ret = settings_manager_get_schema_version(&schema_version);
 
-    const bool fallback_ap = wifi_is_fallback_ap_active();
-    const bool sta_connected = wifi_sta_is_connected();
-    const bool loaded_from_nvs = wifi_loaded_credentials_from_nvs();
-    const char *active_ssid = wifi_get_active_ssid();
+    const bool fallback_ap = wifi_state.fallback_ap_active;
+    const bool sta_connected = wifi_state.sta_connected;
+    const bool loaded_from_nvs = wifi_state.loaded_from_nvs;
+    const char *active_ssid = wifi_state.active_ssid;
     if (!active_ssid) {
         active_ssid = "";
     }

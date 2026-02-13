@@ -13,8 +13,17 @@ typedef struct {
     uint16_t short_addr;
 } gateway_network_state_t;
 
+typedef struct {
+    bool sta_connected;
+    bool fallback_ap_active;
+    bool loaded_from_nvs;
+    char active_ssid[33];
+} gateway_wifi_state_t;
+
 esp_err_t gateway_state_init(void);
 esp_err_t gateway_state_set_network(const gateway_network_state_t *state);
 esp_err_t gateway_state_get_network(gateway_network_state_t *out_state);
+esp_err_t gateway_state_set_wifi(const gateway_wifi_state_t *state);
+esp_err_t gateway_state_get_wifi(gateway_wifi_state_t *out_state);
 esp_err_t gateway_state_set_devices(const zb_device_t *devices, int count);
 int gateway_state_get_devices_snapshot(zb_device_t *out, size_t max_items);

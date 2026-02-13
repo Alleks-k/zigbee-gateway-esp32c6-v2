@@ -1,4 +1,5 @@
 #include "wifi_ap_fallback.h"
+#include "wifi_init.h"
 #include "wifi_settings.h"
 #include "esp_check.h"
 #include "esp_log.h"
@@ -58,6 +59,8 @@ esp_err_t wifi_start_fallback_ap(wifi_runtime_ctx_t *ctx)
         ESP_RETURN_ON_ERROR(esp_wifi_set_ps(WIFI_PS_NONE), TAG, "Failed to disable Wi-Fi power save");
     }
     ctx->fallback_ap_active = true;
+    ctx->sta_connected = false;
+    wifi_state_store_update();
 
     esp_netif_ip_info_t ap_ip;
     if (ctx->ap_netif && esp_netif_get_ip_info(ctx->ap_netif, &ap_ip) == ESP_OK) {

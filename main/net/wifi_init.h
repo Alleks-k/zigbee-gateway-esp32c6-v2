@@ -13,3 +13,4 @@ bool wifi_is_fallback_ap_active(void);
 bool wifi_loaded_credentials_from_nvs(void);
 bool wifi_sta_is_connected(void);
 const char *wifi_get_active_ssid(void);
+void wifi_state_store_update(void);

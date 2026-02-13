@@ -42,7 +42,7 @@ static void load_devices_from_nvs_locked(void) {
 
 static void post_device_list_changed_event(void)
 {
-    esp_err_t ret = esp_event_post(ZGW_EVENT, ZGW_EVENT_DEVICE_LIST_CHANGED, NULL, 0, 0);
+    esp_err_t ret = esp_event_post(GATEWAY_EVENT, GATEWAY_EVENT_DEVICE_LIST_CHANGED, NULL, 0, 0);
     if (ret != ESP_OK) {
         ESP_LOGW(TAG, "Failed to post DEVICE_LIST_CHANGED event: %s", esp_err_to_name(ret));
     }
@@ -50,11 +50,11 @@ static void post_device_list_changed_event(void)
 
 static void post_device_delete_request_event(uint16_t short_addr, esp_zb_ieee_addr_t ieee_addr)
 {
-    zgw_device_delete_request_event_t evt = {
+    gateway_device_delete_request_event_t evt = {
         .short_addr = short_addr,
     };
     memcpy(evt.ieee_addr, ieee_addr, sizeof(evt.ieee_addr));
-    esp_err_t ret = esp_event_post(ZGW_EVENT, ZGW_EVENT_DEVICE_DELETE_REQUEST, &evt, sizeof(evt), 0);
+    esp_err_t ret = esp_event_post(GATEWAY_EVENT, GATEWAY_EVENT_DEVICE_DELETE_REQUEST, &evt, sizeof(evt), 0);
     if (ret != ESP_OK) {
         ESP_LOGW(TAG, "Failed to post DEVICE_DELETE_REQUEST event: %s", esp_err_to_name(ret));
     }
@@ -63,11 +63,11 @@ static void post_device_delete_request_event(uint16_t short_addr, esp_zb_ieee_ad
 static void device_announce_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data)
 {
     (void)arg;
-    if (event_base != ZGW_EVENT || event_id != ZGW_EVENT_DEVICE_ANNOUNCE || event_data == NULL) {
+    if (event_base != GATEWAY_EVENT || event_id != GATEWAY_EVENT_DEVICE_ANNOUNCE || event_data == NULL) {
         return;
     }
 
-    zgw_device_announce_event_t *evt = (zgw_device_announce_event_t *)event_data;
+    gateway_device_announce_event_t *evt = (gateway_device_announce_event_t *)event_data;
     add_device_with_ieee(evt->short_addr, evt->ieee_addr);
 }
 
@@ -101,7 +101,7 @@ void device_manager_init(void) {
     }
     if (s_dev_announce_handler == NULL) {
         esp_err_t ret = esp_event_handler_instance_register(
-            ZGW_EVENT, ZGW_EVENT_DEVICE_ANNOUNCE, device_announce_event_handler, NULL, &s_dev_announce_handler);
+            GATEWAY_EVENT, GATEWAY_EVENT_DEVICE_ANNOUNCE, device_announce_event_handler, NULL, &s_dev_announce_handler);
         if (ret != ESP_OK) {
             ESP_LOGE(TAG, "Failed to register DEVICE_ANNOUNCE handler: %s", esp_err_to_name(ret));
         }
@@ -139,7 +139,7 @@ void delete_device(uint16_t addr) {
     if (devices_mutex != NULL) xSemaphoreTake(devices_mutex, portMAX_DELAY);
 
     int found_idx = -1;
-    zgw_device_delete_request_event_t req_evt = {0};
+    gateway_device_delete_request_event_t req_evt = {0};
     for (int i = 0; i < device_count; i++) {
         if (devices[i].short_addr == addr) {
             found_idx = i;

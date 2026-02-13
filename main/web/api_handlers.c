@@ -3,9 +3,6 @@
 #include "api_usecases.h"
 #include "http_error.h"
 #include "esp_log.h"
-#include "zigbee_service.h"
-#include "wifi_service.h"
-#include "system_service.h"
 #include "cJSON.h"
 #include <string.h>
 #include <stdio.h>
@@ -79,7 +76,7 @@ static bool append_json_escaped(char **cursor, size_t *remaining, const char *sr
 static esp_err_t append_devices_array(char **cursor, size_t *remaining)
 {
     zb_device_t snapshot[MAX_DEVICES];
-    int count = zigbee_service_get_devices_snapshot(snapshot, MAX_DEVICES);
+    int count = api_usecase_get_devices_snapshot(snapshot, MAX_DEVICES);
     for (int i = 0; i < count; i++) {
         if (i > 0 && !append_literal(cursor, remaining, ",")) {
             return ESP_ERR_NO_MEM;
@@ -106,7 +103,7 @@ esp_err_t build_status_json_compact(char *out, size_t out_size, size_t *out_len)
     size_t remaining = out_size;
 
     zigbee_network_status_t status = {0};
-    if (zigbee_service_get_network_status(&status) != ESP_OK) {
+    if (api_usecase_get_network_status(&status) != ESP_OK) {
         return ESP_FAIL;
     }
 
@@ -203,10 +200,10 @@ esp_err_t api_status_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
-/* API: Відкрити мережу (Permit Join) */
+    /* API: Відкрити мережу (Permit Join) */
 esp_err_t api_permit_join_handler(httpd_req_t *req)
 {
-    esp_err_t ret = zigbee_service_permit_join(60);
+    esp_err_t ret = api_usecase_permit_join(60);
     if (ret != ESP_OK) {
         return http_error_send_esp(req, ret, "Failed to open network");
     }
@@ -242,7 +239,7 @@ esp_err_t api_delete_device_handler(httpd_req_t *req) {
         return http_error_send_esp(req, ESP_ERR_INVALID_ARG, "Invalid JSON");
     }
 
-    if (zigbee_service_delete_device(in.short_addr) != ESP_OK) {
+    if (api_usecase_delete_device(in.short_addr) != ESP_OK) {
         return http_error_send_esp(req, ESP_FAIL, "Delete failed");
     }
     httpd_resp_set_type(req, "application/json");
@@ -257,7 +254,7 @@ esp_err_t api_rename_device_handler(httpd_req_t *req) {
         return http_error_send_esp(req, ESP_ERR_INVALID_ARG, "Invalid JSON");
     }
 
-    if (zigbee_service_rename_device(in.short_addr, in.name) != ESP_OK) {
+    if (api_usecase_rename_device(in.short_addr, in.name) != ESP_OK) {
         return http_error_send_esp(req, ESP_FAIL, "Rename failed");
     }
     httpd_resp_set_type(req, "application/json");
@@ -270,7 +267,7 @@ esp_err_t api_wifi_scan_handler(httpd_req_t *req)
 {
     wifi_ap_info_t *list = NULL;
     size_t count = 0;
-    esp_err_t err = wifi_service_scan(&list, &count);
+    esp_err_t err = api_usecase_wifi_scan(&list, &count);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "WiFi scan failed in service: %s", esp_err_to_name(err));
         return http_error_send_esp(req, err, "Scan failed");
@@ -284,13 +281,13 @@ esp_err_t api_wifi_scan_handler(httpd_req_t *req)
 
     cJSON *root = cJSON_CreateArray();
     if (!root) {
-        wifi_service_scan_free(list);
+        api_usecase_wifi_scan_free(list);
         return http_error_send_esp(req, ESP_ERR_NO_MEM, "Failed to allocate scan response");
     }
     for (size_t i = 0; i < count; i++) {
         cJSON *item = cJSON_CreateObject();
         if (!item) {
-            wifi_service_scan_free(list);
+            api_usecase_wifi_scan_free(list);
             cJSON_Delete(root);
             return http_error_send_esp(req, ESP_ERR_NO_MEM, "Failed to allocate scan entry");
         }
@@ -300,7 +297,7 @@ esp_err_t api_wifi_scan_handler(httpd_req_t *req)
         cJSON_AddItemToArray(root, item);
     }
 
-    wifi_service_scan_free(list);
+    api_usecase_wifi_scan_free(list);
     char *json_str = cJSON_PrintUnformatted(root);
     cJSON_Delete(root);
     if (!json_str) {
@@ -314,10 +311,10 @@ esp_err_t api_wifi_scan_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
-/* API: Перезавантаження системи */
+    /* API: Перезавантаження системи */
 esp_err_t api_reboot_handler(httpd_req_t *req)
 {
-    if (system_service_schedule_reboot(1000) != ESP_OK) {
+    if (api_usecase_schedule_reboot(1000) != ESP_OK) {
         return http_error_send_esp(req, ESP_FAIL, "Failed to schedule reboot");
     }
     httpd_resp_set_type(req, "application/json");
@@ -333,7 +330,7 @@ esp_err_t api_factory_reset_handler(httpd_req_t *req)
     }
 
     system_factory_reset_report_t report = {0};
-    err = system_service_get_last_factory_reset_report(&report);
+    err = api_usecase_get_factory_reset_report(&report);
     if (err != ESP_OK) {
         return http_error_send_esp(req, err, "Factory reset status unavailable");
     }

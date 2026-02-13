@@ -12,6 +12,11 @@ typedef struct {
     esp_err_t zigbee_fct_err;
 } settings_manager_factory_reset_report_t;
 
+#define SETTINGS_SCHEMA_VERSION_CURRENT 1
+
+esp_err_t settings_manager_init_or_migrate(void);
+esp_err_t settings_manager_get_schema_version(int32_t *out_version);
+
 esp_err_t settings_manager_load_wifi_credentials(char *ssid, size_t ssid_size,
                                                  char *password, size_t password_size,
                                                  bool *loaded);

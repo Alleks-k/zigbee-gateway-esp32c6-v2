@@ -18,6 +18,7 @@
 #include "web_server.h" 
 #include "device_manager.h"
 #include "gateway_events.h"
+#include "settings_manager.h"
 #include "esp_event.h"
 #include <zcl/esp_zigbee_zcl_core.h>
 
@@ -240,6 +241,7 @@ static void esp_zb_task(void *pvParameters)
 void app_main(void)
 {
     ESP_ERROR_CHECK(nvs_flash_init());
+    ESP_ERROR_CHECK(settings_manager_init_or_migrate());
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
     if (s_delete_req_handler == NULL) {

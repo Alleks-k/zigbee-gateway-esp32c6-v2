@@ -7,6 +7,8 @@
 #include <string.h>
 
 static const char *TAG = "SETTINGS_MANAGER";
+static const char *NVS_NAMESPACE = "storage";
+static const char *KEY_SCHEMA_VER = "schema_ver";
 static SemaphoreHandle_t s_settings_mutex = NULL;
 static settings_manager_factory_reset_report_t s_last_factory_reset_report = {
     .wifi_err = ESP_ERR_INVALID_STATE,
@@ -34,6 +36,94 @@ static void settings_unlock(void)
     }
 }
 
+static esp_err_t settings_get_schema_version_locked(nvs_handle_t handle, int32_t *out_version)
+{
+    esp_err_t err = nvs_get_i32(handle, KEY_SCHEMA_VER, out_version);
+    if (err == ESP_ERR_NVS_NOT_FOUND) {
+        *out_version = 0; // Legacy schema: keys exist without explicit version.
+        return ESP_OK;
+    }
+    return err;
+}
+
+esp_err_t settings_manager_get_schema_version(int32_t *out_version)
+{
+    if (!out_version) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    esp_err_t err = settings_lock();
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    nvs_handle_t handle;
+    err = nvs_open(NVS_NAMESPACE, NVS_READONLY, &handle);
+    if (err == ESP_OK) {
+        err = settings_get_schema_version_locked(handle, out_version);
+        nvs_close(handle);
+    } else if (err == ESP_ERR_NVS_NOT_FOUND) {
+        *out_version = 0;
+        err = ESP_OK;
+    }
+
+    settings_unlock();
+    return err;
+}
+
+esp_err_t settings_manager_init_or_migrate(void)
+{
+    esp_err_t err = settings_lock();
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    nvs_handle_t handle;
+    err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle);
+    if (err != ESP_OK) {
+        settings_unlock();
+        return err;
+    }
+
+    int32_t version = 0;
+    err = settings_get_schema_version_locked(handle, &version);
+    if (err != ESP_OK) {
+        nvs_close(handle);
+        settings_unlock();
+        return err;
+    }
+
+    if (version > SETTINGS_SCHEMA_VERSION_CURRENT) {
+        ESP_LOGE(TAG, "Unsupported settings schema version: %ld > %d",
+                 (long)version, SETTINGS_SCHEMA_VERSION_CURRENT);
+        nvs_close(handle);
+        settings_unlock();
+        return ESP_ERR_INVALID_VERSION;
+    }
+
+    if (version < SETTINGS_SCHEMA_VERSION_CURRENT) {
+        // v0 -> v1: baseline migration (introduce explicit schema key).
+        int32_t target = SETTINGS_SCHEMA_VERSION_CURRENT;
+        err = nvs_set_i32(handle, KEY_SCHEMA_VER, target);
+        if (err == ESP_OK) {
+            err = nvs_commit(handle);
+        }
+        if (err != ESP_OK) {
+            nvs_close(handle);
+            settings_unlock();
+            return err;
+        }
+        ESP_LOGI(TAG, "Settings schema migrated: v%ld -> v%d",
+                 (long)version, SETTINGS_SCHEMA_VERSION_CURRENT);
+    } else {
+        ESP_LOGI(TAG, "Settings schema up-to-date: v%d", SETTINGS_SCHEMA_VERSION_CURRENT);
+    }
+
+    nvs_close(handle);
+    settings_unlock();
+    return ESP_OK;
+}
+
 esp_err_t settings_manager_load_wifi_credentials(char *ssid, size_t ssid_size,
                                                  char *password, size_t password_size,
                                                  bool *loaded)
@@ -52,7 +142,7 @@ esp_err_t settings_manager_load_wifi_credentials(char *ssid, size_t ssid_size,
     }
 
     nvs_handle_t handle;
-    err = nvs_open("storage", NVS_READONLY, &handle);
+    err = nvs_open(NVS_NAMESPACE, NVS_READONLY, &handle);
     if (err == ESP_OK) {
         size_t ssid_len = ssid_size;
         size_t pass_len = password_size;
@@ -88,7 +178,7 @@ esp_err_t settings_manager_save_wifi_credentials(const char *ssid, const char *p
     }
 
     nvs_handle_t handle;
-    err = nvs_open("storage", NVS_READWRITE, &handle);
+    err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle);
     if (err == ESP_OK) {
         err = nvs_set_str(handle, "wifi_ssid", ssid);
         if (err == ESP_OK) {
@@ -121,7 +211,7 @@ esp_err_t settings_manager_load_devices(zb_device_t *devices, size_t max_devices
     }
 
     nvs_handle_t handle;
-    err = nvs_open("storage", NVS_READONLY, &handle);
+    err = nvs_open(NVS_NAMESPACE, NVS_READONLY, &handle);
     if (err == ESP_OK) {
         int32_t count = 0;
         if (nvs_get_i32(handle, "dev_count", &count) == ESP_OK) {
@@ -160,7 +250,7 @@ esp_err_t settings_manager_save_devices(const zb_device_t *devices, size_t max_d
     }
 
     nvs_handle_t handle;
-    err = nvs_open("storage", NVS_READWRITE, &handle);
+    err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle);
     if (err == ESP_OK) {
         err = nvs_set_i32(handle, "dev_count", device_count);
         if (err == ESP_OK) {
@@ -189,7 +279,7 @@ esp_err_t settings_manager_factory_reset(void)
     }
 
     nvs_handle_t handle;
-    err = nvs_open("storage", NVS_READWRITE, &handle);
+    err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle);
     if (err == ESP_OK) {
         esp_err_t key_err = nvs_erase_key(handle, "wifi_ssid");
         if (key_err != ESP_OK && key_err != ESP_ERR_NVS_NOT_FOUND) {

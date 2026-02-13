@@ -4,7 +4,6 @@
 #include "esp_check.h"
 #include "esp_system.h"
 #include "string.h"
-#include "esp_zigbee_gateway.h" // Для RCP_VERSION_MAX_SIZE
 
 #if CONFIG_ZIGBEE_GW_AUTO_UPDATE_RCP
 #include "esp_rcp_update.h"
@@ -18,6 +17,28 @@
 static const char *TAG = "RCP_TOOL";
 
 #if CONFIG_ZIGBEE_GW_AUTO_UPDATE_RCP
+#define HOST_RESET_PIN_TO_RCP_RESET CONFIG_PIN_TO_RCP_RESET
+#define HOST_BOOT_PIN_TO_RCP_BOOT   CONFIG_PIN_TO_RCP_BOOT
+#define HOST_RX_PIN_TO_RCP_TX       CONFIG_PIN_TO_RCP_TX
+#define HOST_TX_PIN_TO_RCP_RX       CONFIG_PIN_TO_RCP_RX
+
+static esp_rcp_update_config_t build_rcp_update_config(void)
+{
+    esp_rcp_update_config_t cfg = {
+        .rcp_type = RCP_TYPE_ESP32H2_UART,
+        .uart_rx_pin = HOST_RX_PIN_TO_RCP_TX,
+        .uart_tx_pin = HOST_TX_PIN_TO_RCP_RX,
+        .uart_port = 1,
+        .uart_baudrate = 115200,
+        .reset_pin = HOST_RESET_PIN_TO_RCP_RESET,
+        .boot_pin = HOST_BOOT_PIN_TO_RCP_BOOT,
+        .update_baudrate = 460800,
+        .firmware_dir = "/rcp_fw/ot_rcp",
+        .target_chip = ESP32H2_CHIP,
+    };
+    return cfg;
+}
+
 static void esp_zb_gateway_update_rcp(void)
 {
     esp_zb_rcp_deinit();
@@ -53,7 +74,7 @@ static esp_err_t init_spiffs_rcp(void)
 
 void rcp_init_auto_update(void)
 {
-    esp_rcp_update_config_t rcp_update_config = ESP_ZB_RCP_UPDATE_CONFIG();
+    esp_rcp_update_config_t rcp_update_config = build_rcp_update_config();
     /* Монтуємо файлову систему з прошивками */
     ESP_ERROR_CHECK(init_spiffs_rcp());
     /* Ініціалізуємо модуль оновлення */

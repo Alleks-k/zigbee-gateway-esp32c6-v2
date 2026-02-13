@@ -1,18 +1,17 @@
 idf_component_register(
     SRCS
-        "../../main/core/rcp_tool.c"
-        "../../main/core/device_manager.c"
-        "../../main/core/gateway_events.c"
-        "../../main/core/gateway_state.c"
-        "../../main/core/settings_manager.c"
-        "../../main/core/job_queue.c"
-        "../../main/core/zigbee_service.c"
-        "../../main/core/wifi_service.c"
-        "../../main/core/system_service.c"
+        "src/rcp_tool.c"
+        "src/device_manager.c"
+        "src/gateway_events.c"
+        "src/gateway_state.c"
+        "src/settings_manager.c"
+        "src/job_queue.c"
+        "src/zigbee_service.c"
+        "src/wifi_service.c"
+        "src/system_service.c"
         "gateway_core_placeholder.c"
     INCLUDE_DIRS
         "include"
-        "../../main/core"
     REQUIRES
         nvs_flash
         json

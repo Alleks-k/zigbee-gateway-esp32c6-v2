@@ -9,7 +9,7 @@ endif()
 
 # Реєстрація компонентів вашого проєкту
 idf_component_register(SRCS ${main_srcs}
-                       INCLUDE_DIRS "." "core" "net" "web"
+                       INCLUDE_DIRS "." "core"
                        REQUIRES mdns esp-zigbee-lib nvs_flash esp_http_server json spiffs unity gateway_core gateway_net gateway_web
                        PRIV_REQUIRES esp_wifi esp_timer)
 

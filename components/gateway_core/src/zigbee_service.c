@@ -1,6 +1,11 @@
 #include "zigbee_service.h"
-#include "esp_zigbee_gateway.h"
 #include "gateway_state.h"
+#include "esp_zigbee_core.h"
+
+/* Implemented in app/main integration layer */
+void send_on_off_command(uint16_t short_addr, uint8_t endpoint, uint8_t on_off);
+void delete_device(uint16_t short_addr);
+void update_device_name(uint16_t short_addr, const char *new_name);
 
 esp_err_t zigbee_service_get_network_status(zigbee_network_status_t *out)
 {

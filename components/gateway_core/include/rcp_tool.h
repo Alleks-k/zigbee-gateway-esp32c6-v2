@@ -4,6 +4,8 @@
 #include "sdkconfig.h"
 #include "esp_err.h"
 
+#define RCP_VERSION_MAX_SIZE 80
+
 #ifdef __cplusplus
 extern "C" {
 #endif

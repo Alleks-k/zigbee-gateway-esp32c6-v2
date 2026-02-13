@@ -1,12 +1,11 @@
 idf_component_register(
     SRCS
-        "../../main/net/wifi_init.c"
-        "../../main/net/wifi_sta.c"
-        "../../main/net/wifi_ap_fallback.c"
+        "src/wifi_init.c"
+        "src/wifi_sta.c"
+        "src/wifi_ap_fallback.c"
         "gateway_net_placeholder.c"
     INCLUDE_DIRS
         "include"
-        "../../main/net"
     REQUIRES
         gateway_core
         esp_wifi

@@ -12,6 +12,7 @@ typedef struct {
     bool ap_netif_created;
     esp_netif_t *ap_netif;
     bool fallback_ap_active;
+    bool sta_connected;
     bool loaded_from_nvs;
     esp_event_handler_instance_t instance_any_id;
     esp_event_handler_instance_t instance_got_ip;

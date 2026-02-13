@@ -1,14 +1,21 @@
 #include "zigbee_service.h"
 #include "esp_zigbee_gateway.h"
+#include "gateway_state.h"
 
 esp_err_t zigbee_service_get_network_status(zigbee_network_status_t *out)
 {
     if (!out) {
         return ESP_ERR_INVALID_ARG;
     }
-    out->pan_id = esp_zb_get_pan_id();
-    out->channel = esp_zb_get_current_channel();
-    out->short_addr = esp_zb_get_short_address();
+
+    gateway_network_state_t state = {0};
+    esp_err_t ret = gateway_state_get_network(&state);
+    if (ret != ESP_OK) {
+        return ret;
+    }
+    out->pan_id = state.pan_id;
+    out->channel = state.channel;
+    out->short_addr = state.short_addr;
     return ESP_OK;
 }
 

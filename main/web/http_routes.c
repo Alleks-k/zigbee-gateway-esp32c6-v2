@@ -38,6 +38,7 @@ bool http_routes_register(httpd_handle_t server)
     ok &= register_uri_handler_checked(server, &uri_js);
 
     REGISTER_API_ROUTE_BOTH(server, "/status", HTTP_GET, api_status_handler, ok);
+    REGISTER_API_ROUTE_BOTH(server, "/health", HTTP_GET, api_health_handler, ok);
     REGISTER_API_ROUTE_BOTH(server, "/permit_join", HTTP_POST, api_permit_join_handler, ok);
     REGISTER_API_ROUTE_BOTH(server, "/control", HTTP_POST, api_control_handler, ok);
     REGISTER_API_ROUTE_BOTH(server, "/delete", HTTP_POST, api_delete_device_handler, ok);

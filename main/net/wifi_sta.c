@@ -38,8 +38,10 @@ static void event_handler(void *arg, esp_event_base_t event_base, int32_t event_
     wifi_runtime_ctx_t *ctx = (wifi_runtime_ctx_t *)arg;
 
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
+        ctx->sta_connected = false;
         esp_wifi_connect();
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
+        ctx->sta_connected = false;
         if (ctx->fallback_ap_active) {
             return;
         }
@@ -68,6 +70,7 @@ static void event_handler(void *arg, esp_event_base_t event_base, int32_t event_
         ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
         ESP_LOGI(TAG, "got ip:" IPSTR, IP2STR(&event->ip_info.ip));
         ctx->retry_num = 0;
+        ctx->sta_connected = true;
         if (ctx->wifi_event_group) {
             xEventGroupSetBits(ctx->wifi_event_group, WIFI_CONNECTED_BIT);
         }
@@ -101,6 +104,7 @@ static void load_wifi_credentials(wifi_runtime_ctx_t *ctx, wifi_config_t *wifi_c
 esp_err_t wifi_sta_connect_and_wait(wifi_runtime_ctx_t *ctx)
 {
     ctx->fallback_ap_active = false;
+    ctx->sta_connected = false;
     ctx->retry_num = 0;
     ctx->instance_any_id = NULL;
     ctx->instance_got_ip = NULL;

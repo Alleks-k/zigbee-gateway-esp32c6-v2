@@ -2,7 +2,13 @@
 #include "api_contracts.h"
 #include "api_usecases.h"
 #include "http_error.h"
+#include "gateway_state.h"
+#include "settings_manager.h"
+#include "wifi_init.h"
+#include "ws_manager.h"
 #include "esp_log.h"
+#include "esp_heap_caps.h"
+#include "esp_system.h"
 #include "cJSON.h"
 #include <string.h>
 #include <stdio.h>
@@ -210,6 +216,83 @@ esp_err_t api_status_handler(httpd_req_t *req)
     httpd_resp_set_type(req, "application/json");
     httpd_resp_sendstr(req, wrapped);
     free(wrapped);
+    return ESP_OK;
+}
+
+esp_err_t api_health_handler(httpd_req_t *req)
+{
+    gateway_network_state_t gw_state = {0};
+    esp_err_t gw_ret = gateway_state_get_network(&gw_state);
+    if (gw_ret != ESP_OK) {
+        return http_error_send_esp(req, gw_ret, "Gateway state unavailable");
+    }
+
+    int32_t schema_version = 0;
+    esp_err_t schema_ret = settings_manager_get_schema_version(&schema_version);
+
+    const bool fallback_ap = wifi_is_fallback_ap_active();
+    const bool sta_connected = wifi_sta_is_connected();
+    const bool loaded_from_nvs = wifi_loaded_credentials_from_nvs();
+    const char *active_ssid = wifi_get_active_ssid();
+    if (!active_ssid) {
+        active_ssid = "";
+    }
+
+    cJSON *root = cJSON_CreateObject();
+    cJSON *data = cJSON_CreateObject();
+    cJSON *wifi = cJSON_CreateObject();
+    cJSON *zigbee = cJSON_CreateObject();
+    cJSON *web = cJSON_CreateObject();
+    cJSON *nvs = cJSON_CreateObject();
+    cJSON *heap = cJSON_CreateObject();
+    if (!root || !data || !wifi || !zigbee || !web || !nvs || !heap) {
+        cJSON_Delete(root);
+        cJSON_Delete(data);
+        cJSON_Delete(wifi);
+        cJSON_Delete(zigbee);
+        cJSON_Delete(web);
+        cJSON_Delete(nvs);
+        cJSON_Delete(heap);
+        return http_error_send_esp(req, ESP_ERR_NO_MEM, "Failed to allocate health response");
+    }
+
+    cJSON_AddStringToObject(root, "status", "ok");
+    cJSON_AddItemToObject(root, "data", data);
+
+    cJSON_AddBoolToObject(wifi, "sta_connected", sta_connected);
+    cJSON_AddBoolToObject(wifi, "fallback_ap_active", fallback_ap);
+    cJSON_AddBoolToObject(wifi, "loaded_from_nvs", loaded_from_nvs);
+    cJSON_AddStringToObject(wifi, "active_ssid", active_ssid);
+    cJSON_AddItemToObject(data, "wifi", wifi);
+
+    cJSON_AddBoolToObject(zigbee, "started", gw_state.zigbee_started);
+    cJSON_AddBoolToObject(zigbee, "factory_new", gw_state.factory_new);
+    cJSON_AddNumberToObject(zigbee, "pan_id", gw_state.pan_id);
+    cJSON_AddNumberToObject(zigbee, "channel", gw_state.channel);
+    cJSON_AddNumberToObject(zigbee, "short_addr", gw_state.short_addr);
+    cJSON_AddItemToObject(data, "zigbee", zigbee);
+
+    cJSON_AddNumberToObject(web, "ws_clients", ws_manager_get_client_count());
+    cJSON_AddBoolToObject(web, "ready", true);
+    cJSON_AddItemToObject(data, "web", web);
+
+    cJSON_AddBoolToObject(nvs, "ok", schema_ret == ESP_OK);
+    cJSON_AddNumberToObject(nvs, "schema_version", schema_ret == ESP_OK ? schema_version : -1);
+    cJSON_AddItemToObject(data, "nvs", nvs);
+
+    cJSON_AddNumberToObject(heap, "free", esp_get_free_heap_size());
+    cJSON_AddNumberToObject(heap, "minimum_free", esp_get_minimum_free_heap_size());
+    cJSON_AddItemToObject(data, "heap", heap);
+
+    char *json_str = cJSON_PrintUnformatted(root);
+    cJSON_Delete(root);
+    if (!json_str) {
+        return http_error_send_esp(req, ESP_ERR_NO_MEM, "Failed to build health JSON");
+    }
+
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, json_str);
+    free(json_str);
     return ESP_OK;
 }
 

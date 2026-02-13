@@ -18,6 +18,7 @@
 #include "web_server.h" 
 #include "device_manager.h"
 #include "gateway_events.h"
+#include "gateway_state.h"
 #include "settings_manager.h"
 #include "esp_event.h"
 #include <zcl/esp_zigbee_zcl_core.h>
@@ -32,10 +33,6 @@
 
 static const char *TAG = "ESP_ZB_GATEWAY";
 static esp_event_handler_instance_t s_delete_req_handler = NULL;
-
-uint16_t pan_id = 0;
-uint8_t channel = 0;
-uint16_t short_addr = 0;
 
 typedef struct app_production_config_s {
     uint16_t version;
@@ -63,6 +60,28 @@ esp_err_t esp_zb_gateway_console_init(void)
 static void bdb_start_top_level_commissioning_cb(uint8_t mode_mask)
 {
     esp_zb_bdb_start_top_level_commissioning(mode_mask);
+}
+
+static void gateway_state_publish(bool zigbee_started, bool factory_new)
+{
+    gateway_network_state_t state = {
+        .zigbee_started = zigbee_started,
+        .factory_new = factory_new,
+        .pan_id = 0,
+        .channel = 0,
+        .short_addr = 0,
+    };
+
+    if (zigbee_started) {
+        state.pan_id = esp_zb_get_pan_id();
+        state.channel = esp_zb_get_current_channel();
+        state.short_addr = esp_zb_get_short_address();
+    }
+
+    esp_err_t ret = gateway_state_set_network(&state);
+    if (ret != ESP_OK) {
+        ESP_LOGW(TAG, "Failed to publish gateway state: %s", esp_err_to_name(ret));
+    }
 }
 
 void send_on_off_command(uint16_t short_addr, uint8_t endpoint, uint8_t on_off) {
@@ -115,6 +134,7 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
     switch (sig_type) {
     case ESP_ZB_ZDO_SIGNAL_SKIP_STARTUP:
         ESP_LOGI(TAG, "Zigbee stack initialized");
+        gateway_state_publish(true, esp_zb_bdb_is_factory_new());
 #if CONFIG_ESP_COEX_SW_COEXIST_ENABLE
         esp_coex_wifi_i154_enable();
 #endif
@@ -124,14 +144,13 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
     case ESP_ZB_BDB_SIGNAL_DEVICE_FIRST_START:
     case ESP_ZB_BDB_SIGNAL_DEVICE_REBOOT:
         if (err_status == ESP_OK) {
-            ESP_LOGI(TAG, "Device started up. Factory new: %d", esp_zb_bdb_is_factory_new());
-            if (esp_zb_bdb_is_factory_new()) {
+            bool factory_new = esp_zb_bdb_is_factory_new();
+            ESP_LOGI(TAG, "Device started up. Factory new: %d", factory_new);
+            gateway_state_publish(true, factory_new);
+            if (factory_new) {
                 esp_zb_bdb_start_top_level_commissioning(ESP_ZB_BDB_MODE_NETWORK_FORMATION);
             } else {
                 esp_zb_bdb_open_network(180);
-                pan_id = esp_zb_get_pan_id();
-                channel = esp_zb_get_current_channel();
-                short_addr = esp_zb_get_short_address();
             }
         } else {
             esp_zb_scheduler_alarm((esp_zb_callback_t)bdb_start_top_level_commissioning_cb, ESP_ZB_BDB_MODE_INITIALIZATION, 1000);
@@ -140,9 +159,9 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
 
     case ESP_ZB_BDB_SIGNAL_FORMATION:
         if (err_status == ESP_OK) {
-            pan_id = esp_zb_get_pan_id();
-            channel = esp_zb_get_current_channel();
-            short_addr = esp_zb_get_short_address();
+            uint16_t pan_id = esp_zb_get_pan_id();
+            uint8_t channel = esp_zb_get_current_channel();
+            gateway_state_publish(true, esp_zb_bdb_is_factory_new());
             ESP_LOGI(TAG, "Formed network: PAN 0x%04hx, CH %d", pan_id, channel);
             esp_zb_bdb_start_top_level_commissioning(ESP_ZB_BDB_MODE_NETWORK_STEERING);
         } else {
@@ -242,6 +261,8 @@ void app_main(void)
 {
     ESP_ERROR_CHECK(nvs_flash_init());
     ESP_ERROR_CHECK(settings_manager_init_or_migrate());
+    ESP_ERROR_CHECK(gateway_state_init());
+    gateway_state_publish(false, false);
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
     if (s_delete_req_handler == NULL) {

@@ -226,3 +226,20 @@ void ws_broadcast_status(void)
     ESP_LOGD(TAG, "WS broadcast heap: before=%u after=%u delta=%d",
              (unsigned)heap_before, (unsigned)heap_after, (int)(heap_after - heap_before));
 }
+
+int ws_manager_get_client_count(void)
+{
+    int count = 0;
+    if (s_ws_mutex) {
+        xSemaphoreTake(s_ws_mutex, portMAX_DELAY);
+    }
+    for (int i = 0; i < MAX_WS_CLIENTS; i++) {
+        if (ws_fds[i] != -1) {
+            count++;
+        }
+    }
+    if (s_ws_mutex) {
+        xSemaphoreGive(s_ws_mutex);
+    }
+    return count;
+}

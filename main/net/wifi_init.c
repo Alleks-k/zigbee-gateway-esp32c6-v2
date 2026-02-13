@@ -28,3 +28,13 @@ bool wifi_loaded_credentials_from_nvs(void)
 {
     return s_ctx.loaded_from_nvs;
 }
+
+bool wifi_sta_is_connected(void)
+{
+    return s_ctx.sta_connected;
+}
+
+const char *wifi_get_active_ssid(void)
+{
+    return s_ctx.active_ssid;
+}

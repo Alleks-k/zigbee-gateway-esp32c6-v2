@@ -11,3 +11,5 @@
 esp_err_t wifi_init_sta_and_wait(void);
 bool wifi_is_fallback_ap_active(void);
 bool wifi_loaded_credentials_from_nvs(void);
+bool wifi_sta_is_connected(void);
+const char *wifi_get_active_ssid(void);

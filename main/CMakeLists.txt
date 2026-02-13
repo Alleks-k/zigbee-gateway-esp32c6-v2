@@ -2,6 +2,7 @@ set(main_srcs
     "core/rcp_tool.c"
     "core/device_manager.c"
     "core/gateway_events.c"
+    "core/gateway_state.c"
     "core/settings_manager.c"
     "core/zigbee_service.c"
     "core/wifi_service.c"

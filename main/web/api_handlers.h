@@ -23,3 +23,4 @@ esp_err_t api_wifi_scan_handler(httpd_req_t *req);
 esp_err_t api_wifi_save_handler(httpd_req_t *req);
 esp_err_t api_reboot_handler(httpd_req_t *req);
 esp_err_t api_factory_reset_handler(httpd_req_t *req);
+esp_err_t api_health_handler(httpd_req_t *req);

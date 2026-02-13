@@ -68,40 +68,14 @@ function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function isJobsUnsupportedError(err) {
-    if (!err || !err.message) return false;
-    const msg = String(err.message).toLowerCase();
-    return msg.includes('http 404') ||
-        msg.includes('not found') ||
-        msg.includes('invalid uri') ||
-        msg.includes('nothing matches the given uri');
-}
-
-async function requestJsonAny(urls, options = {}) {
-    let lastErr = null;
-    for (let i = 0; i < urls.length; i++) {
-        try {
-            return await requestJson(urls[i], options);
-        } catch (err) {
-            lastErr = err;
-        }
-    }
-    throw lastErr || new Error('All fallback endpoints failed');
-}
-
 function setBackendModeBadge(mode) {
     backendMode = mode;
     const el = document.getElementById('backend-mode-badge');
     if (!el) return;
-    el.classList.remove('mode-jobs', 'mode-legacy', 'mode-unknown');
+    el.classList.remove('mode-jobs', 'mode-unknown');
     if (mode === 'jobs') {
         el.classList.add('mode-jobs');
         el.textContent = 'Backend mode: jobs';
-        return;
-    }
-    if (mode === 'legacy') {
-        el.classList.add('mode-legacy');
-        el.textContent = 'Backend mode: jobs unavailable (legacy)';
         return;
     }
     el.classList.add('mode-unknown');
@@ -155,10 +129,7 @@ async function submitJob(jobType, extraPayload = {}, options = {}) {
     const start = Date.now();
     let lastState = 'queued';
     while ((Date.now() - start) < timeoutMs) {
-        const pollResp = await requestJsonAny([
-            apiUrl(`/jobs/${jobId}`),
-            `/api/jobs/${jobId}`
-        ]);
+        const pollResp = await requestJson(apiUrl(`/jobs/${jobId}`));
         const info = pollResp.data || {};
         const state = String(info.state || 'running');
         if (state !== lastState) {
@@ -502,13 +473,6 @@ function scanWifi() {
             renderNetworks(networks);
         })
         .catch(err => {
-            if (isJobsUnsupportedError(err)) {
-                setBackendModeBadge('legacy');
-                return requestJsonAny(['/api/wifi/scan', '/wifi/scan']).then((resp) => {
-                    const legacyNetworks = Array.isArray(resp.data) ? resp.data : [];
-                    renderNetworks(legacyNetworks);
-                });
-            }
             console.error(err);
             resultsDiv.innerHTML = `<div class="scan-item" style="color:red;">Помилка сканування: ${err.message || 'unknown'}</div>`;
         })
@@ -570,14 +534,7 @@ function rebootGateway() {
                 const message = (info.result && info.result.message) || 'Перезавантаження заплановано...';
                 showToast(message);
             })
-            .catch(err => {
-                if (isJobsUnsupportedError(err)) {
-                    setBackendModeBadge('legacy');
-                    return requestJsonAny(['/api/reboot', '/reboot'], { method: 'POST' })
-                        .then(resp => showToast((resp.data && resp.data.message) || "Перезавантаження..."));
-                }
-                showToast(err.message || "Помилка запиту");
-            })
+            .catch(err => showToast(err.message || "Помилка запиту"))
             .finally(() => setButtonBusy('rebootBtn', false));
     });
 }
@@ -590,14 +547,7 @@ function factoryResetGateway() {
                 const message = (info.result && info.result.message) || "Factory reset completed";
                 showToast(message);
             })
-            .catch(err => {
-                if (isJobsUnsupportedError(err)) {
-                    setBackendModeBadge('legacy');
-                    return requestJsonAny(['/api/factory_reset', '/factory_reset'], { method: 'POST' })
-                        .then(resp => showToast((resp.data && resp.data.message) || "Factory reset..."));
-                }
-                showToast(err.message || "Помилка factory reset");
-            })
+            .catch(err => showToast(err.message || "Помилка factory reset"))
             .finally(() => setButtonBusy('factoryResetBtn', false));
     });
 }

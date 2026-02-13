@@ -17,15 +17,23 @@ static const char *TAG = "WS_MANAGER";
 #define MAX_WS_CLIENTS 8
 #define WS_JSON_BUF_SIZE 2048
 #define WS_MIN_DUP_BROADCAST_INTERVAL_US (250 * 1000)
+#define WS_MIN_BROADCAST_INTERVAL_US (120 * 1000)
 
 static int ws_fds[MAX_WS_CLIENTS];
 static httpd_handle_t s_server = NULL;
 static SemaphoreHandle_t s_ws_mutex = NULL;
 static esp_event_handler_instance_t s_list_changed_handler = NULL;
+static esp_timer_handle_t s_ws_debounce_timer = NULL;
 static char s_ws_json_buf[WS_JSON_BUF_SIZE];
 static char s_last_ws_json[WS_JSON_BUF_SIZE];
 static size_t s_last_ws_json_len = 0;
 static int64_t s_last_ws_send_us = 0;
+
+static void ws_debounce_timer_cb(void *arg)
+{
+    (void)arg;
+    ws_broadcast_status();
+}
 
 static void ws_remove_fd(int fd)
 {
@@ -71,6 +79,18 @@ void ws_manager_init(httpd_handle_t server)
             GATEWAY_EVENT, GATEWAY_EVENT_DEVICE_LIST_CHANGED, device_list_changed_handler, NULL, &s_list_changed_handler);
         if (ret != ESP_OK) {
             ESP_LOGE(TAG, "Failed to register DEVICE_LIST_CHANGED handler: %s", esp_err_to_name(ret));
+        }
+    }
+
+    if (s_ws_debounce_timer == NULL) {
+        const esp_timer_create_args_t timer_args = {
+            .callback = ws_debounce_timer_cb,
+            .arg = NULL,
+            .name = "ws_debounce"
+        };
+        esp_err_t ret = esp_timer_create(&timer_args, &s_ws_debounce_timer);
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to create WS debounce timer: %s", esp_err_to_name(ret));
         }
     }
 
@@ -153,6 +173,19 @@ void ws_broadcast_status(void)
                         (json_len > 0) &&
                         (memcmp(s_ws_json_buf, s_last_ws_json, json_len) == 0);
     if (same_payload && (now_us - s_last_ws_send_us) < WS_MIN_DUP_BROADCAST_INTERVAL_US) {
+        return;
+    }
+
+    int64_t elapsed_us = now_us - s_last_ws_send_us;
+    if (s_last_ws_send_us > 0 && elapsed_us < WS_MIN_BROADCAST_INTERVAL_US) {
+        if (s_ws_debounce_timer) {
+            int64_t delay_us = WS_MIN_BROADCAST_INTERVAL_US - elapsed_us;
+            if (delay_us < 1000) {
+                delay_us = 1000;
+            }
+            (void)esp_timer_stop(s_ws_debounce_timer);
+            (void)esp_timer_start_once(s_ws_debounce_timer, (uint64_t)delay_us);
+        }
         return;
     }
 

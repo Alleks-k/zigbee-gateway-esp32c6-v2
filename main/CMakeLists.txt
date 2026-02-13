@@ -12,6 +12,7 @@ set(main_srcs
     "web/web_server.c"
     "web/api_handlers.c"
     "web/api_contracts.c"
+    "web/api_usecases.c"
     "web/http_error.c"
     "web/http_routes.c"
     "web/http_static.c"

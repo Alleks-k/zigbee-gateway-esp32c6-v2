@@ -1,5 +1,6 @@
 #include "api_handlers.h"
 #include "api_contracts.h"
+#include "api_usecases.h"
 #include "http_error.h"
 #include "esp_log.h"
 #include "zigbee_service.h"
@@ -225,8 +226,9 @@ esp_err_t api_control_handler(httpd_req_t *req)
     }
 
     ESP_LOGI(TAG, "Web Control: addr=0x%04x, ep=%d, cmd=%d", in.addr, in.ep, in.cmd);
-    if (zigbee_service_send_on_off(in.addr, in.ep, in.cmd) != ESP_OK) {
-        return http_error_send_esp(req, ESP_FAIL, "Failed to send command");
+    esp_err_t err = api_usecase_control(&in);
+    if (err != ESP_OK) {
+        return http_error_send_esp(req, err, "Failed to send command");
     }
     httpd_resp_set_type(req, "application/json");
     httpd_resp_sendstr(req, "{\"status\":\"ok\", \"message\":\"Command sent\"}");
@@ -281,8 +283,17 @@ esp_err_t api_wifi_scan_handler(httpd_req_t *req)
     }
 
     cJSON *root = cJSON_CreateArray();
+    if (!root) {
+        wifi_service_scan_free(list);
+        return http_error_send_esp(req, ESP_ERR_NO_MEM, "Failed to allocate scan response");
+    }
     for (size_t i = 0; i < count; i++) {
         cJSON *item = cJSON_CreateObject();
+        if (!item) {
+            wifi_service_scan_free(list);
+            cJSON_Delete(root);
+            return http_error_send_esp(req, ESP_ERR_NO_MEM, "Failed to allocate scan entry");
+        }
         cJSON_AddStringToObject(item, "ssid", list[i].ssid);
         cJSON_AddNumberToObject(item, "rssi", list[i].rssi);
         cJSON_AddNumberToObject(item, "auth", list[i].auth);
@@ -292,6 +303,9 @@ esp_err_t api_wifi_scan_handler(httpd_req_t *req)
     wifi_service_scan_free(list);
     char *json_str = cJSON_PrintUnformatted(root);
     cJSON_Delete(root);
+    if (!json_str) {
+        return http_error_send_esp(req, ESP_ERR_NO_MEM, "Failed to build scan JSON");
+    }
 
     httpd_resp_set_type(req, "application/json");
     httpd_resp_sendstr(req, json_str);
@@ -313,7 +327,7 @@ esp_err_t api_reboot_handler(httpd_req_t *req)
 
 esp_err_t api_factory_reset_handler(httpd_req_t *req)
 {
-    esp_err_t err = system_service_factory_reset_and_reboot(1000);
+    esp_err_t err = api_usecase_factory_reset();
     if (err != ESP_OK) {
         return http_error_send_esp(req, err, "Factory reset failed");
     }
@@ -331,11 +345,8 @@ esp_err_t api_wifi_save_handler(httpd_req_t *req)
         return http_error_send_esp(req, ESP_ERR_INVALID_ARG, "Invalid JSON");
     }
 
-    esp_err_t err = wifi_service_save_credentials(in.ssid, in.password);
+    esp_err_t err = api_usecase_wifi_save(&in);
     if (err == ESP_OK) {
-        if (system_service_schedule_reboot(1000) != ESP_OK) {
-            return http_error_send_esp(req, ESP_FAIL, "Failed to schedule reboot");
-        }
         httpd_resp_set_type(req, "application/json");
         httpd_resp_sendstr(req, "{\"status\":\"ok\", \"message\":\"Saved. Restarting...\"}");
         return ESP_OK;

@@ -3,7 +3,7 @@
 /*
  * Local Wi-Fi settings override template.
  * Copy this file to:
- *   main/net/wifi_settings_local.h
+ *   components/gateway_net/include/wifi_settings_local.h
  * and edit values for your environment.
  *
  * File wifi_settings_local.h is gitignored.

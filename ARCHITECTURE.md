@@ -2,25 +2,25 @@
 
 ## Layers
 
-1. Web Layer (`main/web/*`)
+1. Web Layer (`components/gateway_web/*`)
 - HTTP routes, API handlers, WebSocket broadcast, static files.
 - Must not call Zigbee SDK directly.
 - Talks to services only (`zigbee_service`, `wifi_service`, `system_service`).
 
-2. Service Layer (`main/core/*service*`)
+2. Service Layer (`components/gateway_core/*service*`)
 - Use-case/business orchestration for Zigbee, Wi-Fi, reboot/factory reset.
 - Converts transport-level input into domain operations.
 - Publishes/consumes events via ESP Event Loop where needed.
 
-3. Domain/State Layer (`main/core/device_manager.*`, `main/core/gateway_events.*`)
+3. Domain/State Layer (`components/gateway_core/include/device_manager.h`, `components/gateway_core/include/gateway_events.h`)
 - In-memory device state and domain events.
 - No HTTP details, no UI payload formatting.
 
-4. Persistence Layer (`main/core/settings_manager.*`)
+4. Persistence Layer (`components/gateway_core/include/settings_manager.h`)
 - Single owner of NVS access for app settings and device snapshots.
 - Factory reset logic and grouped erase/reporting live here.
 
-5. Platform/Drivers Layer (`main/net/*`, ESP-IDF/Zigbee SDK)
+5. Platform/Drivers Layer (`components/gateway_net/*`, ESP-IDF/Zigbee SDK)
 - Wi-Fi init/STA/AP fallback, esp_zb stack integration, system primitives.
 
 ## Dependency Rules
@@ -44,6 +44,6 @@ API response includes per-group status in JSON `details`.
 ## Configuration & Secrets
 
 Use tracked defaults + local overrides:
-- `main/net/wifi_settings.h` + optional `wifi_settings_local.h` (gitignored),
-- `main/net/wifi_credentials.h` + `wifi_credentials_local.h` (gitignored),
+- `components/gateway_net/include/wifi_settings.h` + optional `wifi_settings_local.h` (gitignored),
+- `components/gateway_net/include/wifi_credentials.h` + `wifi_credentials_local.h` (gitignored),
 - examples in `*.example`.

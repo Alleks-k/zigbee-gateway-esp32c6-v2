@@ -4,7 +4,7 @@
 /*
  * Tracked wrapper with safe defaults.
  * Real credentials should be placed into:
- *   main/net/wifi_credentials_local.h
+ *   components/gateway_net/include/wifi_credentials_local.h
  * (this file is gitignored).
  */
 

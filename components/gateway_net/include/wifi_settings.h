@@ -3,7 +3,7 @@
 /*
  * Tracked defaults for Wi-Fi behavior.
  * Optional local overrides can be placed into:
- *   main/net/wifi_settings_local.h
+ *   components/gateway_net/include/wifi_settings_local.h
  *
  * File wifi_settings_local.h is gitignored.
  */

@@ -37,14 +37,14 @@ cd zigbee-gateway-esp32c6-v2
 1. Скопіюйте файл-приклад у локальний override:
 
 ```bash
-cp main/net/wifi_credentials.h.example main/net/wifi_credentials_local.h
+cp components/gateway_net/include/wifi_credentials.h.example components/gateway_net/include/wifi_credentials_local.h
 ```
 
-2. Відкрийте `main/net/wifi_credentials_local.h` та впишіть SSID/пароль.
+2. Відкрийте `components/gateway_net/include/wifi_credentials_local.h` та впишіть SSID/пароль.
 3. Опціонально, для локальних політик STA/AP:
 
 ```bash
-cp main/net/wifi_settings.h.example main/net/wifi_settings_local.h
+cp components/gateway_net/include/wifi_settings.h.example components/gateway_net/include/wifi_settings_local.h
 ```
 
 Також у розділі **ESP Zigbee gateway rcp update** можна налаштувати піни для RCP (для зовнішнього модуля) або залишити стандартні для вбудованого радіо.
@@ -70,9 +70,10 @@ cp main/net/wifi_settings.h.example main/net/wifi_settings_local.h
 
 ## Структура проєкту
 
-- `main/core/` — service layer, settings manager, event loop, zigbee bootstrap.
-- `main/web/` — HTTP routes, API handlers, WebSocket manager, static serving.
-- `main/net/` — Wi-Fi STA/AP fallback та мережеві налаштування.
+- `components/gateway_core/` — service layer, settings manager, event loop, zigbee domain/state.
+- `components/gateway_net/` — Wi-Fi STA/AP fallback та мережеві налаштування.
+- `components/gateway_web/` — HTTP routes, API handlers, WebSocket manager, static serving.
+- `main/core/esp_zigbee_gateway.*` — application entrypoint/bootstrap.
 - `main/web/www/` — фронтенд (index.html, style.css, script.js).
 - `partitions.csv` — таблиця розділів.
 
@@ -83,7 +84,7 @@ cp main/net/wifi_settings.h.example main/net/wifi_settings_local.h
 ## Важливі зауваження
 
 - Wi-Fi/Zigbee coexistence працює в 2.4 GHz на спільному радіоканалі.
-- Поточне обмеження `MAX_DEVICES` за замовчуванням: 10 (див. `main/core/device_manager.h`).
+- Поточне обмеження `MAX_DEVICES` за замовчуванням: 10 (див. `components/gateway_core/include/device_manager.h`).
 
 ---
 **Author**: [Alleks-k](https://github.com/Alleks-k)

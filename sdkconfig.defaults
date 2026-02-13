@@ -52,3 +52,8 @@ CONFIG_PIN_TO_RCP_TX=17
 CONFIG_PIN_TO_RCP_RX=18
 
 # end of ESP Zigbee gateway rcp update
+
+#
+# ESP Zigbee gateway compatibility
+#
+# CONFIG_ZGW_ENABLE_LEGACY_SERVICE_FACADE is not set

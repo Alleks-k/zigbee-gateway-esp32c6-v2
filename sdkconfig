@@ -640,7 +640,7 @@ CONFIG_PARTITION_TABLE_MD5=y
 #
 # ESP Zigbee gateway compatibility
 #
-CONFIG_ZGW_ENABLE_LEGACY_SERVICE_FACADE=y
+# CONFIG_ZGW_ENABLE_LEGACY_SERVICE_FACADE is not set
 # end of ESP Zigbee gateway compatibility
 
 #

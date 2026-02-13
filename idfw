@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PINNED_IDF="${PROJECT_DIR}/../esp-idf"
+
+if [[ ! -f "${PINNED_IDF}/export.sh" ]]; then
+  echo "Pinned ESP-IDF not found: ${PINNED_IDF}" >&2
+  exit 1
+fi
+
+export IDF_PATH="${PINNED_IDF}"
+. "${IDF_PATH}/export.sh" >/dev/null 2>&1
+
+exec idf.py -C "${PROJECT_DIR}" "$@"

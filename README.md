@@ -44,8 +44,8 @@ cd zigbee-gateway-esp32c6
 
 ### 3. Збірка та прошивка
 ```bash
-idf.py build
-idf.py flash monitor
+./idfw build
+./idfw flash monitor
 ```
 
 ## 🌐 Використання

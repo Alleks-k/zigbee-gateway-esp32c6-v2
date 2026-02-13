@@ -78,3 +78,21 @@ esp_err_t http_error_send_esp(httpd_req_t *req, esp_err_t err, const char *messa
 {
     return http_error_send(req, map_http_status(err), map_error_code(err), message);
 }
+
+esp_err_t http_success_send(httpd_req_t *req, const char *message)
+{
+    if (!req) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    const char *msg = message ? message : "ok";
+    char body[192];
+    int written = snprintf(body, sizeof(body), "{\"status\":\"ok\",\"message\":\"%s\"}", msg);
+    if (written < 0 || (size_t)written >= sizeof(body)) {
+        strncpy(body, "{\"status\":\"ok\",\"message\":\"ok\"}", sizeof(body));
+        body[sizeof(body) - 1] = '\0';
+    }
+
+    httpd_resp_set_type(req, "application/json");
+    return httpd_resp_sendstr(req, body);
+}

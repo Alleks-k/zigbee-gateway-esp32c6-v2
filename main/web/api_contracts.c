@@ -2,12 +2,27 @@
 #include "cJSON.h"
 #include <string.h>
 
+static bool valid_short_addr(int value)
+{
+    return value > 0 && value <= 0xFFFF;
+}
+
 static esp_err_t parse_control_root(cJSON *root, api_control_request_t *out)
 {
     cJSON *addr_item = cJSON_GetObjectItem(root, "addr");
     cJSON *ep_item = cJSON_GetObjectItem(root, "ep");
     cJSON *cmd_item = cJSON_GetObjectItem(root, "cmd");
     if (!cJSON_IsNumber(addr_item) || !cJSON_IsNumber(ep_item) || !cJSON_IsNumber(cmd_item)) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    if (!valid_short_addr(addr_item->valueint)) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (ep_item->valueint <= 0 || ep_item->valueint > 240) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (!(cmd_item->valueint == 0 || cmd_item->valueint == 1)) {
         return ESP_ERR_INVALID_ARG;
     }
 
@@ -23,6 +38,9 @@ static esp_err_t parse_delete_root(cJSON *root, api_delete_request_t *out)
     if (!cJSON_IsNumber(addr_item)) {
         return ESP_ERR_INVALID_ARG;
     }
+    if (!valid_short_addr(addr_item->valueint)) {
+        return ESP_ERR_INVALID_ARG;
+    }
     out->short_addr = (uint16_t)addr_item->valueint;
     return ESP_OK;
 }
@@ -32,6 +50,9 @@ static esp_err_t parse_rename_root(cJSON *root, api_rename_request_t *out)
     cJSON *addr_item = cJSON_GetObjectItem(root, "short_addr");
     cJSON *name_item = cJSON_GetObjectItem(root, "name");
     if (!cJSON_IsNumber(addr_item) || !cJSON_IsString(name_item) || !name_item->valuestring) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (!valid_short_addr(addr_item->valueint)) {
         return ESP_ERR_INVALID_ARG;
     }
 
@@ -88,11 +109,21 @@ static esp_err_t parse_json_body(httpd_req_t *req, cJSON **out_root, char *buf, 
         return ESP_ERR_INVALID_ARG;
     }
 
-    int len = httpd_req_recv(req, buf, (size_t)buf_size - 1);
-    if (len <= 0) {
-        return ESP_FAIL;
+    if (req->content_len <= 0 || (size_t)req->content_len >= buf_size) {
+        return ESP_ERR_INVALID_ARG;
     }
-    buf[len] = '\0';
+
+    size_t total = 0;
+    size_t remaining = (size_t)req->content_len;
+    while (remaining > 0) {
+        int len = httpd_req_recv(req, buf + total, remaining);
+        if (len <= 0) {
+            return ESP_FAIL;
+        }
+        total += (size_t)len;
+        remaining -= (size_t)len;
+    }
+    buf[total] = '\0';
 
     cJSON *root = cJSON_Parse(buf);
     if (!root) {

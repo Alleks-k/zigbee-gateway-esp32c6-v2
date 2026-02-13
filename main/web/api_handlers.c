@@ -208,10 +208,7 @@ esp_err_t api_permit_join_handler(httpd_req_t *req)
         return http_error_send_esp(req, ret, "Failed to open network");
     }
     ESP_LOGI(TAG, "Network opened for 60 seconds via Web API");
-    const char* resp = "{\"message\":\"Network opened for 60 seconds\"}";
-    httpd_resp_set_type(req, "application/json");
-    httpd_resp_send(req, resp, strlen(resp));
-    return ESP_OK;
+    return http_success_send(req, "Network opened for 60 seconds");
 }
 
 /* API: Керування пристроєм */
@@ -227,9 +224,7 @@ esp_err_t api_control_handler(httpd_req_t *req)
     if (err != ESP_OK) {
         return http_error_send_esp(req, err, "Failed to send command");
     }
-    httpd_resp_set_type(req, "application/json");
-    httpd_resp_sendstr(req, "{\"status\":\"ok\", \"message\":\"Command sent\"}");
-    return ESP_OK;
+    return http_success_send(req, "Command sent");
 }
 
 /* API: Видалення пристрою */
@@ -242,9 +237,7 @@ esp_err_t api_delete_device_handler(httpd_req_t *req) {
     if (api_usecase_delete_device(in.short_addr) != ESP_OK) {
         return http_error_send_esp(req, ESP_FAIL, "Delete failed");
     }
-    httpd_resp_set_type(req, "application/json");
-    httpd_resp_sendstr(req, "{\"status\":\"ok\"}");
-    return ESP_OK;
+    return http_success_send(req, "Device deleted");
 }
 
 /* API: Перейменування пристрою */
@@ -257,9 +250,7 @@ esp_err_t api_rename_device_handler(httpd_req_t *req) {
     if (api_usecase_rename_device(in.short_addr, in.name) != ESP_OK) {
         return http_error_send_esp(req, ESP_FAIL, "Rename failed");
     }
-    httpd_resp_set_type(req, "application/json");
-    httpd_resp_sendstr(req, "{\"status\":\"ok\"}");
-    return ESP_OK;
+    return http_success_send(req, "Device renamed");
 }
 
 /* API: Сканування Wi-Fi мереж */
@@ -317,9 +308,7 @@ esp_err_t api_reboot_handler(httpd_req_t *req)
     if (api_usecase_schedule_reboot(1000) != ESP_OK) {
         return http_error_send_esp(req, ESP_FAIL, "Failed to schedule reboot");
     }
-    httpd_resp_set_type(req, "application/json");
-    httpd_resp_sendstr(req, "{\"status\":\"ok\", \"message\":\"Rebooting...\"}");
-    return ESP_OK;
+    return http_success_send(req, "Rebooting...");
 }
 
 esp_err_t api_factory_reset_handler(httpd_req_t *req)
@@ -362,9 +351,7 @@ esp_err_t api_wifi_save_handler(httpd_req_t *req)
 
     esp_err_t err = api_usecase_wifi_save(&in);
     if (err == ESP_OK) {
-        httpd_resp_set_type(req, "application/json");
-        httpd_resp_sendstr(req, "{\"status\":\"ok\", \"message\":\"Saved. Restarting...\"}");
-        return ESP_OK;
+        return http_success_send(req, "Saved. Restarting...");
     }
     if (err == ESP_ERR_INVALID_ARG) {
         return http_error_send_esp(req, err, "Invalid SSID or password");

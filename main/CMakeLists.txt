@@ -17,7 +17,7 @@ set(main_srcs
     "web/mdns_service.c"
 )
 
-if(CONFIG_ZGW_SELF_TEST_APP)
+if(CONFIG_GATEWAY_SELF_TEST_APP)
     list(APPEND main_srcs "core/self_tests.c" "core/self_tests_app_main.c")
 else()
     list(APPEND main_srcs "core/esp_zigbee_gateway.c")

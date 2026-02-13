@@ -29,7 +29,7 @@ menu "ESP Zigbee gateway rcp update"
 endmenu
 
 menu "ESP Zigbee gateway tests"
-    config ZGW_SELF_TEST_APP
+    config GATEWAY_SELF_TEST_APP
         bool "Build self-test app instead of gateway app"
         default n
         help

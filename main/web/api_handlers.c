@@ -1,5 +1,6 @@
 #include "api_handlers.h"
 #include "api_contracts.h"
+#include "http_error.h"
 #include "esp_log.h"
 #include "zigbee_service.h"
 #include "wifi_service.h"
@@ -190,7 +191,9 @@ char* create_status_json(void)
 esp_err_t api_status_handler(httpd_req_t *req)
 {
     char *json_str = create_status_json();
-    if (!json_str) return ESP_FAIL;
+    if (!json_str) {
+        return http_error_send_esp(req, ESP_ERR_NO_MEM, "Failed to build status payload");
+    }
 
     httpd_resp_set_type(req, "application/json");
     httpd_resp_sendstr(req, json_str);
@@ -204,8 +207,7 @@ esp_err_t api_permit_join_handler(httpd_req_t *req)
 {
     esp_err_t ret = zigbee_service_permit_join(60);
     if (ret != ESP_OK) {
-        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Failed to open network");
-        return ESP_FAIL;
+        return http_error_send_esp(req, ret, "Failed to open network");
     }
     ESP_LOGI(TAG, "Network opened for 60 seconds via Web API");
     const char* resp = "{\"message\":\"Network opened for 60 seconds\"}";
@@ -219,14 +221,12 @@ esp_err_t api_control_handler(httpd_req_t *req)
 {
     api_control_request_t in = {0};
     if (api_parse_control_request(req, &in) != ESP_OK) {
-        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing parameters");
-        return ESP_FAIL;
+        return http_error_send_esp(req, ESP_ERR_INVALID_ARG, "Missing parameters");
     }
 
     ESP_LOGI(TAG, "Web Control: addr=0x%04x, ep=%d, cmd=%d", in.addr, in.ep, in.cmd);
     if (zigbee_service_send_on_off(in.addr, in.ep, in.cmd) != ESP_OK) {
-        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Failed to send command");
-        return ESP_FAIL;
+        return http_error_send_esp(req, ESP_FAIL, "Failed to send command");
     }
     httpd_resp_set_type(req, "application/json");
     httpd_resp_sendstr(req, "{\"status\":\"ok\", \"message\":\"Command sent\"}");
@@ -237,13 +237,11 @@ esp_err_t api_control_handler(httpd_req_t *req)
 esp_err_t api_delete_device_handler(httpd_req_t *req) {
     api_delete_request_t in = {0};
     if (api_parse_delete_request(req, &in) != ESP_OK) {
-        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
-        return ESP_FAIL;
+        return http_error_send_esp(req, ESP_ERR_INVALID_ARG, "Invalid JSON");
     }
 
     if (zigbee_service_delete_device(in.short_addr) != ESP_OK) {
-        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Delete failed");
-        return ESP_FAIL;
+        return http_error_send_esp(req, ESP_FAIL, "Delete failed");
     }
     httpd_resp_set_type(req, "application/json");
     httpd_resp_sendstr(req, "{\"status\":\"ok\"}");
@@ -254,13 +252,11 @@ esp_err_t api_delete_device_handler(httpd_req_t *req) {
 esp_err_t api_rename_device_handler(httpd_req_t *req) {
     api_rename_request_t in = {0};
     if (api_parse_rename_request(req, &in) != ESP_OK) {
-        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
-        return ESP_FAIL;
+        return http_error_send_esp(req, ESP_ERR_INVALID_ARG, "Invalid JSON");
     }
 
     if (zigbee_service_rename_device(in.short_addr, in.name) != ESP_OK) {
-        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Rename failed");
-        return ESP_FAIL;
+        return http_error_send_esp(req, ESP_FAIL, "Rename failed");
     }
     httpd_resp_set_type(req, "application/json");
     httpd_resp_sendstr(req, "{\"status\":\"ok\"}");
@@ -275,8 +271,7 @@ esp_err_t api_wifi_scan_handler(httpd_req_t *req)
     esp_err_t err = wifi_service_scan(&list, &count);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "WiFi scan failed in service: %s", esp_err_to_name(err));
-        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Scan failed");
-        return ESP_FAIL;
+        return http_error_send_esp(req, err, "Scan failed");
     }
 
     if (count == 0) {
@@ -309,8 +304,7 @@ esp_err_t api_wifi_scan_handler(httpd_req_t *req)
 esp_err_t api_reboot_handler(httpd_req_t *req)
 {
     if (system_service_schedule_reboot(1000) != ESP_OK) {
-        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Failed to schedule reboot");
-        return ESP_FAIL;
+        return http_error_send_esp(req, ESP_FAIL, "Failed to schedule reboot");
     }
     httpd_resp_set_type(req, "application/json");
     httpd_resp_sendstr(req, "{\"status\":\"ok\", \"message\":\"Rebooting...\"}");
@@ -321,8 +315,7 @@ esp_err_t api_factory_reset_handler(httpd_req_t *req)
 {
     esp_err_t err = system_service_factory_reset_and_reboot(1000);
     if (err != ESP_OK) {
-        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Factory reset failed");
-        return ESP_FAIL;
+        return http_error_send_esp(req, err, "Factory reset failed");
     }
 
     httpd_resp_set_type(req, "application/json");
@@ -335,26 +328,22 @@ esp_err_t api_wifi_save_handler(httpd_req_t *req)
 {
     api_wifi_save_request_t in = {0};
     if (api_parse_wifi_save_request(req, &in) != ESP_OK) {
-        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
-        return ESP_FAIL;
+        return http_error_send_esp(req, ESP_ERR_INVALID_ARG, "Invalid JSON");
     }
 
     esp_err_t err = wifi_service_save_credentials(in.ssid, in.password);
     if (err == ESP_OK) {
         if (system_service_schedule_reboot(1000) != ESP_OK) {
-            httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Failed to schedule reboot");
-            return ESP_FAIL;
+            return http_error_send_esp(req, ESP_FAIL, "Failed to schedule reboot");
         }
         httpd_resp_set_type(req, "application/json");
         httpd_resp_sendstr(req, "{\"status\":\"ok\", \"message\":\"Saved. Restarting...\"}");
         return ESP_OK;
     }
     if (err == ESP_ERR_INVALID_ARG) {
-        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid SSID or password");
-        return ESP_FAIL;
+        return http_error_send_esp(req, err, "Invalid SSID or password");
     }
 
     ESP_LOGE(TAG, "Failed to save Wi-Fi credentials: %s", esp_err_to_name(err));
-    httpd_resp_send_500(req);
-    return ESP_FAIL;
+    return http_error_send_esp(req, err, "Failed to save Wi-Fi credentials");
 }

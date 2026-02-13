@@ -37,23 +37,3 @@ esp_err_t wifi_init_sta_and_wait(void)
     wifi_state_store_update();
     return (ret == ESP_OK) ? ESP_OK : ESP_FAIL;
 }
-
-bool wifi_is_fallback_ap_active(void)
-{
-    return s_ctx.fallback_ap_active;
-}
-
-bool wifi_loaded_credentials_from_nvs(void)
-{
-    return s_ctx.loaded_from_nvs;
-}
-
-bool wifi_sta_is_connected(void)
-{
-    return s_ctx.sta_connected;
-}
-
-const char *wifi_get_active_ssid(void)
-{
-    return s_ctx.active_ssid;
-}

@@ -286,7 +286,12 @@ void app_main(void)
 
     start_web_server();
 
-    if (wifi_is_fallback_ap_active()) {
+    gateway_wifi_state_t wifi_state = {0};
+    esp_err_t state_ret = gateway_state_get_wifi(&wifi_state);
+    if (state_ret != ESP_OK) {
+        ESP_LOGW(TAG, "Failed to read Wi-Fi state: %s", esp_err_to_name(state_ret));
+    }
+    if (state_ret == ESP_OK && wifi_state.fallback_ap_active) {
         ESP_LOGW(TAG, "Fallback AP mode active: Zigbee stack startup is postponed to keep web setup stable");
         return;
     }

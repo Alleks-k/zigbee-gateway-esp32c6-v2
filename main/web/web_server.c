@@ -21,6 +21,8 @@ void start_web_server(void)
     httpd_config.server_port = 80;
     // Static + WS + API(v1 + legacy aliases) require higher handler capacity.
     httpd_config.max_uri_handlers = 32;
+    // Enable wildcard matching for dynamic routes like /api/v1/jobs/*.
+    httpd_config.uri_match_fn = httpd_uri_match_wildcard;
     httpd_config.close_fn = ws_httpd_close_fn;
 
     ESP_LOGI(TAG, "Starting Web Server on port %d", httpd_config.server_port);

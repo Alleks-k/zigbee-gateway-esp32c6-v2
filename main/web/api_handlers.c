@@ -17,6 +17,26 @@
 #include <inttypes.h>
 
 static const char *TAG = "API_HANDLERS";
+// Guardrails for /api*/jobs/{id}: bound result payload by job type.
+#define JOB_API_RESULT_JSON_LIMIT_SCAN          768
+#define JOB_API_RESULT_JSON_LIMIT_FACTORY_RESET 1536
+#define JOB_API_RESULT_JSON_LIMIT_REBOOT        512
+#define JOB_API_RESULT_JSON_LIMIT_UPDATE        768
+
+static size_t job_result_json_limit_for_type(zgw_job_type_t type)
+{
+    switch (type) {
+    case ZGW_JOB_TYPE_WIFI_SCAN:
+        return JOB_API_RESULT_JSON_LIMIT_SCAN;
+    case ZGW_JOB_TYPE_FACTORY_RESET:
+        return JOB_API_RESULT_JSON_LIMIT_FACTORY_RESET;
+    case ZGW_JOB_TYPE_REBOOT:
+        return JOB_API_RESULT_JSON_LIMIT_REBOOT;
+    case ZGW_JOB_TYPE_UPDATE:
+    default:
+        return JOB_API_RESULT_JSON_LIMIT_UPDATE;
+    }
+}
 
 static zgw_job_type_t parse_job_type(const char *type)
 {
@@ -542,28 +562,80 @@ esp_err_t api_jobs_get_handler(httpd_req_t *req)
         return http_error_send_esp(req, err, "Invalid job id");
     }
 
-    zgw_job_info_t info = {0};
-    err = job_queue_get(job_id, &info);
+    zgw_job_info_t *info = (zgw_job_info_t *)calloc(1, sizeof(zgw_job_info_t));
+    if (!info) {
+        return http_error_send_esp(req, ESP_ERR_NO_MEM, "Out of memory");
+    }
+
+    err = job_queue_get(job_id, info);
     if (err != ESP_OK) {
+        free(info);
         return http_error_send_esp(req, err, "Job not found");
     }
 
-    const char *result_json = info.has_result ? info.result_json : "null";
-    char data_json[2600];
-    int written = snprintf(
-        data_json, sizeof(data_json),
+    const char *result_json = "null";
+    char truncated_result_json[96];
+    size_t result_limit = job_result_json_limit_for_type(info->type);
+    if (info->has_result) {
+        size_t result_len = strnlen(info->result_json, ZGW_JOB_RESULT_MAX_LEN);
+        if (result_len > result_limit) {
+            int t_written = snprintf(
+                truncated_result_json, sizeof(truncated_result_json),
+                "{\"truncated\":true,\"original_len\":%u,\"max_len\":%u}",
+                (unsigned)result_len, (unsigned)result_limit);
+            if (t_written < 0 || (size_t)t_written >= sizeof(truncated_result_json)) {
+                free(info);
+                return http_error_send_esp(req, ESP_ERR_NO_MEM, "Failed to build truncated result");
+            }
+            result_json = truncated_result_json;
+        } else {
+            result_json = info->result_json;
+        }
+    }
+    int needed = snprintf(
+        NULL, 0,
         "{\"job_id\":%" PRIu32 ",\"type\":\"%s\",\"state\":\"%s\",\"done\":%s,"
         "\"created_ms\":%" PRIu64 ",\"updated_ms\":%" PRIu64 ",\"error\":\"%s\",\"result\":%s}",
-        info.id,
-        job_queue_type_to_string(info.type),
-        job_queue_state_to_string(info.state),
-        (info.state == ZGW_JOB_STATE_SUCCEEDED || info.state == ZGW_JOB_STATE_FAILED) ? "true" : "false",
-        info.created_ms,
-        info.updated_ms,
-        esp_err_to_name(info.err),
+        info->id,
+        job_queue_type_to_string(info->type),
+        job_queue_state_to_string(info->state),
+        (info->state == ZGW_JOB_STATE_SUCCEEDED || info->state == ZGW_JOB_STATE_FAILED) ? "true" : "false",
+        info->created_ms,
+        info->updated_ms,
+        esp_err_to_name(info->err),
         result_json);
-    if (written < 0 || (size_t)written >= sizeof(data_json)) {
+    if (needed < 0) {
+        free(info);
+        return http_error_send_esp(req, ESP_FAIL, "Failed to build job response");
+    }
+
+    size_t data_len = (size_t)needed + 1;
+    char *data_json = (char *)malloc(data_len);
+    if (!data_json) {
+        free(info);
         return http_error_send_esp(req, ESP_ERR_NO_MEM, "Job response too large");
     }
-    return http_success_send_data_json(req, data_json);
+
+    int written = snprintf(
+        data_json, data_len,
+        "{\"job_id\":%" PRIu32 ",\"type\":\"%s\",\"state\":\"%s\",\"done\":%s,"
+        "\"created_ms\":%" PRIu64 ",\"updated_ms\":%" PRIu64 ",\"error\":\"%s\",\"result\":%s}",
+        info->id,
+        job_queue_type_to_string(info->type),
+        job_queue_state_to_string(info->state),
+        (info->state == ZGW_JOB_STATE_SUCCEEDED || info->state == ZGW_JOB_STATE_FAILED) ? "true" : "false",
+        info->created_ms,
+        info->updated_ms,
+        esp_err_to_name(info->err),
+        result_json);
+    if (written < 0 || (size_t)written >= data_len) {
+        free(data_json);
+        free(info);
+        return http_error_send_esp(req, ESP_ERR_NO_MEM, "Job response too large");
+    }
+
+    esp_err_t send_ret = http_success_send_data_json(req, data_json);
+    free(data_json);
+    free(info);
+    return send_ret;
 }

@@ -60,6 +60,34 @@ h2 {
     border: 1px solid #eee;
 }
 
+.backend-mode-badge {
+    display: inline-block;
+    font-size: 12px;
+    font-weight: 700;
+    border-radius: 999px;
+    padding: 4px 10px;
+    margin-bottom: 12px;
+    border: 1px solid #ddd;
+}
+
+.backend-mode-badge.mode-jobs {
+    background: #e8f5e9;
+    color: #1b5e20;
+    border-color: #a5d6a7;
+}
+
+.backend-mode-badge.mode-legacy {
+    background: #fff3e0;
+    color: #e65100;
+    border-color: #ffcc80;
+}
+
+.backend-mode-badge.mode-unknown {
+    background: #f1f3f5;
+    color: #495057;
+    border-color: #ced4da;
+}
+
 /* Поля вводу */
 .form-group {
     margin-bottom: 15px;

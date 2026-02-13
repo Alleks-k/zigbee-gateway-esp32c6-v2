@@ -14,6 +14,7 @@ let lastWsSeq = 0;
 const JOB_POLL_INTERVAL_MS = 600;
 const JOB_TIMEOUT_MS = 30000;
 let jobIndicatorHideTimer = null;
+let backendMode = 'unknown';
 
 function apiUrl(path) {
     return API_BASE + path;
@@ -32,6 +33,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (permitBtn) {
         permitBtn.addEventListener('click', permitJoin);
     }
+
+    // WS is primary; periodic status refresh is a safety fallback.
+    setInterval(fetchStatus, 10000);
 });
 
 async function requestJson(url, options = {}) {
@@ -62,6 +66,46 @@ function setButtonBusy(buttonId, busy) {
 
 function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isJobsUnsupportedError(err) {
+    if (!err || !err.message) return false;
+    const msg = String(err.message).toLowerCase();
+    return msg.includes('http 404') ||
+        msg.includes('not found') ||
+        msg.includes('invalid uri') ||
+        msg.includes('nothing matches the given uri');
+}
+
+async function requestJsonAny(urls, options = {}) {
+    let lastErr = null;
+    for (let i = 0; i < urls.length; i++) {
+        try {
+            return await requestJson(urls[i], options);
+        } catch (err) {
+            lastErr = err;
+        }
+    }
+    throw lastErr || new Error('All fallback endpoints failed');
+}
+
+function setBackendModeBadge(mode) {
+    backendMode = mode;
+    const el = document.getElementById('backend-mode-badge');
+    if (!el) return;
+    el.classList.remove('mode-jobs', 'mode-legacy', 'mode-unknown');
+    if (mode === 'jobs') {
+        el.classList.add('mode-jobs');
+        el.textContent = 'Backend mode: jobs';
+        return;
+    }
+    if (mode === 'legacy') {
+        el.classList.add('mode-legacy');
+        el.textContent = 'Backend mode: jobs unavailable (legacy)';
+        return;
+    }
+    el.classList.add('mode-unknown');
+    el.textContent = 'Backend mode: detecting...';
 }
 
 function updateJobIndicator(label, state, detail = '') {
@@ -106,11 +150,15 @@ async function submitJob(jobType, extraPayload = {}, options = {}) {
         throw new Error('Invalid job id');
     }
     updateJobIndicator(label, 'queued', `job #${jobId}`);
+    setBackendModeBadge('jobs');
 
     const start = Date.now();
     let lastState = 'queued';
     while ((Date.now() - start) < timeoutMs) {
-        const pollResp = await requestJson(apiUrl(`/jobs/${jobId}`));
+        const pollResp = await requestJsonAny([
+            apiUrl(`/jobs/${jobId}`),
+            `/api/jobs/${jobId}`
+        ]);
         const info = pollResp.data || {};
         const state = String(info.state || 'running');
         if (state !== lastState) {
@@ -148,7 +196,16 @@ function initWebSocket() {
     };
 
     ws.onmessage = (event) => {
-        const data = JSON.parse(event.data);
+        let data = null;
+        try {
+            data = JSON.parse(event.data);
+        } catch (_) {
+            return;
+        }
+
+        if (data && data.status === 'ok' && data.data && typeof data.data === 'object') {
+            data = data.data;
+        }
         if (data && Number.isFinite(data.seq)) {
             if (data.seq <= lastWsSeq) {
                 return;
@@ -405,46 +462,70 @@ function scanWifi() {
     resultsDiv.style.display = 'block';
     resultsDiv.innerHTML = '<div class="scan-item">Сканування...</div>';
 
+    const renderNetworks = (networks) => {
+        resultsDiv.innerHTML = '';
+        if (networks.length === 0) {
+            resultsDiv.innerHTML = '<div class="scan-item">Мереж не знайдено</div>';
+            return;
+        }
+
+        // Сортуємо за рівнем сигналу (RSSI від більшого до меншого)
+        networks.sort((a, b) => b.rssi - a.rssi);
+
+        networks.forEach(net => {
+            const div = document.createElement('div');
+            div.className = 'scan-item';
+            
+            // 0 = OPEN, інші значення = захищена мережа
+            const lockIcon = net.auth === 0 ? ICONS.unlock : ICONS.lock;
+            
+            div.innerHTML = `
+                <span>${lockIcon} <strong>${net.ssid}</strong></span>
+                <span class="scan-rssi">${net.rssi} dBm</span>
+            `;
+            
+            // При кліку підставляємо SSID у поле вводу
+            div.onclick = function() {
+                ssidInput.value = net.ssid;
+                resultsDiv.style.display = 'none';
+                document.getElementById('wifi-pass').focus();
+            };
+            
+            resultsDiv.appendChild(div);
+        });
+    };
+
     submitJob('scan', {}, { label: 'Wi-Fi scan' })
         .then(info => {
             const result = info.result || {};
             const networks = Array.isArray(result.networks) ? result.networks : [];
-            resultsDiv.innerHTML = '';
-            if (networks.length === 0) {
-                resultsDiv.innerHTML = '<div class="scan-item">Мереж не знайдено</div>';
-                return;
-            }
-
-            // Сортуємо за рівнем сигналу (RSSI від більшого до меншого)
-            networks.sort((a, b) => b.rssi - a.rssi);
-
-            networks.forEach(net => {
-                const div = document.createElement('div');
-                div.className = 'scan-item';
-                
-                // 0 = OPEN, інші значення = захищена мережа
-                const lockIcon = net.auth === 0 ? ICONS.unlock : ICONS.lock;
-                
-                div.innerHTML = `
-                    <span>${lockIcon} <strong>${net.ssid}</strong></span>
-                    <span class="scan-rssi">${net.rssi} dBm</span>
-                `;
-                
-                // При кліку підставляємо SSID у поле вводу
-                div.onclick = function() {
-                    ssidInput.value = net.ssid;
-                    resultsDiv.style.display = 'none';
-                    document.getElementById('wifi-pass').focus();
-                };
-                
-                resultsDiv.appendChild(div);
-            });
+            renderNetworks(networks);
         })
         .catch(err => {
+            if (isJobsUnsupportedError(err)) {
+                setBackendModeBadge('legacy');
+                return requestJsonAny(['/api/wifi/scan', '/wifi/scan']).then((resp) => {
+                    const legacyNetworks = Array.isArray(resp.data) ? resp.data : [];
+                    renderNetworks(legacyNetworks);
+                });
+            }
             console.error(err);
             resultsDiv.innerHTML = `<div class="scan-item" style="color:red;">Помилка сканування: ${err.message || 'unknown'}</div>`;
         })
         .finally(() => setButtonBusy('scanWifiBtn', false));
+}
+
+function clearWifiSettingsBlock() {
+    const ssidInput = document.getElementById('wifi-ssid');
+    const passInput = document.getElementById('wifi-pass');
+    const resultsDiv = document.getElementById('wifi-scan-results');
+
+    if (ssidInput) ssidInput.value = '';
+    if (passInput) passInput.value = '';
+    if (resultsDiv) {
+        resultsDiv.innerHTML = '';
+        resultsDiv.style.display = 'none';
+    }
 }
 
 function saveWifiSettings() {
@@ -469,6 +550,7 @@ function saveWifiSettings() {
     })
     .then(resp => {
         if (resp.status === 'ok') {
+            clearWifiSettingsBlock();
             showToast("Налаштування збережено. Пристрій перезавантажується...");
         } else {
             showToast("Помилка: " + (resp.message || "Невідома помилка"));
@@ -488,7 +570,14 @@ function rebootGateway() {
                 const message = (info.result && info.result.message) || 'Перезавантаження заплановано...';
                 showToast(message);
             })
-            .catch(err => showToast(err.message || "Помилка запиту"))
+            .catch(err => {
+                if (isJobsUnsupportedError(err)) {
+                    setBackendModeBadge('legacy');
+                    return requestJsonAny(['/api/reboot', '/reboot'], { method: 'POST' })
+                        .then(resp => showToast((resp.data && resp.data.message) || "Перезавантаження..."));
+                }
+                showToast(err.message || "Помилка запиту");
+            })
             .finally(() => setButtonBusy('rebootBtn', false));
     });
 }
@@ -501,7 +590,14 @@ function factoryResetGateway() {
                 const message = (info.result && info.result.message) || "Factory reset completed";
                 showToast(message);
             })
-            .catch(err => showToast(err.message || "Помилка factory reset"))
+            .catch(err => {
+                if (isJobsUnsupportedError(err)) {
+                    setBackendModeBadge('legacy');
+                    return requestJsonAny(['/api/factory_reset', '/factory_reset'], { method: 'POST' })
+                        .then(resp => showToast((resp.data && resp.data.message) || "Factory reset..."));
+                }
+                showToast(err.message || "Помилка factory reset");
+            })
             .finally(() => setButtonBusy('factoryResetBtn', false));
     });
 }

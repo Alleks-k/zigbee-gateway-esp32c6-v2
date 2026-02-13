@@ -1,13 +1,4 @@
 set(main_srcs
-    "web/web_server.c"
-    "web/api_handlers.c"
-    "web/api_contracts.c"
-    "web/api_usecases.c"
-    "web/http_error.c"
-    "web/http_routes.c"
-    "web/http_static.c"
-    "web/ws_manager.c"
-    "web/mdns_service.c"
 )
 
 if(CONFIG_GATEWAY_SELF_TEST_APP)
@@ -19,7 +10,7 @@ endif()
 # Реєстрація компонентів вашого проєкту
 idf_component_register(SRCS ${main_srcs}
                        INCLUDE_DIRS "." "core" "net" "web"
-                       REQUIRES mdns esp-zigbee-lib nvs_flash esp_http_server json spiffs unity gateway_core gateway_net
+                       REQUIRES mdns esp-zigbee-lib nvs_flash esp_http_server json spiffs unity gateway_core gateway_net gateway_web
                        PRIV_REQUIRES esp_wifi esp_timer)
 
 # Генерація SPIFFS іміджу для папки www

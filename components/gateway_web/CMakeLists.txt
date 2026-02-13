@@ -1,6 +1,27 @@
 idf_component_register(
-    SRCS "gateway_web_placeholder.c"
-    INCLUDE_DIRS "include"
-    REQUIRES gateway_core gateway_net esp_http_server mdns spiffs
+    SRCS
+        "../../main/web/web_server.c"
+        "../../main/web/api_handlers.c"
+        "../../main/web/api_contracts.c"
+        "../../main/web/api_usecases.c"
+        "../../main/web/http_error.c"
+        "../../main/web/http_routes.c"
+        "../../main/web/http_static.c"
+        "../../main/web/ws_manager.c"
+        "../../main/web/mdns_service.c"
+        "gateway_web_placeholder.c"
+    INCLUDE_DIRS
+        "include"
+        "../../main/web"
+    REQUIRES
+        gateway_core
+        gateway_net
+        esp_http_server
+        mdns
+        spiffs
+        json
+        nvs_flash
+        esp_wifi
+        esp_event
+        esp_timer
 )
-

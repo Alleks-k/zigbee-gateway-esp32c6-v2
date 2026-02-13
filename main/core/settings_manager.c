@@ -36,6 +36,25 @@ static void settings_unlock(void)
     }
 }
 
+typedef esp_err_t (*settings_migration_fn_t)(nvs_handle_t handle);
+
+typedef struct {
+    int32_t from_version;
+    int32_t to_version;
+    settings_migration_fn_t migrate;
+} settings_migration_step_t;
+
+static esp_err_t migrate_v0_to_v1(nvs_handle_t handle)
+{
+    (void)handle;
+    // v0 schema had no explicit version key; data keys are compatible with v1.
+    return ESP_OK;
+}
+
+static const settings_migration_step_t s_migration_steps[] = {
+    {0, 1, migrate_v0_to_v1},
+};
+
 static esp_err_t settings_get_schema_version_locked(nvs_handle_t handle, int32_t *out_version)
 {
     esp_err_t err = nvs_get_i32(handle, KEY_SCHEMA_VER, out_version);
@@ -44,6 +63,16 @@ static esp_err_t settings_get_schema_version_locked(nvs_handle_t handle, int32_t
         return ESP_OK;
     }
     return err;
+}
+
+static const settings_migration_step_t *settings_find_migration_step(int32_t from_version)
+{
+    for (size_t i = 0; i < sizeof(s_migration_steps) / sizeof(s_migration_steps[0]); i++) {
+        if (s_migration_steps[i].from_version == from_version) {
+            return &s_migration_steps[i];
+        }
+    }
+    return NULL;
 }
 
 esp_err_t settings_manager_get_schema_version(int32_t *out_version)
@@ -101,22 +130,43 @@ esp_err_t settings_manager_init_or_migrate(void)
         return ESP_ERR_INVALID_VERSION;
     }
 
-    if (version < SETTINGS_SCHEMA_VERSION_CURRENT) {
-        // v0 -> v1: baseline migration (introduce explicit schema key).
-        int32_t target = SETTINGS_SCHEMA_VERSION_CURRENT;
-        err = nvs_set_i32(handle, KEY_SCHEMA_VER, target);
-        if (err == ESP_OK) {
-            err = nvs_commit(handle);
-        }
-        if (err != ESP_OK) {
-            nvs_close(handle);
-            settings_unlock();
-            return err;
-        }
-        ESP_LOGI(TAG, "Settings schema migrated: v%ld -> v%d",
-                 (long)version, SETTINGS_SCHEMA_VERSION_CURRENT);
-    } else {
+    if (version == SETTINGS_SCHEMA_VERSION_CURRENT) {
         ESP_LOGI(TAG, "Settings schema up-to-date: v%d", SETTINGS_SCHEMA_VERSION_CURRENT);
+    } else {
+        while (version < SETTINGS_SCHEMA_VERSION_CURRENT) {
+            const settings_migration_step_t *step = settings_find_migration_step(version);
+            if (!step || !step->migrate || step->to_version <= step->from_version) {
+                nvs_close(handle);
+                settings_unlock();
+                ESP_LOGE(TAG, "Missing migration step from v%ld", (long)version);
+                return ESP_ERR_NOT_SUPPORTED;
+            }
+
+            err = step->migrate(handle);
+            if (err != ESP_OK) {
+                nvs_close(handle);
+                settings_unlock();
+                ESP_LOGE(TAG, "Migration function failed: v%ld -> v%ld (%s)",
+                         (long)step->from_version, (long)step->to_version, esp_err_to_name(err));
+                return err;
+            }
+
+            err = nvs_set_i32(handle, KEY_SCHEMA_VER, step->to_version);
+            if (err == ESP_OK) {
+                err = nvs_commit(handle);
+            }
+            if (err != ESP_OK) {
+                nvs_close(handle);
+                settings_unlock();
+                ESP_LOGE(TAG, "Failed to persist schema version v%ld: %s",
+                         (long)step->to_version, esp_err_to_name(err));
+                return err;
+            }
+
+            ESP_LOGI(TAG, "Settings schema migrated: v%ld -> v%ld",
+                     (long)step->from_version, (long)step->to_version);
+            version = step->to_version;
+        }
     }
 
     nvs_close(handle);

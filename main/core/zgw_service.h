@@ -1,21 +1,8 @@
 #pragma once
 
-#include <stdint.h>
-#include <stddef.h>
-#include "esp_err.h"
-#include "device_manager.h"
-
-typedef struct {
-    uint32_t pan_id;
-    uint32_t channel;
-    uint32_t short_addr;
-} zgw_network_status_t;
-
-typedef struct {
-    char ssid[33];
-    int8_t rssi;
-    uint8_t auth;
-} zgw_wifi_ap_info_t;
+#include "zigbee_service.h"
+#include "wifi_service.h"
+#include "system_service.h"
 
 esp_err_t zgw_service_get_network_status(zgw_network_status_t *out);
 esp_err_t zgw_service_permit_join(uint16_t seconds);

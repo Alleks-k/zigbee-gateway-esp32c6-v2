@@ -1,7 +1,7 @@
 #include "zigbee_service.h"
 #include "esp_zigbee_gateway.h"
 
-esp_err_t zigbee_service_get_network_status(zgw_network_status_t *out)
+esp_err_t zigbee_service_get_network_status(zigbee_network_status_t *out)
 {
     if (!out) {
         return ESP_ERR_INVALID_ARG;
@@ -43,4 +43,3 @@ esp_err_t zigbee_service_rename_device(uint16_t short_addr, const char *name)
     update_device_name(short_addr, name);
     return ESP_OK;
 }
-

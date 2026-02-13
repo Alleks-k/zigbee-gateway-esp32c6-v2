@@ -102,7 +102,7 @@ esp_err_t build_status_json_compact(char *out, size_t out_size, size_t *out_len)
     char *cursor = out;
     size_t remaining = out_size;
 
-    zgw_network_status_t status = {0};
+    zigbee_network_status_t status = {0};
     if (zigbee_service_get_network_status(&status) != ESP_OK) {
         return ESP_FAIL;
     }
@@ -314,7 +314,7 @@ esp_err_t api_rename_device_handler(httpd_req_t *req) {
 /* API: Сканування Wi-Fi мереж */
 esp_err_t api_wifi_scan_handler(httpd_req_t *req)
 {
-    zgw_wifi_ap_info_t *list = NULL;
+    wifi_ap_info_t *list = NULL;
     size_t count = 0;
     esp_err_t err = wifi_service_scan(&list, &count);
     if (err != ESP_OK) {

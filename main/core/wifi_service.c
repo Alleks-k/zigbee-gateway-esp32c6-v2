@@ -6,7 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-esp_err_t wifi_service_scan(zgw_wifi_ap_info_t **out_list, size_t *out_count)
+esp_err_t wifi_service_scan(wifi_ap_info_t **out_list, size_t *out_count)
 {
     if (!out_list || !out_count) {
         return ESP_ERR_INVALID_ARG;
@@ -68,7 +68,7 @@ esp_err_t wifi_service_scan(zgw_wifi_ap_info_t **out_list, size_t *out_count)
         return ret;
     }
 
-    zgw_wifi_ap_info_t *list = (zgw_wifi_ap_info_t *)calloc(ap_count, sizeof(zgw_wifi_ap_info_t));
+    wifi_ap_info_t *list = (wifi_ap_info_t *)calloc(ap_count, sizeof(wifi_ap_info_t));
     if (!list) {
         free(ap_records);
         return ESP_ERR_NO_MEM;
@@ -86,7 +86,7 @@ esp_err_t wifi_service_scan(zgw_wifi_ap_info_t **out_list, size_t *out_count)
     return ESP_OK;
 }
 
-void wifi_service_scan_free(zgw_wifi_ap_info_t *list)
+void wifi_service_scan_free(wifi_ap_info_t *list)
 {
     free(list);
 }

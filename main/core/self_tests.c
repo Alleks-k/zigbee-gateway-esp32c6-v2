@@ -3,7 +3,8 @@
 #include "unity.h"
 #include "api_handlers.h"
 #include "device_manager.h"
-#include "zgw_service.h"
+#include "zigbee_service.h"
+#include "wifi_service.h"
 #include "esp_log.h"
 #include <string.h>
 
@@ -55,16 +56,16 @@ static void test_status_json_builder_ok(void)
 
 static void test_service_rename_device_rejects_null_name(void)
 {
-    esp_err_t ret = zgw_service_rename_device(0x1234, NULL);
+    esp_err_t ret = zigbee_service_rename_device(0x1234, NULL);
     TEST_ASSERT_EQUAL(ESP_ERR_INVALID_ARG, ret);
 }
 
 static void test_service_wifi_save_rejects_invalid_input(void)
 {
-    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_ARG, zgw_service_wifi_save_credentials(NULL, "12345678"));
-    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_ARG, zgw_service_wifi_save_credentials("ssid", NULL));
-    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_ARG, zgw_service_wifi_save_credentials("", "12345678"));
-    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_ARG, zgw_service_wifi_save_credentials("ssid", "1234567"));
+    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_ARG, wifi_service_save_credentials(NULL, "12345678"));
+    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_ARG, wifi_service_save_credentials("ssid", NULL));
+    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_ARG, wifi_service_save_credentials("", "12345678"));
+    TEST_ASSERT_EQUAL(ESP_ERR_INVALID_ARG, wifi_service_save_credentials("ssid", "1234567"));
 }
 
 int zgw_run_self_tests(void)

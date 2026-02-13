@@ -1,6 +1,8 @@
 #include "api_handlers.h"
 #include "esp_log.h"
-#include "zgw_service.h"
+#include "zigbee_service.h"
+#include "wifi_service.h"
+#include "system_service.h"
 #include "cJSON.h"
 #include <string.h>
 #include <stdio.h>
@@ -74,7 +76,7 @@ static bool append_json_escaped(char **cursor, size_t *remaining, const char *sr
 static esp_err_t append_devices_array(char **cursor, size_t *remaining)
 {
     zb_device_t snapshot[MAX_DEVICES];
-    int count = zgw_service_get_devices_snapshot(snapshot, MAX_DEVICES);
+    int count = zigbee_service_get_devices_snapshot(snapshot, MAX_DEVICES);
     for (int i = 0; i < count; i++) {
         if (i > 0 && !append_literal(cursor, remaining, ",")) {
             return ESP_ERR_NO_MEM;
@@ -101,7 +103,7 @@ esp_err_t build_status_json_compact(char *out, size_t out_size, size_t *out_len)
     size_t remaining = out_size;
 
     zgw_network_status_t status = {0};
-    if (zgw_service_get_network_status(&status) != ESP_OK) {
+    if (zigbee_service_get_network_status(&status) != ESP_OK) {
         return ESP_FAIL;
     }
 
@@ -199,7 +201,7 @@ esp_err_t api_status_handler(httpd_req_t *req)
 /* API: Відкрити мережу (Permit Join) */
 esp_err_t api_permit_join_handler(httpd_req_t *req)
 {
-    esp_err_t ret = zgw_service_permit_join(60);
+    esp_err_t ret = zigbee_service_permit_join(60);
     if (ret != ESP_OK) {
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Failed to open network");
         return ESP_FAIL;
@@ -235,7 +237,7 @@ esp_err_t api_control_handler(httpd_req_t *req)
         uint8_t cmd = (uint8_t)cmd_item->valueint;
 
         ESP_LOGI(TAG, "Web Control: addr=0x%04x, ep=%d, cmd=%d", addr, endpoint, cmd);
-        if (zgw_service_send_on_off(addr, endpoint, cmd) != ESP_OK) {
+        if (zigbee_service_send_on_off(addr, endpoint, cmd) != ESP_OK) {
             httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Failed to send command");
             cJSON_Delete(root);
             return ESP_FAIL;
@@ -261,7 +263,7 @@ esp_err_t api_delete_device_handler(httpd_req_t *req) {
     if (root) {
         cJSON *addr_item = cJSON_GetObjectItem(root, "short_addr");
         if (cJSON_IsNumber(addr_item)) {
-            if (zgw_service_delete_device((uint16_t)addr_item->valueint) != ESP_OK) {
+            if (zigbee_service_delete_device((uint16_t)addr_item->valueint) != ESP_OK) {
                 cJSON_Delete(root);
                 httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Delete failed");
                 return ESP_FAIL;
@@ -291,7 +293,7 @@ esp_err_t api_rename_device_handler(httpd_req_t *req) {
         cJSON *addr_item = cJSON_GetObjectItem(root, "short_addr");
         cJSON *name_item = cJSON_GetObjectItem(root, "name");
         if (cJSON_IsNumber(addr_item) && cJSON_IsString(name_item)) {
-            if (zgw_service_rename_device((uint16_t)addr_item->valueint, name_item->valuestring) != ESP_OK) {
+            if (zigbee_service_rename_device((uint16_t)addr_item->valueint, name_item->valuestring) != ESP_OK) {
                 cJSON_Delete(root);
                 httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Rename failed");
                 return ESP_FAIL;
@@ -314,7 +316,7 @@ esp_err_t api_wifi_scan_handler(httpd_req_t *req)
 {
     zgw_wifi_ap_info_t *list = NULL;
     size_t count = 0;
-    esp_err_t err = zgw_service_wifi_scan(&list, &count);
+    esp_err_t err = wifi_service_scan(&list, &count);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "WiFi scan failed in service: %s", esp_err_to_name(err));
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Scan failed");
@@ -336,7 +338,7 @@ esp_err_t api_wifi_scan_handler(httpd_req_t *req)
         cJSON_AddItemToArray(root, item);
     }
 
-    zgw_service_wifi_scan_free(list);
+    wifi_service_scan_free(list);
     char *json_str = cJSON_PrintUnformatted(root);
     cJSON_Delete(root);
 
@@ -350,7 +352,7 @@ esp_err_t api_wifi_scan_handler(httpd_req_t *req)
 /* API: Перезавантаження системи */
 esp_err_t api_reboot_handler(httpd_req_t *req)
 {
-    if (zgw_service_schedule_reboot(1000) != ESP_OK) {
+    if (system_service_schedule_reboot(1000) != ESP_OK) {
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Failed to schedule reboot");
         return ESP_FAIL;
     }
@@ -361,7 +363,7 @@ esp_err_t api_reboot_handler(httpd_req_t *req)
 
 esp_err_t api_factory_reset_handler(httpd_req_t *req)
 {
-    esp_err_t err = zgw_service_factory_reset_and_reboot(1000);
+    esp_err_t err = system_service_factory_reset_and_reboot(1000);
     if (err != ESP_OK) {
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Factory reset failed");
         return ESP_FAIL;
@@ -390,9 +392,9 @@ esp_err_t api_wifi_save_handler(httpd_req_t *req)
     cJSON *pass = cJSON_GetObjectItem(root, "password");
 
     if (cJSON_IsString(ssid) && cJSON_IsString(pass)) {
-        esp_err_t err = zgw_service_wifi_save_credentials(ssid->valuestring, pass->valuestring);
+        esp_err_t err = wifi_service_save_credentials(ssid->valuestring, pass->valuestring);
         if (err == ESP_OK) {
-            if (zgw_service_schedule_reboot(1000) != ESP_OK) {
+            if (system_service_schedule_reboot(1000) != ESP_OK) {
                 httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Failed to schedule reboot");
                 cJSON_Delete(root);
                 return ESP_FAIL;

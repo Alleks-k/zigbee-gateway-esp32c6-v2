@@ -1,6 +1,17 @@
 idf_component_register(
-    SRCS "gateway_net_placeholder.c"
-    INCLUDE_DIRS "include"
-    REQUIRES gateway_core esp_wifi esp_netif
+    SRCS
+        "../../main/net/wifi_init.c"
+        "../../main/net/wifi_sta.c"
+        "../../main/net/wifi_ap_fallback.c"
+        "gateway_net_placeholder.c"
+    INCLUDE_DIRS
+        "include"
+        "../../main/net"
+    REQUIRES
+        gateway_core
+        esp_wifi
+        esp_netif
+        esp_event
+        esp_timer
+        nvs_flash
 )
-

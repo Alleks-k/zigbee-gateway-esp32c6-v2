@@ -1,7 +1,4 @@
 set(main_srcs
-    "net/wifi_init.c"
-    "net/wifi_sta.c"
-    "net/wifi_ap_fallback.c"
     "web/web_server.c"
     "web/api_handlers.c"
     "web/api_contracts.c"
@@ -22,7 +19,7 @@ endif()
 # Реєстрація компонентів вашого проєкту
 idf_component_register(SRCS ${main_srcs}
                        INCLUDE_DIRS "." "core" "net" "web"
-                       REQUIRES mdns esp-zigbee-lib nvs_flash esp_http_server json spiffs unity gateway_core
+                       REQUIRES mdns esp-zigbee-lib nvs_flash esp_http_server json spiffs unity gateway_core gateway_net
                        PRIV_REQUIRES esp_wifi esp_timer)
 
 # Генерація SPIFFS іміджу для папки www

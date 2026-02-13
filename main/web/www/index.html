@@ -48,7 +48,7 @@
         <label for="wifi-ssid">SSID Мережі</label>
         <div class="input-row">
             <input type="text" id="wifi-ssid" placeholder="Введіть назву або скануйте">
-            <button onclick="scanWifi()" class="btn"><svg class="icon" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg> Сканувати</button>
+            <button id="scanWifiBtn" onclick="scanWifi()" class="btn"><svg class="icon" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg> Сканувати</button>
         </div>
         <!-- Контейнер для результатів сканування -->
         <div id="wifi-scan-results" class="scan-results" style="display:none;"></div>
@@ -65,9 +65,17 @@
         <div class="card">
             <h2>System</h2>
             <p>Керування живленням шлюзу.</p>
-            <button onclick="rebootGateway()" class="btn-del" style="width: 100%;"><svg class="icon" viewBox="0 0 24 24"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg> Reboot Gateway</button>
-            <button onclick="factoryResetGateway()" class="btn-del" style="width: 100%; margin-top: 8px;"><svg class="icon" viewBox="0 0 24 24"><path d="M12 5V2L7 6l5 4V7c2.76 0 5 2.24 5 5 0 1.64-.8 3.09-2.02 4H17c1.26-1.27 2-3.01 2-5 0-3.87-3.13-7-7-7zm-5 7c0-1.64.8-3.09 2.02-4H7c-1.26 1.27-2 3.01-2 5 0 3.87 3.13 7 7 7v3l5-4-5-4v3c-2.76 0-5-2.24-5-5z"/></svg> Factory Reset</button>
+            <button id="rebootBtn" onclick="rebootGateway()" class="btn-del" style="width: 100%;"><svg class="icon" viewBox="0 0 24 24"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg> Reboot Gateway</button>
+            <button id="factoryResetBtn" onclick="factoryResetGateway()" class="btn-del" style="width: 100%; margin-top: 8px;"><svg class="icon" viewBox="0 0 24 24"><path d="M12 5V2L7 6l5 4V7c2.76 0 5 2.24 5 5 0 1.64-.8 3.09-2.02 4H17c1.26-1.27 2-3.01 2-5 0-3.87-3.13-7-7-7zm-5 7c0-1.64.8-3.09 2.02-4H7c-1.26 1.27-2 3.01-2 5 0 3.87 3.13 7 7 7v3l5-4-5-4v3c-2.76 0-5-2.24-5-5z"/></svg> Factory Reset</button>
         </div>
+    </div>
+
+    <div id="job-indicator" class="job-indicator" style="display:none;">
+        <div class="job-indicator-row">
+            <strong id="job-indicator-op">Operation</strong>
+            <span id="job-indicator-state" class="job-state queued">queued</span>
+        </div>
+        <small id="job-indicator-detail"></small>
     </div>
     
     <!-- Контейнер для спливаючих повідомлень -->

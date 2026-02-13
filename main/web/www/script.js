@@ -11,6 +11,9 @@ const ICONS = {
 const API_BASE = '/api/v1';
 const WS_PROTOCOL_VERSION = 1;
 let lastWsSeq = 0;
+const JOB_POLL_INTERVAL_MS = 600;
+const JOB_TIMEOUT_MS = 30000;
+let jobIndicatorHideTimer = null;
 
 function apiUrl(path) {
     return API_BASE + path;
@@ -49,6 +52,85 @@ async function requestJson(url, options = {}) {
         throw new Error((data.error && data.error.message) || data.message || 'API error');
     }
     return data;
+}
+
+function setButtonBusy(buttonId, busy) {
+    const btn = document.getElementById(buttonId);
+    if (!btn) return;
+    btn.disabled = !!busy;
+}
+
+function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function updateJobIndicator(label, state, detail = '') {
+    const root = document.getElementById('job-indicator');
+    const opEl = document.getElementById('job-indicator-op');
+    const stateEl = document.getElementById('job-indicator-state');
+    const detailEl = document.getElementById('job-indicator-detail');
+    if (!root || !opEl || !stateEl || !detailEl) return;
+
+    if (jobIndicatorHideTimer) {
+        clearTimeout(jobIndicatorHideTimer);
+        jobIndicatorHideTimer = null;
+    }
+
+    root.style.display = 'block';
+    root.classList.remove('state-queued', 'state-running', 'state-succeeded', 'state-failed');
+    root.classList.add(`state-${state}`);
+    opEl.textContent = label;
+    stateEl.textContent = state;
+    stateEl.className = `job-state ${state}`;
+    detailEl.textContent = detail || '';
+
+    if (state === 'succeeded' || state === 'failed') {
+        jobIndicatorHideTimer = setTimeout(() => {
+            root.style.display = 'none';
+        }, 3500);
+    }
+}
+
+async function submitJob(jobType, extraPayload = {}, options = {}) {
+    const timeoutMs = Number.isFinite(options.timeoutMs) ? options.timeoutMs : JOB_TIMEOUT_MS;
+    const label = options.label || `job:${jobType}`;
+    const submitResp = await requestJson(apiUrl('/jobs'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: jobType, ...extraPayload })
+    });
+
+    const jobData = submitResp.data || {};
+    const jobId = Number(jobData.job_id);
+    if (!Number.isFinite(jobId) || jobId <= 0) {
+        throw new Error('Invalid job id');
+    }
+    updateJobIndicator(label, 'queued', `job #${jobId}`);
+
+    const start = Date.now();
+    let lastState = 'queued';
+    while ((Date.now() - start) < timeoutMs) {
+        const pollResp = await requestJson(apiUrl(`/jobs/${jobId}`));
+        const info = pollResp.data || {};
+        const state = String(info.state || 'running');
+        if (state !== lastState) {
+            updateJobIndicator(label, state, `job #${jobId}`);
+            lastState = state;
+        }
+        if (info.done === true || info.state === 'succeeded' || info.state === 'failed') {
+            if (info.state === 'failed') {
+                const reason = (info.result && info.result.error) || info.error || 'Job failed';
+                updateJobIndicator(label, 'failed', reason);
+                throw new Error(reason);
+            }
+            updateJobIndicator(label, 'succeeded', `job #${jobId}`);
+            return info;
+        }
+        await sleep(JOB_POLL_INTERVAL_MS);
+    }
+
+    updateJobIndicator(label, 'failed', 'timeout');
+    throw new Error('Job timeout');
 }
 
 /**
@@ -316,15 +398,17 @@ function deleteDevice(addr) {
 
 
 function scanWifi() {
+    setButtonBusy('scanWifiBtn', true);
     const resultsDiv = document.getElementById('wifi-scan-results');
     const ssidInput = document.getElementById('wifi-ssid');
     
     resultsDiv.style.display = 'block';
     resultsDiv.innerHTML = '<div class="scan-item">Сканування...</div>';
 
-    requestJson(apiUrl('/wifi/scan'))
-        .then(resp => {
-            const networks = Array.isArray(resp.data) ? resp.data : [];
+    submitJob('scan', {}, { label: 'Wi-Fi scan' })
+        .then(info => {
+            const result = info.result || {};
+            const networks = Array.isArray(result.networks) ? result.networks : [];
             resultsDiv.innerHTML = '';
             if (networks.length === 0) {
                 resultsDiv.innerHTML = '<div class="scan-item">Мереж не знайдено</div>';
@@ -358,8 +442,9 @@ function scanWifi() {
         })
         .catch(err => {
             console.error(err);
-            resultsDiv.innerHTML = '<div class="scan-item" style="color:red;">Помилка сканування</div>';
-        });
+            resultsDiv.innerHTML = `<div class="scan-item" style="color:red;">Помилка сканування: ${err.message || 'unknown'}</div>`;
+        })
+        .finally(() => setButtonBusy('scanWifiBtn', false));
 }
 
 function saveWifiSettings() {
@@ -397,17 +482,27 @@ function saveWifiSettings() {
 
 function rebootGateway() {
     showConfirm("Перезавантажити шлюз?", () => {
-        requestJson(apiUrl('/reboot'), { method: 'POST' })
-            .then(resp => showToast((resp.data && resp.data.message) || "Перезавантаження..."))
-            .catch(err => showToast("Помилка запиту"));
+        setButtonBusy('rebootBtn', true);
+        submitJob('reboot', {}, { label: 'Gateway reboot' })
+            .then(info => {
+                const message = (info.result && info.result.message) || 'Перезавантаження заплановано...';
+                showToast(message);
+            })
+            .catch(err => showToast(err.message || "Помилка запиту"))
+            .finally(() => setButtonBusy('rebootBtn', false));
     });
 }
 
 function factoryResetGateway() {
     showConfirm("Скинути пристрій до заводських налаштувань?", () => {
-        requestJson(apiUrl('/factory_reset'), { method: 'POST' })
-            .then(resp => showToast((resp.data && resp.data.message) || "Factory reset..."))
-            .catch(err => showToast(err.message || "Помилка factory reset"));
+        setButtonBusy('factoryResetBtn', true);
+        submitJob('factory_reset', {}, { label: 'Factory reset' })
+            .then(info => {
+                const message = (info.result && info.result.message) || "Factory reset completed";
+                showToast(message);
+            })
+            .catch(err => showToast(err.message || "Помилка factory reset"))
+            .finally(() => setButtonBusy('factoryResetBtn', false));
     });
 }
 

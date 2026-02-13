@@ -47,6 +47,12 @@ bool http_routes_register(httpd_handle_t server)
     REGISTER_API_ROUTE_BOTH(server, "/settings/wifi", HTTP_POST, api_wifi_save_handler, ok);
     REGISTER_API_ROUTE_BOTH(server, "/reboot", HTTP_POST, api_reboot_handler, ok);
     REGISTER_API_ROUTE_BOTH(server, "/factory_reset", HTTP_POST, api_factory_reset_handler, ok);
+    REGISTER_API_ROUTE_BOTH(server, "/jobs", HTTP_POST, api_jobs_submit_handler, ok);
+
+    httpd_uri_t uri_jobs_get_v1 = { .uri = "/api/v1/jobs/*", .method = HTTP_GET, .handler = api_jobs_get_handler };
+    ok &= register_uri_handler_checked(server, &uri_jobs_get_v1);
+    httpd_uri_t uri_jobs_get_legacy = { .uri = "/api/jobs/*", .method = HTTP_GET, .handler = api_jobs_get_handler };
+    ok &= register_uri_handler_checked(server, &uri_jobs_get_legacy);
 
     httpd_uri_t uri_ws = { .uri = "/ws", .method = HTTP_GET, .handler = ws_handler, .is_websocket = true };
     ok &= register_uri_handler_checked(server, &uri_ws);

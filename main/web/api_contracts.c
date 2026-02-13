@@ -89,6 +89,34 @@ static esp_err_t parse_wifi_save_root(cJSON *root, api_wifi_save_request_t *out)
     return ESP_OK;
 }
 
+static bool valid_job_type(const char *type)
+{
+    return type &&
+           (strcmp(type, "scan") == 0 ||
+            strcmp(type, "factory_reset") == 0 ||
+            strcmp(type, "reboot") == 0 ||
+            strcmp(type, "update") == 0);
+}
+
+static esp_err_t parse_job_submit_root(cJSON *root, api_job_submit_request_t *out)
+{
+    cJSON *type_item = cJSON_GetObjectItem(root, "type");
+    if (!cJSON_IsString(type_item) || !type_item->valuestring || !valid_job_type(type_item->valuestring)) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    strlcpy(out->type, type_item->valuestring, sizeof(out->type));
+
+    out->reboot_delay_ms = 1000;
+    cJSON *delay_item = cJSON_GetObjectItem(root, "reboot_delay_ms");
+    if (delay_item != NULL) {
+        if (!cJSON_IsNumber(delay_item) || delay_item->valueint < 0 || delay_item->valueint > 60000) {
+            return ESP_ERR_INVALID_ARG;
+        }
+        out->reboot_delay_ms = (uint32_t)delay_item->valueint;
+    }
+    return ESP_OK;
+}
+
 static esp_err_t parse_json_string(const char *json, cJSON **out_root)
 {
     if (!json || !out_root) {
@@ -206,6 +234,24 @@ esp_err_t api_parse_wifi_save_request(httpd_req_t *req, api_wifi_save_request_t 
     return err;
 }
 
+esp_err_t api_parse_job_submit_request(httpd_req_t *req, api_job_submit_request_t *out)
+{
+    if (!out) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    char buf[160];
+    cJSON *root = NULL;
+    esp_err_t err = parse_json_body(req, &root, buf, sizeof(buf));
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    err = parse_job_submit_root(root, out);
+    cJSON_Delete(root);
+    return err;
+}
+
 esp_err_t api_parse_control_json(const char *json, api_control_request_t *out)
 {
     if (!out) {
@@ -262,6 +308,21 @@ esp_err_t api_parse_wifi_save_json(const char *json, api_wifi_save_request_t *ou
         return err;
     }
     err = parse_wifi_save_root(root, out);
+    cJSON_Delete(root);
+    return err;
+}
+
+esp_err_t api_parse_job_submit_json(const char *json, api_job_submit_request_t *out)
+{
+    if (!out) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    cJSON *root = NULL;
+    esp_err_t err = parse_json_string(json, &root);
+    if (err != ESP_OK) {
+        return err;
+    }
+    err = parse_job_submit_root(root, out);
     cJSON_Delete(root);
     return err;
 }

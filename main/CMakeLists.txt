@@ -4,6 +4,7 @@ set(main_srcs
     "core/gateway_events.c"
     "core/gateway_state.c"
     "core/settings_manager.c"
+    "core/job_queue.c"
     "core/zigbee_service.c"
     "core/wifi_service.c"
     "core/system_service.c"

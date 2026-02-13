@@ -4,6 +4,7 @@
 #include "http_error.h"
 #include "gateway_state.h"
 #include "settings_manager.h"
+#include "job_queue.h"
 #include "ws_manager.h"
 #include "esp_log.h"
 #include "esp_heap_caps.h"
@@ -16,6 +17,44 @@
 #include <inttypes.h>
 
 static const char *TAG = "API_HANDLERS";
+
+static zgw_job_type_t parse_job_type(const char *type)
+{
+    if (!type) {
+        return ZGW_JOB_TYPE_WIFI_SCAN;
+    }
+    if (strcmp(type, "scan") == 0) {
+        return ZGW_JOB_TYPE_WIFI_SCAN;
+    }
+    if (strcmp(type, "factory_reset") == 0) {
+        return ZGW_JOB_TYPE_FACTORY_RESET;
+    }
+    if (strcmp(type, "reboot") == 0) {
+        return ZGW_JOB_TYPE_REBOOT;
+    }
+    if (strcmp(type, "update") == 0) {
+        return ZGW_JOB_TYPE_UPDATE;
+    }
+    return ZGW_JOB_TYPE_WIFI_SCAN;
+}
+
+static esp_err_t parse_job_id_from_uri(const char *uri, uint32_t *out_id)
+{
+    if (!uri || !out_id) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    const char *last_slash = strrchr(uri, '/');
+    if (!last_slash || *(last_slash + 1) == '\0') {
+        return ESP_ERR_INVALID_ARG;
+    }
+    char *endptr = NULL;
+    unsigned long value = strtoul(last_slash + 1, &endptr, 10);
+    if (endptr == NULL || *endptr != '\0' || value == 0 || value > UINT32_MAX) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    *out_id = (uint32_t)value;
+    return ESP_OK;
+}
 
 static bool append_literal(char **cursor, size_t *remaining, const char *text)
 {
@@ -468,4 +507,63 @@ esp_err_t api_wifi_save_handler(httpd_req_t *req)
 
     ESP_LOGE(TAG, "Failed to save Wi-Fi credentials: %s", esp_err_to_name(err));
     return http_error_send_esp(req, err, "Failed to save Wi-Fi credentials");
+}
+
+esp_err_t api_jobs_submit_handler(httpd_req_t *req)
+{
+    api_job_submit_request_t in = {0};
+    esp_err_t err = api_parse_job_submit_request(req, &in);
+    if (err != ESP_OK) {
+        return http_error_send_esp(req, err, "Invalid job payload");
+    }
+
+    zgw_job_type_t type = parse_job_type(in.type);
+    uint32_t job_id = 0;
+    err = job_queue_submit(type, in.reboot_delay_ms, &job_id);
+    if (err != ESP_OK) {
+        return http_error_send_esp(req, err, "Failed to queue job");
+    }
+
+    char data_json[160];
+    int written = snprintf(data_json, sizeof(data_json),
+                           "{\"job_id\":%" PRIu32 ",\"type\":\"%s\",\"state\":\"queued\"}",
+                           job_id, job_queue_type_to_string(type));
+    if (written < 0 || (size_t)written >= sizeof(data_json)) {
+        return http_error_send_esp(req, ESP_ERR_NO_MEM, "Failed to build job response");
+    }
+    return http_success_send_data_json(req, data_json);
+}
+
+esp_err_t api_jobs_get_handler(httpd_req_t *req)
+{
+    uint32_t job_id = 0;
+    esp_err_t err = parse_job_id_from_uri(req->uri, &job_id);
+    if (err != ESP_OK) {
+        return http_error_send_esp(req, err, "Invalid job id");
+    }
+
+    zgw_job_info_t info = {0};
+    err = job_queue_get(job_id, &info);
+    if (err != ESP_OK) {
+        return http_error_send_esp(req, err, "Job not found");
+    }
+
+    const char *result_json = info.has_result ? info.result_json : "null";
+    char data_json[2600];
+    int written = snprintf(
+        data_json, sizeof(data_json),
+        "{\"job_id\":%" PRIu32 ",\"type\":\"%s\",\"state\":\"%s\",\"done\":%s,"
+        "\"created_ms\":%" PRIu64 ",\"updated_ms\":%" PRIu64 ",\"error\":\"%s\",\"result\":%s}",
+        info.id,
+        job_queue_type_to_string(info.type),
+        job_queue_state_to_string(info.state),
+        (info.state == ZGW_JOB_STATE_SUCCEEDED || info.state == ZGW_JOB_STATE_FAILED) ? "true" : "false",
+        info.created_ms,
+        info.updated_ms,
+        esp_err_to_name(info.err),
+        result_json);
+    if (written < 0 || (size_t)written >= sizeof(data_json)) {
+        return http_error_send_esp(req, ESP_ERR_NO_MEM, "Job response too large");
+    }
+    return http_success_send_data_json(req, data_json);
 }

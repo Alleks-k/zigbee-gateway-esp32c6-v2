@@ -102,6 +102,73 @@ input[type="text"], input[type="password"] {
     animation: fadein 0.5s, fadeout 0.5s 2.5s;
 }
 
+.job-indicator {
+    position: fixed;
+    right: 16px;
+    top: 16px;
+    z-index: 20;
+    min-width: 240px;
+    max-width: 360px;
+    background: #fff;
+    border: 1px solid #ddd;
+    border-left: 4px solid #6c757d;
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+    padding: 10px 12px;
+}
+
+.job-indicator-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: center;
+}
+
+.job-indicator small {
+    display: block;
+    color: #666;
+    margin-top: 4px;
+}
+
+.job-state {
+    font-size: 12px;
+    line-height: 1;
+    text-transform: uppercase;
+    font-weight: 700;
+}
+
+.job-state.queued {
+    color: #6c757d;
+}
+
+.job-state.running {
+    color: #0d6efd;
+}
+
+.job-state.succeeded {
+    color: #198754;
+}
+
+.job-state.failed {
+    color: #dc3545;
+}
+
+.job-indicator.state-queued {
+    border-left-color: #6c757d;
+}
+
+.job-indicator.state-running {
+    border-left-color: #0d6efd;
+}
+
+.job-indicator.state-succeeded {
+    border-left-color: #198754;
+}
+
+.job-indicator.state-failed {
+    border-left-color: #dc3545;
+}
+
 /* Стилі для списку пристроїв */
 .device-item {
     display: flex;

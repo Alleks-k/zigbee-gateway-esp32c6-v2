@@ -1,9 +1,12 @@
 #include "settings_manager.h"
 #include "nvs.h"
+#include "esp_partition.h"
+#include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include <string.h>
 
+static const char *TAG = "SETTINGS_MANAGER";
 static SemaphoreHandle_t s_settings_mutex = NULL;
 
 static esp_err_t settings_lock(void)
@@ -169,6 +172,11 @@ esp_err_t settings_manager_save_devices(const zb_device_t *devices, size_t max_d
 
 esp_err_t settings_manager_factory_reset(void)
 {
+    esp_err_t wifi_err = ESP_OK;
+    esp_err_t devices_err = ESP_OK;
+    esp_err_t zb_storage_err = ESP_OK;
+    esp_err_t zb_fct_err = ESP_OK;
+
     esp_err_t err = settings_lock();
     if (err != ESP_OK) {
         return err;
@@ -177,14 +185,77 @@ esp_err_t settings_manager_factory_reset(void)
     nvs_handle_t handle;
     err = nvs_open("storage", NVS_READWRITE, &handle);
     if (err == ESP_OK) {
-        err = nvs_erase_all(handle);
-        if (err == ESP_OK) {
-            err = nvs_commit(handle);
+        esp_err_t key_err = nvs_erase_key(handle, "wifi_ssid");
+        if (key_err != ESP_OK && key_err != ESP_ERR_NVS_NOT_FOUND) {
+            wifi_err = key_err;
         }
+        key_err = nvs_erase_key(handle, "wifi_pass");
+        if (wifi_err == ESP_OK && key_err != ESP_OK && key_err != ESP_ERR_NVS_NOT_FOUND) {
+            wifi_err = key_err;
+        }
+        if (wifi_err == ESP_OK) {
+            esp_err_t commit_err = nvs_commit(handle);
+            if (commit_err != ESP_OK) {
+                wifi_err = commit_err;
+            }
+        }
+
+        key_err = nvs_erase_key(handle, "dev_count");
+        if (key_err != ESP_OK && key_err != ESP_ERR_NVS_NOT_FOUND) {
+            devices_err = key_err;
+        }
+        key_err = nvs_erase_key(handle, "dev_list");
+        if (devices_err == ESP_OK && key_err != ESP_OK && key_err != ESP_ERR_NVS_NOT_FOUND) {
+            devices_err = key_err;
+        }
+        if (devices_err == ESP_OK) {
+            esp_err_t commit_err = nvs_commit(handle);
+            if (commit_err != ESP_OK) {
+                devices_err = commit_err;
+            }
+        }
+
         nvs_close(handle);
+    } else {
+        wifi_err = err;
+        devices_err = err;
     }
 
     settings_unlock();
-    return err;
-}
 
+    const esp_partition_t *zb_storage_part =
+        esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_ANY, "zb_storage");
+    if (!zb_storage_part) {
+        zb_storage_err = ESP_ERR_NOT_FOUND;
+    } else {
+        zb_storage_err = esp_partition_erase_range(zb_storage_part, 0, zb_storage_part->size);
+    }
+
+    const esp_partition_t *zb_fct_part =
+        esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_ANY, "zb_fct");
+    if (!zb_fct_part) {
+        zb_fct_err = ESP_ERR_NOT_FOUND;
+    } else {
+        zb_fct_err = esp_partition_erase_range(zb_fct_part, 0, zb_fct_part->size);
+    }
+
+    ESP_LOGI(TAG, "Factory reset group result: wifi=%s, devices=%s, zigbee_storage=%s, zigbee_fct=%s",
+             esp_err_to_name(wifi_err),
+             esp_err_to_name(devices_err),
+             esp_err_to_name(zb_storage_err),
+             esp_err_to_name(zb_fct_err));
+
+    if (wifi_err != ESP_OK) {
+        return wifi_err;
+    }
+    if (devices_err != ESP_OK) {
+        return devices_err;
+    }
+    if (zb_storage_err != ESP_OK && zb_storage_err != ESP_ERR_NOT_FOUND) {
+        return zb_storage_err;
+    }
+    if (zb_fct_err != ESP_OK && zb_fct_err != ESP_ERR_NOT_FOUND) {
+        return zb_fct_err;
+    }
+    return ESP_OK;
+}

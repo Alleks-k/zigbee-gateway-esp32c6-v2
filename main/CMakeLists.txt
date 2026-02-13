@@ -17,10 +17,6 @@ set(main_srcs
     "web/mdns_service.c"
 )
 
-if(CONFIG_ZGW_ENABLE_LEGACY_SERVICE_FACADE)
-    list(APPEND main_srcs "core/zgw_service.c")
-endif()
-
 if(CONFIG_ZGW_SELF_TEST_APP)
     list(APPEND main_srcs "core/self_tests.c" "core/self_tests_app_main.c")
 else()

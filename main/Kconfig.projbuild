@@ -37,13 +37,3 @@ menu "ESP Zigbee gateway tests"
             self-tests on boot. Regular gateway app_main is not included
             in this mode.
 endmenu
-
-menu "ESP Zigbee gateway compatibility"
-    config ZGW_ENABLE_LEGACY_SERVICE_FACADE
-        bool "Enable legacy zgw_service facade"
-        default n
-        help
-            Keep compatibility wrapper APIs from core/zgw_service.{h,c}.
-            Disable this when all internal/external callers use
-            zigbee_service, wifi_service and system_service directly.
-endmenu

@@ -638,12 +638,6 @@ CONFIG_PARTITION_TABLE_MD5=y
 # end of ESP Zigbee gateway tests
 
 #
-# ESP Zigbee gateway compatibility
-#
-# CONFIG_ZGW_ENABLE_LEGACY_SERVICE_FACADE is not set
-# end of ESP Zigbee gateway compatibility
-
-#
 # Compiler options
 #
 CONFIG_COMPILER_OPTIMIZATION_DEBUG=y

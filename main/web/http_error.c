@@ -87,9 +87,9 @@ esp_err_t http_success_send(httpd_req_t *req, const char *message)
 
     const char *msg = message ? message : "ok";
     char body[192];
-    int written = snprintf(body, sizeof(body), "{\"status\":\"ok\",\"message\":\"%s\"}", msg);
+    int written = snprintf(body, sizeof(body), "{\"status\":\"ok\",\"data\":{\"message\":\"%s\"}}", msg);
     if (written < 0 || (size_t)written >= sizeof(body)) {
-        strncpy(body, "{\"status\":\"ok\",\"message\":\"ok\"}", sizeof(body));
+        strncpy(body, "{\"status\":\"ok\",\"data\":{\"message\":\"ok\"}}", sizeof(body));
         body[sizeof(body) - 1] = '\0';
     }
 

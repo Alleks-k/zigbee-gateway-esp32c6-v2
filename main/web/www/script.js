@@ -40,7 +40,10 @@ async function requestJson(url, options = {}) {
         }
     }
     if (!response.ok) {
-        throw new Error(data.message || `HTTP ${response.status}`);
+        throw new Error((data.error && data.error.message) || data.message || `HTTP ${response.status}`);
+    }
+    if (data && data.status && data.status !== 'ok') {
+        throw new Error((data.error && data.error.message) || data.message || 'API error');
     }
     return data;
 }
@@ -85,9 +88,9 @@ function updateConnectionStatus(connected) {
  * Отримання статусу шлюзу та списку пристроїв
  */
 function fetchStatus() {
-    fetch(apiUrl('/status'))
-        .then(response => response.json())
-        .then(data => {
+    requestJson(apiUrl('/status'))
+        .then(resp => {
+            const data = resp.data || {};
             // Оновлення інформації про шлюз
             updateElementText('panId', '0x' + data.pan_id.toString(16).toUpperCase());
             updateElementText('channel', data.channel);
@@ -181,8 +184,8 @@ function permitJoin() {
     if (btn.disabled) return;
 
     requestJson(apiUrl('/permit_join'), { method: 'POST' })
-        .then(data => {
-            showToast(data.message || 'Network opened');
+        .then(resp => {
+            showToast((resp.data && resp.data.message) || resp.message || 'Network opened');
             
             // Запуск таймера на кнопці
             let timeLeft = 60;
@@ -224,11 +227,8 @@ function controlDevice(addr, ep, cmd) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
     })
-    .then(data => {
-        console.log('Control response:', data);
-        if (data.status !== 'ok') {
-            showToast('Error: ' + (data.message || 'Unknown error'));
-        }
+    .then(resp => {
+        console.log('Control response:', resp);
     })
     .catch(err => console.error('Control error:', err));
 }
@@ -246,8 +246,8 @@ function deleteDevice(addr) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
         })
-        .then(data => {
-            if (data.status === 'ok') {
+        .then(resp => {
+            if (resp.status === 'ok') {
                 fetchStatus(); // Одразу оновлюємо список
             } else {
                 showToast('Failed to delete device');
@@ -265,12 +265,9 @@ function scanWifi() {
     resultsDiv.style.display = 'block';
     resultsDiv.innerHTML = '<div class="scan-item">Сканування...</div>';
 
-    fetch(apiUrl('/wifi/scan'))
-        .then(response => {
-            if (!response.ok) throw new Error('Scan failed');
-            return response.json();
-        })
-        .then(networks => {
+    requestJson(apiUrl('/wifi/scan'))
+        .then(resp => {
+            const networks = Array.isArray(resp.data) ? resp.data : [];
             resultsDiv.innerHTML = '';
             if (networks.length === 0) {
                 resultsDiv.innerHTML = '<div class="scan-item">Мереж не знайдено</div>';
@@ -328,11 +325,11 @@ function saveWifiSettings() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ssid: ssid, password: password })
     })
-    .then(data => {
-        if (data.status === 'ok') {
+    .then(resp => {
+        if (resp.status === 'ok') {
             showToast("Налаштування збережено. Пристрій перезавантажується...");
         } else {
-            showToast("Помилка: " + (data.message || "Невідома помилка"));
+            showToast("Помилка: " + (resp.message || "Невідома помилка"));
         }
     })
     .catch(err => {
@@ -344,7 +341,7 @@ function saveWifiSettings() {
 function rebootGateway() {
     showConfirm("Перезавантажити шлюз?", () => {
         requestJson(apiUrl('/reboot'), { method: 'POST' })
-            .then(data => showToast("Перезавантаження..."))
+            .then(resp => showToast((resp.data && resp.data.message) || "Перезавантаження..."))
             .catch(err => showToast("Помилка запиту"));
     });
 }
@@ -352,7 +349,7 @@ function rebootGateway() {
 function factoryResetGateway() {
     showConfirm("Скинути пристрій до заводських налаштувань?", () => {
         requestJson(apiUrl('/factory_reset'), { method: 'POST' })
-            .then(data => showToast(data.message || "Factory reset..."))
+            .then(resp => showToast((resp.data && resp.data.message) || "Factory reset..."))
             .catch(err => showToast(err.message || "Помилка factory reset"));
     });
 }
@@ -426,8 +423,8 @@ function saveDeviceName() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ short_addr: addr, name: newName })
     })
-    .then(data => {
-        if (data.status === 'ok') {
+    .then(resp => {
+        if (resp.status === 'ok') {
             closeEditModal();
             fetchStatus(); // Оновлюємо список
             showToast("Renamed successfully");

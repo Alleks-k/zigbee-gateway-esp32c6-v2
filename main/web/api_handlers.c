@@ -193,10 +193,23 @@ esp_err_t api_status_handler(httpd_req_t *req)
         return http_error_send_esp(req, ESP_ERR_NO_MEM, "Failed to build status payload");
     }
 
-    httpd_resp_set_type(req, "application/json");
-    httpd_resp_sendstr(req, json_str);
+    size_t payload_len = strlen(json_str);
+    size_t wrapped_len = payload_len + 32;
+    char *wrapped = (char *)malloc(wrapped_len);
+    if (!wrapped) {
+        free((void *)json_str);
+        return http_error_send_esp(req, ESP_ERR_NO_MEM, "Failed to wrap status payload");
+    }
+    int written = snprintf(wrapped, wrapped_len, "{\"status\":\"ok\",\"data\":%s}", json_str);
+    free((void *)json_str);
+    if (written < 0 || (size_t)written >= wrapped_len) {
+        free(wrapped);
+        return http_error_send_esp(req, ESP_ERR_NO_MEM, "Failed to wrap status payload");
+    }
 
-    free((void*)json_str);
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, wrapped);
+    free(wrapped);
     return ESP_OK;
 }
 
@@ -266,8 +279,7 @@ esp_err_t api_wifi_scan_handler(httpd_req_t *req)
 
     if (count == 0) {
         httpd_resp_set_type(req, "application/json");
-        httpd_resp_sendstr(req, "[]");
-        return ESP_OK;
+        return httpd_resp_sendstr(req, "{\"status\":\"ok\",\"data\":[]}");
     }
 
     cJSON *root = cJSON_CreateArray();
@@ -295,9 +307,23 @@ esp_err_t api_wifi_scan_handler(httpd_req_t *req)
         return http_error_send_esp(req, ESP_ERR_NO_MEM, "Failed to build scan JSON");
     }
 
-    httpd_resp_set_type(req, "application/json");
-    httpd_resp_sendstr(req, json_str);
+    size_t payload_len = strlen(json_str);
+    size_t wrapped_len = payload_len + 32;
+    char *wrapped = (char *)malloc(wrapped_len);
+    if (!wrapped) {
+        free(json_str);
+        return http_error_send_esp(req, ESP_ERR_NO_MEM, "Failed to wrap scan JSON");
+    }
+    int written = snprintf(wrapped, wrapped_len, "{\"status\":\"ok\",\"data\":%s}", json_str);
     free(json_str);
+    if (written < 0 || (size_t)written >= wrapped_len) {
+        free(wrapped);
+        return http_error_send_esp(req, ESP_ERR_NO_MEM, "Failed to wrap scan JSON");
+    }
+
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, wrapped);
+    free(wrapped);
 
     return ESP_OK;
 }
@@ -326,8 +352,8 @@ esp_err_t api_factory_reset_handler(httpd_req_t *req)
 
     char resp[384];
     int written = snprintf(resp, sizeof(resp),
-        "{\"status\":\"ok\",\"message\":\"Factory reset done. Rebooting...\","
-        "\"details\":{\"wifi\":\"%s\",\"devices\":\"%s\",\"zigbee_storage\":\"%s\",\"zigbee_fct\":\"%s\"}}",
+        "{\"status\":\"ok\",\"data\":{\"message\":\"Factory reset done. Rebooting...\","
+        "\"details\":{\"wifi\":\"%s\",\"devices\":\"%s\",\"zigbee_storage\":\"%s\",\"zigbee_fct\":\"%s\"}}}",
         esp_err_to_name(report.wifi_err),
         esp_err_to_name(report.devices_err),
         esp_err_to_name(report.zigbee_storage_err),

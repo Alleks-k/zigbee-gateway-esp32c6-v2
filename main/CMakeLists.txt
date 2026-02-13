@@ -11,6 +11,7 @@ set(main_srcs
     "net/wifi_ap_fallback.c"
     "web/web_server.c"
     "web/api_handlers.c"
+    "web/api_contracts.c"
     "web/http_routes.c"
     "web/http_static.c"
     "web/ws_manager.c"

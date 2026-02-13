@@ -1,4 +1,5 @@
 #include "api_handlers.h"
+#include "api_contracts.h"
 #include "esp_log.h"
 #include "zigbee_service.h"
 #include "wifi_service.h"
@@ -216,98 +217,53 @@ esp_err_t api_permit_join_handler(httpd_req_t *req)
 /* API: Керування пристроєм */
 esp_err_t api_control_handler(httpd_req_t *req)
 {
-    char buf[128];
-    int len = httpd_req_recv(req, buf, sizeof(buf) - 1);
-    if (len <= 0) return ESP_FAIL;
-    buf[len] = '\0';
-    
-    cJSON *root = cJSON_Parse(buf);
-    if (!root) {
-        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
+    api_control_request_t in = {0};
+    if (api_parse_control_request(req, &in) != ESP_OK) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing parameters");
         return ESP_FAIL;
     }
 
-    cJSON *addr_item = cJSON_GetObjectItem(root, "addr");
-    cJSON *ep_item = cJSON_GetObjectItem(root, "ep");
-    cJSON *cmd_item = cJSON_GetObjectItem(root, "cmd");
-
-    if (cJSON_IsNumber(addr_item) && cJSON_IsNumber(ep_item) && cJSON_IsNumber(cmd_item)) {
-        uint16_t addr = (uint16_t)addr_item->valueint;
-        uint8_t endpoint = (uint8_t)ep_item->valueint;
-        uint8_t cmd = (uint8_t)cmd_item->valueint;
-
-        ESP_LOGI(TAG, "Web Control: addr=0x%04x, ep=%d, cmd=%d", addr, endpoint, cmd);
-        if (zigbee_service_send_on_off(addr, endpoint, cmd) != ESP_OK) {
-            httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Failed to send command");
-            cJSON_Delete(root);
-            return ESP_FAIL;
-        }
-        const char* resp = "{\"status\":\"ok\", \"message\":\"Command sent\"}";
-        httpd_resp_set_type(req, "application/json");
-        httpd_resp_sendstr(req, resp);
-    } else {
-        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing parameters");
+    ESP_LOGI(TAG, "Web Control: addr=0x%04x, ep=%d, cmd=%d", in.addr, in.ep, in.cmd);
+    if (zigbee_service_send_on_off(in.addr, in.ep, in.cmd) != ESP_OK) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Failed to send command");
+        return ESP_FAIL;
     }
-    cJSON_Delete(root);
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, "{\"status\":\"ok\", \"message\":\"Command sent\"}");
     return ESP_OK;
 }
 
 /* API: Видалення пристрою */
 esp_err_t api_delete_device_handler(httpd_req_t *req) {
-    char buf[128];
-    int len = httpd_req_recv(req, buf, sizeof(buf) - 1);
-    if (len <= 0) return ESP_FAIL;
-    buf[len] = '\0';
-
-    cJSON *root = cJSON_Parse(buf);
-    if (root) {
-        cJSON *addr_item = cJSON_GetObjectItem(root, "short_addr");
-        if (cJSON_IsNumber(addr_item)) {
-            if (zigbee_service_delete_device((uint16_t)addr_item->valueint) != ESP_OK) {
-                cJSON_Delete(root);
-                httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Delete failed");
-                return ESP_FAIL;
-            }
-            const char* resp = "{\"status\":\"ok\"}";
-            httpd_resp_set_type(req, "application/json");
-            httpd_resp_sendstr(req, resp);
-        } else {
-            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid address");
-        }
-        cJSON_Delete(root);
-    } else {
+    api_delete_request_t in = {0};
+    if (api_parse_delete_request(req, &in) != ESP_OK) {
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
+        return ESP_FAIL;
     }
+
+    if (zigbee_service_delete_device(in.short_addr) != ESP_OK) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Delete failed");
+        return ESP_FAIL;
+    }
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, "{\"status\":\"ok\"}");
     return ESP_OK;
 }
 
 /* API: Перейменування пристрою */
 esp_err_t api_rename_device_handler(httpd_req_t *req) {
-    char buf[128];
-    int len = httpd_req_recv(req, buf, sizeof(buf) - 1);
-    if (len <= 0) return ESP_FAIL;
-    buf[len] = '\0';
-
-    cJSON *root = cJSON_Parse(buf);
-    if (root) {
-        cJSON *addr_item = cJSON_GetObjectItem(root, "short_addr");
-        cJSON *name_item = cJSON_GetObjectItem(root, "name");
-        if (cJSON_IsNumber(addr_item) && cJSON_IsString(name_item)) {
-            if (zigbee_service_rename_device((uint16_t)addr_item->valueint, name_item->valuestring) != ESP_OK) {
-                cJSON_Delete(root);
-                httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Rename failed");
-                return ESP_FAIL;
-            }
-            const char* resp = "{\"status\":\"ok\"}";
-            httpd_resp_set_type(req, "application/json");
-            httpd_resp_sendstr(req, resp);
-        } else {
-            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid params");
-        }
-        cJSON_Delete(root);
-    } else {
+    api_rename_request_t in = {0};
+    if (api_parse_rename_request(req, &in) != ESP_OK) {
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
+        return ESP_FAIL;
     }
+
+    if (zigbee_service_rename_device(in.short_addr, in.name) != ESP_OK) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Rename failed");
+        return ESP_FAIL;
+    }
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, "{\"status\":\"ok\"}");
     return ESP_OK;
 }
 
@@ -377,40 +333,28 @@ esp_err_t api_factory_reset_handler(httpd_req_t *req)
 /* Збереження налаштувань Wi-Fi */
 esp_err_t api_wifi_save_handler(httpd_req_t *req)
 {
-    char buf[256];
-    int len = httpd_req_recv(req, buf, sizeof(buf) - 1);
-    if (len <= 0) return ESP_FAIL;
-    buf[len] = '\0';
-
-    cJSON *root = cJSON_Parse(buf);
-    if (!root) {
+    api_wifi_save_request_t in = {0};
+    if (api_parse_wifi_save_request(req, &in) != ESP_OK) {
         httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
         return ESP_FAIL;
     }
 
-    cJSON *ssid = cJSON_GetObjectItem(root, "ssid");
-    cJSON *pass = cJSON_GetObjectItem(root, "password");
-
-    if (cJSON_IsString(ssid) && cJSON_IsString(pass)) {
-        esp_err_t err = wifi_service_save_credentials(ssid->valuestring, pass->valuestring);
-        if (err == ESP_OK) {
-            if (system_service_schedule_reboot(1000) != ESP_OK) {
-                httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Failed to schedule reboot");
-                cJSON_Delete(root);
-                return ESP_FAIL;
-            }
-            const char* resp = "{\"status\":\"ok\", \"message\":\"Saved. Restarting...\"}";
-            httpd_resp_set_type(req, "application/json");
-            httpd_resp_sendstr(req, resp);
-        } else if (err == ESP_ERR_INVALID_ARG) {
-            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid SSID or password");
-        } else {
-            ESP_LOGE(TAG, "Failed to save Wi-Fi credentials: %s", esp_err_to_name(err));
-            httpd_resp_send_500(req);
+    esp_err_t err = wifi_service_save_credentials(in.ssid, in.password);
+    if (err == ESP_OK) {
+        if (system_service_schedule_reboot(1000) != ESP_OK) {
+            httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Failed to schedule reboot");
+            return ESP_FAIL;
         }
-    } else {
-        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing ssid or password");
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_sendstr(req, "{\"status\":\"ok\", \"message\":\"Saved. Restarting...\"}");
+        return ESP_OK;
     }
-    cJSON_Delete(root);
-    return ESP_OK;
+    if (err == ESP_ERR_INVALID_ARG) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid SSID or password");
+        return ESP_FAIL;
+    }
+
+    ESP_LOGE(TAG, "Failed to save Wi-Fi credentials: %s", esp_err_to_name(err));
+    httpd_resp_send_500(req);
+    return ESP_FAIL;
 }

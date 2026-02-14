@@ -6,10 +6,13 @@
 #include "error_ring.h"
 #include "gateway_state.h"
 #include "ws_manager.h"
+#include "web_server.h"
 #include "cJSON.h"
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
+#include "lwip/sockets.h"
+#include "lwip/inet.h"
 
 static void test_devices_json_builder_small_buffer_fails(void)
 {
@@ -417,6 +420,104 @@ static void test_ws_runtime_socket_lifecycle_disconnect_reconnect_backpressure(v
 }
 #endif
 
+#if CONFIG_GATEWAY_SELF_TEST_APP
+static int ws_connect_localhost(void)
+{
+    int fd = socket(AF_INET, SOCK_STREAM, IPPROTO_IP);
+    if (fd < 0) {
+        return -1;
+    }
+
+    struct sockaddr_in addr = {0};
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(80);
+    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
+        close(fd);
+        return -1;
+    }
+
+    struct timeval tv = {.tv_sec = 1, .tv_usec = 0};
+    (void)setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+    return fd;
+}
+
+static bool ws_send_handshake_and_wait_101(int fd)
+{
+    const char *req =
+        "GET /ws HTTP/1.1\r\n"
+        "Host: 127.0.0.1\r\n"
+        "Upgrade: websocket\r\n"
+        "Connection: Upgrade\r\n"
+        "Sec-WebSocket-Key: dGVzdF93c19rZXlfMTIzNDU2Nw==\r\n"
+        "Sec-WebSocket-Version: 13\r\n"
+        "\r\n";
+    if (send(fd, req, strlen(req), 0) < 0) {
+        return false;
+    }
+
+    char resp[512];
+    int n = recv(fd, resp, sizeof(resp) - 1, 0);
+    if (n <= 0) {
+        return false;
+    }
+    resp[n] = '\0';
+    return strstr(resp, "101 Switching Protocols") != NULL;
+}
+
+static bool ws_send_client_close_frame(int fd)
+{
+    const uint8_t close_frame[6] = {
+        0x88,       // FIN + CLOSE opcode
+        0x80,       // MASK + payload len 0
+        0x12, 0x34, 0x56, 0x78 // mask key
+    };
+    return send(fd, close_frame, sizeof(close_frame), 0) == (int)sizeof(close_frame);
+}
+
+static void test_ws_runtime_socket_lifecycle_real_stack_disconnect_reconnect_backpressure(void)
+{
+    stop_web_server();
+    start_web_server();
+    usleep(120000);
+
+    int fd1 = ws_connect_localhost();
+    TEST_ASSERT_TRUE(fd1 >= 0);
+    TEST_ASSERT_TRUE(ws_send_handshake_and_wait_101(fd1));
+    usleep(120000);
+    TEST_ASSERT_EQUAL_INT(1, ws_manager_get_client_count());
+
+    TEST_ASSERT_TRUE(ws_send_client_close_frame(fd1));
+    usleep(120000);
+    close(fd1);
+    usleep(120000);
+    TEST_ASSERT_EQUAL_INT(0, ws_manager_get_client_count());
+
+    int fd2 = ws_connect_localhost();
+    TEST_ASSERT_TRUE(fd2 >= 0);
+    TEST_ASSERT_TRUE(ws_send_handshake_and_wait_101(fd2));
+    usleep(120000);
+    TEST_ASSERT_EQUAL_INT(1, ws_manager_get_client_count());
+
+    // Abrupt disconnect (no WS close) + broadcast => send failure path should prune client.
+    close(fd2);
+    usleep(120000);
+    ws_broadcast_status();
+    usleep(120000);
+    TEST_ASSERT_EQUAL_INT(0, ws_manager_get_client_count());
+
+    int fd3 = ws_connect_localhost();
+    TEST_ASSERT_TRUE(fd3 >= 0);
+    TEST_ASSERT_TRUE(ws_send_handshake_and_wait_101(fd3));
+    usleep(120000);
+    TEST_ASSERT_EQUAL_INT(1, ws_manager_get_client_count());
+    close(fd3);
+    usleep(120000);
+
+    stop_web_server();
+}
+#endif
+
 void gateway_web_register_self_tests(void)
 {
     RUN_TEST(test_devices_json_builder_small_buffer_fails);
@@ -437,5 +538,6 @@ void gateway_web_register_self_tests(void)
     RUN_TEST(test_ws_lqi_update_envelope_smoke);
 #if CONFIG_GATEWAY_SELF_TEST_APP
     RUN_TEST(test_ws_runtime_socket_lifecycle_disconnect_reconnect_backpressure);
+    RUN_TEST(test_ws_runtime_socket_lifecycle_real_stack_disconnect_reconnect_backpressure);
 #endif
 }

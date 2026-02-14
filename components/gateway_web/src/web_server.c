@@ -43,3 +43,12 @@ void start_web_server(void)
         ESP_LOGE(TAG, "Failed to start HTTP server");
     }
 }
+
+void stop_web_server(void)
+{
+    if (server) {
+        ESP_LOGI(TAG, "Stopping Web Server");
+        httpd_stop(server);
+        server = NULL;
+    }
+}

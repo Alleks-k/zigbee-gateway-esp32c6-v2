@@ -9,6 +9,7 @@
 #include "web_server.h"
 #include "cJSON.h"
 #include <stdio.h>
+#include <inttypes.h>
 #include <string.h>
 #include <unistd.h>
 #include "lwip/sockets.h"
@@ -329,11 +330,50 @@ static int s_ws_test_active_fd = 0;
 static int s_ws_test_send_calls = 0;
 static int s_ws_test_fail_fd = -1;
 static int s_ws_test_close_calls = 0;
+static bool s_ws_test_stress_mode = false;
+static int s_ws_stress_send_calls = 0;
+static int s_ws_stress_send_fd_301 = 0;
+static int s_ws_stress_send_fd_302 = 0;
+static int s_ws_stress_send_fd_303 = 0;
+
+static void ws_seed_large_device_snapshot(uint32_t iter)
+{
+    zb_device_t devices[MAX_DEVICES];
+    int count = (MAX_DEVICES > 10) ? 10 : MAX_DEVICES;
+    memset(devices, 0, sizeof(devices));
+    for (int i = 0; i < count; i++) {
+        devices[i].short_addr = (uint16_t)(0x2000 + i);
+        snprintf(devices[i].name, sizeof(devices[i].name), "BackpressureNode-%02d-%04" PRIu32, i, iter);
+    }
+    TEST_ASSERT_EQUAL(ESP_OK, gateway_state_set_devices(devices, count));
+}
 
 static esp_err_t ws_test_send_frame_async(httpd_handle_t hd, int fd, httpd_ws_frame_t *frame)
 {
     (void)hd;
     (void)frame;
+    if (s_ws_test_stress_mode) {
+        s_ws_stress_send_calls++;
+        if (fd == 301) {
+            s_ws_stress_send_fd_301++;
+            return ESP_OK;
+        }
+        if (fd == 302) {
+            s_ws_stress_send_fd_302++;
+            if (s_ws_stress_send_fd_302 > 8) {
+                return ESP_ERR_NO_MEM;
+            }
+            return ESP_OK;
+        }
+        if (fd == 303) {
+            s_ws_stress_send_fd_303++;
+            if (s_ws_stress_send_fd_303 > 16) {
+                return ESP_ERR_TIMEOUT;
+            }
+            return ESP_OK;
+        }
+        return ESP_OK;
+    }
     s_ws_test_send_calls++;
     if (fd == s_ws_test_fail_fd) {
         return ESP_FAIL;
@@ -416,6 +456,51 @@ static void test_ws_runtime_socket_lifecycle_disconnect_reconnect_backpressure(v
     TEST_ASSERT_EQUAL_INT(0, ws_manager_get_client_count());
     TEST_ASSERT_EQUAL_INT(1, s_ws_test_close_calls);
 
+    ws_manager_reset_transport_ops_for_test();
+}
+
+static void test_ws_runtime_backpressure_stress_prunes_clients_and_stays_responsive(void)
+{
+    s_ws_test_stress_mode = true;
+    s_ws_stress_send_calls = 0;
+    s_ws_stress_send_fd_301 = 0;
+    s_ws_stress_send_fd_302 = 0;
+    s_ws_stress_send_fd_303 = 0;
+
+    ws_manager_transport_ops_t ops = {
+        .send_frame_async = ws_test_send_frame_async,
+        .req_to_sockfd = ws_test_req_to_sockfd,
+        .ws_recv_frame = ws_test_recv_frame,
+        .resp_set_status = ws_test_resp_set_status,
+        .resp_send = ws_test_resp_send,
+        .close_socket = ws_test_close_socket,
+    };
+    ws_manager_set_transport_ops_for_test(&ops);
+    ws_manager_init((httpd_handle_t)0x1);
+
+    httpd_req_t req = {0};
+    req.method = HTTP_GET;
+
+    s_ws_test_active_fd = 301;
+    TEST_ASSERT_EQUAL(ESP_OK, ws_handler(&req));
+    s_ws_test_active_fd = 302;
+    TEST_ASSERT_EQUAL(ESP_OK, ws_handler(&req));
+    s_ws_test_active_fd = 303;
+    TEST_ASSERT_EQUAL(ESP_OK, ws_handler(&req));
+    TEST_ASSERT_EQUAL_INT(3, ws_manager_get_client_count());
+
+    for (int i = 0; i < 28; i++) {
+        ws_seed_large_device_snapshot((uint32_t)i);
+        ws_broadcast_status();
+        usleep(130000);
+    }
+
+    TEST_ASSERT_GREATER_THAN_INT(20, s_ws_stress_send_calls);
+    TEST_ASSERT_GREATER_THAN_INT(8, s_ws_stress_send_fd_302);
+    TEST_ASSERT_GREATER_THAN_INT(16, s_ws_stress_send_fd_303);
+    TEST_ASSERT_EQUAL_INT(1, ws_manager_get_client_count());
+
+    s_ws_test_stress_mode = false;
     ws_manager_reset_transport_ops_for_test();
 }
 #endif
@@ -538,6 +623,7 @@ void gateway_web_register_self_tests(void)
     RUN_TEST(test_ws_lqi_update_envelope_smoke);
 #if CONFIG_GATEWAY_SELF_TEST_APP
     RUN_TEST(test_ws_runtime_socket_lifecycle_disconnect_reconnect_backpressure);
+    RUN_TEST(test_ws_runtime_backpressure_stress_prunes_clients_and_stays_responsive);
     RUN_TEST(test_ws_runtime_socket_lifecycle_real_stack_disconnect_reconnect_backpressure);
 #endif
 }

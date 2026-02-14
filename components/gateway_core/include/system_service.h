@@ -43,3 +43,9 @@ esp_err_t system_service_schedule_reboot(uint32_t delay_ms);
 esp_err_t system_service_factory_reset_and_reboot(uint32_t reboot_delay_ms);
 esp_err_t system_service_get_last_factory_reset_report(system_factory_reset_report_t *out_report);
 esp_err_t system_service_collect_telemetry(system_telemetry_t *out);
+
+#if CONFIG_GATEWAY_SELF_TEST_APP
+bool system_service_is_reboot_scheduled_for_test(void);
+uint32_t system_service_get_reboot_schedule_count_for_test(void);
+void system_service_reset_reboot_singleflight_for_test(void);
+#endif

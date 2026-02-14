@@ -89,10 +89,17 @@ esp_err_t api_jobs_submit_handler(httpd_req_t *req)
         return http_error_send_esp(req, err, "Failed to queue job");
     }
 
+    zgw_job_info_t info = {0};
+    const char *state = "queued";
+    err = job_queue_get(job_id, &info);
+    if (err == ESP_OK) {
+        state = job_queue_state_to_string(info.state);
+    }
+
     char data_json[160];
     int written = snprintf(data_json, sizeof(data_json),
-                           "{\"job_id\":%" PRIu32 ",\"type\":\"%s\",\"state\":\"queued\"}",
-                           job_id, job_queue_type_to_string(type));
+                           "{\"job_id\":%" PRIu32 ",\"type\":\"%s\",\"state\":\"%s\"}",
+                           job_id, job_queue_type_to_string(type), state);
     if (written < 0 || (size_t)written >= sizeof(data_json)) {
         return http_error_send_esp(req, ESP_ERR_NO_MEM, "Failed to build job response");
     }

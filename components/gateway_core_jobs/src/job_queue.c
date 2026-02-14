@@ -102,6 +102,26 @@ static int alloc_slot_index(void)
     return -1;
 }
 
+static int find_inflight_slot_index(zgw_job_type_t type, uint32_t reboot_delay_ms)
+{
+    for (int i = 0; i < ZGW_JOB_MAX; i++) {
+        if (!s_jobs[i].used) {
+            continue;
+        }
+        if (s_jobs[i].type != type) {
+            continue;
+        }
+        if (s_jobs[i].state != ZGW_JOB_STATE_QUEUED && s_jobs[i].state != ZGW_JOB_STATE_RUNNING) {
+            continue;
+        }
+        if (type == ZGW_JOB_TYPE_REBOOT && s_jobs[i].reboot_delay_ms != reboot_delay_ms) {
+            continue;
+        }
+        return i;
+    }
+    return -1;
+}
+
 static void prune_completed_jobs_locked(uint64_t now)
 {
     for (int i = 0; i < ZGW_JOB_MAX; i++) {
@@ -430,6 +450,18 @@ esp_err_t job_queue_submit(zgw_job_type_t type, uint32_t reboot_delay_ms, uint32
 
     xSemaphoreTake(s_mutex, portMAX_DELAY);
     prune_completed_jobs_locked(now_ms());
+    int inflight_idx = find_inflight_slot_index(type, reboot_delay_ms);
+    if (inflight_idx >= 0) {
+        uint32_t inflight_id = s_jobs[inflight_idx].id;
+        zgw_job_state_t inflight_state = s_jobs[inflight_idx].state;
+        *out_job_id = inflight_id;
+        xSemaphoreGive(s_mutex);
+        ESP_LOGI(TAG, "Job single-flight reuse id=%" PRIu32 " type=%s state=%s",
+                 inflight_id,
+                 job_queue_type_to_string(type),
+                 job_queue_state_to_string(inflight_state));
+        return ESP_OK;
+    }
     int idx = alloc_slot_index();
     if (idx < 0) {
         xSemaphoreGive(s_mutex);

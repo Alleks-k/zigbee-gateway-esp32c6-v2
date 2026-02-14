@@ -5,6 +5,7 @@
 #include "wifi_init.h"
 #include "gateway_state.h"
 #include "job_queue.h"
+#include "system_service.h"
 #include "esp_timer.h"
 #include "freertos/task.h"
 #include <stdlib.h>
@@ -84,6 +85,13 @@ static void mock_wifi_scan_free_impl(wifi_ap_info_t *list)
 {
     s_mock_wifi_scan_free_called++;
     free(list);
+}
+
+static esp_err_t mock_wifi_scan_slow_impl(wifi_ap_info_t **out_list, size_t *out_count)
+{
+    esp_err_t ret = mock_wifi_scan_impl(out_list, out_count);
+    vTaskDelay(pdMS_TO_TICKS(250));
+    return ret;
 }
 
 static void mock_net_platform_services_init(void)
@@ -369,6 +377,42 @@ static void test_e2e_job_queue_reuses_completed_slots_without_saturation(void)
     wifi_service_register_scan_impl(NULL, NULL);
 }
 
+static void test_e2e_job_queue_singleflight_reuses_inflight_id(void)
+{
+    reset_api_mocks();
+    wifi_service_register_scan_impl(mock_wifi_scan_slow_impl, mock_wifi_scan_free_impl);
+
+    uint32_t job_id_1 = 0;
+    uint32_t job_id_2 = 0;
+    TEST_ASSERT_EQUAL(ESP_OK, job_queue_submit(ZGW_JOB_TYPE_WIFI_SCAN, 0, &job_id_1));
+    TEST_ASSERT_NOT_EQUAL(0, job_id_1);
+    TEST_ASSERT_EQUAL(ESP_OK, job_queue_submit(ZGW_JOB_TYPE_WIFI_SCAN, 0, &job_id_2));
+    TEST_ASSERT_EQUAL_UINT32(job_id_1, job_id_2);
+
+    zgw_job_info_t info = {0};
+    TEST_ASSERT_EQUAL(ESP_OK, wait_job_done(job_id_1, 3000, &info));
+    TEST_ASSERT_EQUAL(ZGW_JOB_STATE_SUCCEEDED, info.state);
+    TEST_ASSERT_EQUAL_INT(1, s_mock_wifi_scan_called);
+    TEST_ASSERT_EQUAL_INT(1, s_mock_wifi_scan_free_called);
+
+    wifi_service_register_scan_impl(NULL, NULL);
+}
+
+static void test_e2e_reboot_singleflight_schedules_once(void)
+{
+    system_service_reset_reboot_singleflight_for_test();
+    TEST_ASSERT_FALSE(system_service_is_reboot_scheduled_for_test());
+    TEST_ASSERT_EQUAL_UINT32(0, system_service_get_reboot_schedule_count_for_test());
+
+    TEST_ASSERT_EQUAL(ESP_OK, system_service_schedule_reboot(600000));
+    TEST_ASSERT_TRUE(system_service_is_reboot_scheduled_for_test());
+    TEST_ASSERT_EQUAL_UINT32(1, system_service_get_reboot_schedule_count_for_test());
+
+    TEST_ASSERT_EQUAL(ESP_OK, system_service_schedule_reboot(600000));
+    TEST_ASSERT_TRUE(system_service_is_reboot_scheduled_for_test());
+    TEST_ASSERT_EQUAL_UINT32(1, system_service_get_reboot_schedule_count_for_test());
+}
+
 void zgw_register_e2e_self_tests(void)
 {
     RUN_TEST(test_e2e_control_contract_and_usecase);
@@ -380,6 +424,8 @@ void zgw_register_e2e_self_tests(void)
     RUN_TEST(test_e2e_wifi_scan_contract_and_usecase);
     RUN_TEST(test_e2e_wifi_connect_retry_exhausted_switches_to_ap_fallback);
     RUN_TEST(test_e2e_job_queue_reuses_completed_slots_without_saturation);
+    RUN_TEST(test_e2e_job_queue_singleflight_reuses_inflight_id);
+    RUN_TEST(test_e2e_reboot_singleflight_schedules_once);
     RUN_TEST(test_e2e_factory_reset_usecase_mock);
     RUN_TEST(test_e2e_endpoint_factory_reset_success);
 }

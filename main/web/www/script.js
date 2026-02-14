@@ -15,6 +15,7 @@ const JOB_POLL_INTERVAL_MS = 600;
 const JOB_TIMEOUT_MS = 30000;
 const LQI_STALE_MS = 60000;
 const LQI_HISTORY_WINDOW_MS = 15 * 60 * 1000;
+const LQI_AUTO_REFRESH_MS = 15000;
 const TEMP_WARN_C = 75;
 const TEMP_CRIT_C = 85;
 const WS_RETRY_BASE_MS = 1000;
@@ -28,6 +29,9 @@ let currentLqiRows = [];
 const lqiHistoryByAddr = new Map();
 let wsRetryAttempt = 0;
 let wsReconnectTimer = null;
+let wsConnected = false;
+let lqiAutoRefreshInFlight = false;
+let lqiLastRefreshStartedAtMs = 0;
 
 function apiUrl(path) {
     return API_BASE + path;
@@ -51,12 +55,19 @@ document.addEventListener('DOMContentLoaded', () => {
         refreshLqiBtn.addEventListener('click', refreshLqiActive);
     }
 
+    document.addEventListener('visibilitychange', () => {
+        if (isLqiActiveSession() && !lqiAutoRefreshInFlight) {
+            fetchLqiMap();
+        }
+    });
+
     // WS is primary; periodic status refresh is a safety fallback.
     setInterval(fetchStatus, 10000);
     setInterval(() => {
         updateLqiMeta(currentLqiMeta);
         updateLqiAgeCells();
     }, 5000);
+    setInterval(maybeAutoRefreshLqi, 2000);
 });
 
 async function requestJson(url, options = {}) {
@@ -201,6 +212,7 @@ function initWebSocket() {
             wsReconnectTimer = null;
         }
         updateConnectionStatus(true);
+        wsConnected = true;
         // WS-first mode. HTTP pull only as one-time safety fallback.
         setTimeout(fetchLqiMap, 1200);
     };
@@ -266,8 +278,21 @@ function initWebSocket() {
             readyState: ws.readyState
         });
         updateConnectionStatus(false);
+        wsConnected = false;
         scheduleWsReconnect();
     };
+}
+
+function isLqiActiveSession() {
+    return wsConnected && document.visibilityState === 'visible';
+}
+
+function maybeAutoRefreshLqi() {
+    if (!isLqiActiveSession()) return;
+    if (lqiAutoRefreshInFlight) return;
+    const elapsed = Date.now() - lqiLastRefreshStartedAtMs;
+    if (elapsed < LQI_AUTO_REFRESH_MS) return;
+    refreshLqiActive({ silent: true, auto: true });
 }
 
 function updateConnectionStatus(connected) {
@@ -317,15 +342,31 @@ function fetchLqiMap() {
         });
 }
 
-function refreshLqiActive() {
-    setButtonBusy('refreshLqiBtn', true);
-    submitJob('lqi_refresh', {}, { label: 'LQI refresh', timeoutMs: 12000 })
+function refreshLqiActive(opts = {}) {
+    const silent = !!opts.silent;
+    const auto = !!opts.auto;
+    if (lqiAutoRefreshInFlight) {
+        return Promise.resolve();
+    }
+    lqiAutoRefreshInFlight = true;
+    lqiLastRefreshStartedAtMs = Date.now();
+    if (!auto) {
+        setButtonBusy('refreshLqiBtn', true);
+    }
+    return submitJob('lqi_refresh', {}, { label: auto ? 'LQI auto refresh' : 'LQI refresh', timeoutMs: 12000 })
         .then(() => fetchLqiMap())
         .catch(err => {
             console.error('LQI refresh failed:', err);
-            showToast(err.message || 'LQI refresh failed');
+            if (!silent) {
+                showToast(err.message || 'LQI refresh failed');
+            }
         })
-        .finally(() => setButtonBusy('refreshLqiBtn', false));
+        .finally(() => {
+            lqiAutoRefreshInFlight = false;
+            if (!auto) {
+                setButtonBusy('refreshLqiBtn', false);
+            }
+        });
 }
 
 function applyHealthData(data) {
@@ -594,10 +635,15 @@ function buildRouterHints(rows) {
     const hints = [];
     const badRows = [];
     const degradingRows = [];
+    const weakRows = [];
 
     rows.forEach((row) => {
         const quality = normalizeLqiQuality(row.quality);
         const trend = trendForAddr(Number(row.short_addr || 0));
+        const lqiNum = Number(row.lqi);
+        if (Number.isFinite(lqiNum) && lqiNum < 80) {
+            weakRows.push(row);
+        }
         if (quality === 'bad') {
             badRows.push(row);
         }
@@ -626,6 +672,13 @@ function buildRouterHints(rows) {
             text: 'Multiple bad links detected. Consider at least one powered Zigbee router in each far room.',
         });
     }
+
+    weakRows.slice(0, 2).forEach((row) => {
+        hints.push({
+            cls: 'hint-warn',
+            text: `Weak link detected for ${(row.name || shortAddrHex(row.short_addr))}: LQI ${Number(row.lqi)} (<80).`,
+        });
+    });
 
     return hints.slice(0, 4);
 }
@@ -677,7 +730,9 @@ function qualityStrokeWidth(quality, lqiValue) {
 function graphSignalLabel(lqiValue, rssiValue) {
     const lqiText = (lqiValue === null || lqiValue === undefined) ? '--' : String(lqiValue);
     const rssiText = (rssiValue === null || rssiValue === undefined) ? '--' : `${rssiValue} dBm`;
-    return `LQI ${lqiText} | RSSI ${rssiText}`;
+    const lqiNum = Number(lqiValue);
+    const weak = Number.isFinite(lqiNum) && lqiNum < 80;
+    return weak ? `LQI ${lqiText} (weak) | RSSI ${rssiText}` : `LQI ${lqiText} | RSSI ${rssiText}`;
 }
 
 function renderLqiGraph(rows) {
@@ -774,11 +829,30 @@ function updateLqiMeta(meta) {
     staleEl.textContent = stale ? 'stale' : 'fresh';
 }
 
+function updateLqiRssiInfoBadge(rows, meta) {
+    const badge = document.getElementById('lqiRssiInfoBadge');
+    if (!badge) return;
+    const source = String((meta && meta.source) || '').toLowerCase();
+    const list = Array.isArray(rows) ? rows : [];
+    if (source !== 'mgmt_lqi' || list.length === 0) {
+        badge.style.display = 'none';
+        return;
+    }
+    const nullRssiCount = list.filter((r) => r && (r.rssi === null || r.rssi === undefined)).length;
+    if (nullRssiCount > 0) {
+        badge.textContent = `no RSSI in Mgmt LQI (expected, ${nullRssiCount}/${list.length})`;
+        badge.style.display = 'inline-block';
+    } else {
+        badge.style.display = 'none';
+    }
+}
+
 function renderLqiTable(rows, meta) {
     const tbody = document.getElementById('lqiTableBody');
     if (!tbody) return;
     currentLqiRows = Array.isArray(rows) ? rows : [];
     updateLqiMeta(meta || null);
+    updateLqiRssiInfoBadge(currentLqiRows, meta || null);
 
     tbody.innerHTML = '';
     if (!currentLqiRows || currentLqiRows.length === 0) {
@@ -795,12 +869,22 @@ function renderLqiTable(rows, meta) {
         const tr = document.createElement('tr');
         const addrHex = '0x' + Number(row.short_addr || 0).toString(16).toUpperCase().padStart(4, '0');
         const quality = normalizeLqiQuality(row.quality);
+        const lqiNum = Number(row.lqi);
+        const weakLink = Number.isFinite(lqiNum) && lqiNum < 80;
         const lqiText = row.lqi === null || row.lqi === undefined ? '--' : String(row.lqi);
         const rssiText = row.rssi === null || row.rssi === undefined ? '--' : `${row.rssi} dBm`;
         const rowUpdatedMs = Number.isFinite(Number(row.updated_ms)) ? Number(row.updated_ms) : null;
         let rowAgeSec = globalAgeSec;
         if (metaUpdatedMs !== null && rowUpdatedMs !== null && metaUpdatedMs >= rowUpdatedMs) {
-            rowAgeSec = Math.max(0, Math.round((metaUpdatedMs - rowUpdatedMs) / 1000));
+            const deltaSec = Math.max(0, Math.round((metaUpdatedMs - rowUpdatedMs) / 1000));
+            /* Keep age monotonic on UI side: if backend counters are equal (delta=0),
+             * do not reset visible age back to 0 between periodic refreshes.
+             */
+            if (rowAgeSec === null || rowAgeSec === undefined) {
+                rowAgeSec = deltaSec;
+            } else {
+                rowAgeSec = Math.max(rowAgeSec, deltaSec);
+            }
         }
         const ageText = formatAge(rowAgeSec);
         const hasMetrics = quality !== 'unknown';
@@ -808,13 +892,15 @@ function renderLqiTable(rows, meta) {
         const sourceText = lqiSourceLabel(row.source || (meta && meta.source) || 'unknown');
         const trend = trendForAddr(Number(row.short_addr || 0));
 
+        const qualityLabel = weakLink ? `${quality}<span class="lqi-weak-badge">weak link</span>` : quality;
+
         tr.innerHTML = `
             <td>${(row.name || 'Пристрій')}</td>
             <td>${addrHex}</td>
             <td>${lqiText}</td>
             <td class="lqi-age-cell">${ageText}</td>
             <td>${rssiText}</td>
-            <td><span class="lqi-quality ${quality}">${quality}</span></td>
+            <td><span class="lqi-quality ${quality}">${qualityLabel}</span></td>
             <td><span class="lqi-trend ${trend.cls}">${trend.text}</span></td>
             <td><span class="lqi-link">${directText}</span></td>
             <td>${sourceText}</td>

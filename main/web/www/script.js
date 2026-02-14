@@ -371,6 +371,14 @@ function lqiSourceLabel(source) {
     return 'Unknown';
 }
 
+function normalizeLqiQuality(raw) {
+    const q = String(raw || 'unknown').toLowerCase();
+    if (q === 'fair') return 'warn';
+    if (q === 'poor') return 'bad';
+    if (q === 'good' || q === 'warn' || q === 'bad' || q === 'unknown') return q;
+    return 'unknown';
+}
+
 function updateLqiMeta(meta) {
     const sourceEl = document.getElementById('lqiSource');
     const updatedEl = document.getElementById('lqiUpdated');
@@ -422,7 +430,7 @@ function renderLqiTable(rows, meta) {
     rows.forEach(row => {
         const tr = document.createElement('tr');
         const addrHex = '0x' + Number(row.short_addr || 0).toString(16).toUpperCase().padStart(4, '0');
-        const quality = String(row.quality || 'unknown').toLowerCase();
+        const quality = normalizeLqiQuality(row.quality);
         const lqiText = row.lqi === null || row.lqi === undefined ? '--' : String(row.lqi);
         const rssiText = row.rssi === null || row.rssi === undefined ? '--' : `${row.rssi} dBm`;
         const directText = row.direct ? 'direct' : 'indirect';

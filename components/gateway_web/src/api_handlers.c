@@ -40,9 +40,9 @@ static const char *lqi_quality_label(int lqi, int rssi)
         return "good";
     }
     if (lqi >= 120) {
-        return "fair";
+        return "warn";
     }
-    return "poor";
+    return "bad";
 }
 
 static const char *lqi_source_label(zigbee_lqi_source_t source)

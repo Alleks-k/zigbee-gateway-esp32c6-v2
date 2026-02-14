@@ -298,12 +298,14 @@ input[type="text"], input[type="password"] {
     border-color: #91e0b8;
 }
 
+.lqi-quality.warn,
 .lqi-quality.fair {
     color: #8a4f00;
     background: #ffe8c2;
     border-color: #ffd08a;
 }
 
+.lqi-quality.bad,
 .lqi-quality.poor {
     color: #9f1239;
     background: #ffe0e7;

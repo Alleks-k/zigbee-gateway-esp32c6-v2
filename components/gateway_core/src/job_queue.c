@@ -218,9 +218,9 @@ static const char *lqi_quality_label_from_value(int lqi, int rssi)
         return "good";
     }
     if (lqi >= 120) {
-        return "fair";
+        return "warn";
     }
-    return "poor";
+    return "bad";
 }
 
 static esp_err_t build_lqi_refresh_result_json(char *out, size_t out_size)

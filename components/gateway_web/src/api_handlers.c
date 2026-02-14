@@ -675,7 +675,8 @@ esp_err_t api_health_handler(httpd_req_t *req)
     for (int i = 0; i < 4; i++) {
         char *health_json = (char *)malloc(needed);
         if (!health_json) {
-            return http_error_send_esp(req, ESP_ERR_NO_MEM, "Out of memory");
+            // Avoid ring amplification loop for /health failures.
+            return http_error_send(req, 503, "no_memory", "Out of memory");
         }
 
         size_t health_len = 0;
@@ -684,19 +685,22 @@ esp_err_t api_health_handler(httpd_req_t *req)
             esp_err_t send_ret = http_success_send_data_json(req, health_json);
             free(health_json);
             if (send_ret == ESP_ERR_NO_MEM) {
-                return http_error_send_esp(req, ESP_ERR_NO_MEM, "Failed to wrap health payload");
+                // Avoid ring amplification loop for /health failures.
+                return http_error_send(req, 503, "no_memory", "Failed to wrap health payload");
             }
             return send_ret;
         }
 
         free(health_json);
         if (ret != ESP_ERR_NO_MEM) {
-            return http_error_send_esp(req, ret, "Failed to build health payload");
+            // Avoid ring amplification loop for /health failures.
+            return http_error_send(req, 500, "internal_error", "Failed to build health payload");
         }
         needed *= 2;
     }
 
-    return http_error_send_esp(req, ESP_ERR_NO_MEM, "Health payload too large");
+    // Avoid ring amplification loop for /health failures.
+    return http_error_send(req, 503, "no_memory", "Health payload too large");
 }
 
     /* API: Відкрити мережу (Permit Join) */

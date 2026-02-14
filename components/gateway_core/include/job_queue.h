@@ -11,6 +11,7 @@ typedef enum {
     ZGW_JOB_TYPE_FACTORY_RESET,
     ZGW_JOB_TYPE_REBOOT,
     ZGW_JOB_TYPE_UPDATE,
+    ZGW_JOB_TYPE_LQI_REFRESH,
 } zgw_job_type_t;
 
 typedef enum {
@@ -37,4 +38,3 @@ esp_err_t job_queue_get(uint32_t job_id, zgw_job_info_t *out_info);
 
 const char *job_queue_type_to_string(zgw_job_type_t type);
 const char *job_queue_state_to_string(zgw_job_state_t state);
-

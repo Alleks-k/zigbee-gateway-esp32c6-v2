@@ -3,6 +3,7 @@
 #include "system_service.h"
 #include "settings_manager.h"
 #include "rcp_tool.h"
+#include "zigbee_service.h"
 #include "esp_timer.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
@@ -49,6 +50,7 @@ const char *job_queue_type_to_string(zgw_job_type_t type)
     case ZGW_JOB_TYPE_FACTORY_RESET: return "factory_reset";
     case ZGW_JOB_TYPE_REBOOT: return "reboot";
     case ZGW_JOB_TYPE_UPDATE: return "update";
+    case ZGW_JOB_TYPE_LQI_REFRESH: return "lqi_refresh";
     default: return "unknown";
     }
 }
@@ -205,6 +207,70 @@ static esp_err_t build_update_result_json(char *out, size_t out_size)
 #endif
 }
 
+static const char *lqi_quality_label_from_value(int lqi, int rssi)
+{
+    if (lqi <= 0 || rssi == 127 || rssi <= -127) {
+        return "unknown";
+    }
+    if (lqi >= 180) {
+        return "good";
+    }
+    if (lqi >= 120) {
+        return "fair";
+    }
+    return "poor";
+}
+
+static esp_err_t build_lqi_refresh_result_json(char *out, size_t out_size)
+{
+    zigbee_neighbor_lqi_t neighbors[MAX_DEVICES] = {0};
+    int count = 0;
+    esp_err_t err = zigbee_service_refresh_neighbor_lqi_snapshot(neighbors, MAX_DEVICES, &count);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    cJSON *root = cJSON_CreateObject();
+    cJSON *arr = cJSON_CreateArray();
+    if (!root || !arr) {
+        cJSON_Delete(root);
+        cJSON_Delete(arr);
+        return ESP_ERR_NO_MEM;
+    }
+    cJSON_AddNumberToObject(root, "count", count);
+    cJSON_AddItemToObject(root, "neighbors", arr);
+
+    for (int i = 0; i < count; i++) {
+        cJSON *item = cJSON_CreateObject();
+        if (!item) {
+            cJSON_Delete(root);
+            return ESP_ERR_NO_MEM;
+        }
+        cJSON_AddNumberToObject(item, "short_addr", neighbors[i].short_addr);
+        if (neighbors[i].lqi <= 0 || neighbors[i].rssi == 127 || neighbors[i].rssi <= -127) {
+            cJSON_AddNullToObject(item, "lqi");
+            cJSON_AddNullToObject(item, "rssi");
+        } else {
+            cJSON_AddNumberToObject(item, "lqi", neighbors[i].lqi);
+            cJSON_AddNumberToObject(item, "rssi", neighbors[i].rssi);
+        }
+        cJSON_AddStringToObject(item, "quality", lqi_quality_label_from_value(neighbors[i].lqi, neighbors[i].rssi));
+        cJSON_AddItemToArray(arr, item);
+    }
+
+    char *json = cJSON_PrintUnformatted(root);
+    cJSON_Delete(root);
+    if (!json) {
+        return ESP_ERR_NO_MEM;
+    }
+    int written = snprintf(out, out_size, "%s", json);
+    free(json);
+    if (written < 0 || (size_t)written >= out_size) {
+        return ESP_ERR_NO_MEM;
+    }
+    return ESP_OK;
+}
+
 static void execute_job(uint32_t job_id)
 {
     zgw_job_type_t type = ZGW_JOB_TYPE_WIFI_SCAN;
@@ -236,6 +302,9 @@ static void execute_job(uint32_t job_id)
         break;
     case ZGW_JOB_TYPE_UPDATE:
         exec_err = build_update_result_json(result, sizeof(result));
+        break;
+    case ZGW_JOB_TYPE_LQI_REFRESH:
+        exec_err = build_lqi_refresh_result_json(result, sizeof(result));
         break;
     default:
         exec_err = ESP_ERR_INVALID_ARG;
@@ -376,4 +445,3 @@ esp_err_t job_queue_get(uint32_t job_id, zgw_job_info_t *out_info)
     xSemaphoreGive(s_mutex);
     return ESP_OK;
 }
-

@@ -95,7 +95,8 @@ static bool valid_job_type(const char *type)
            (strcmp(type, "scan") == 0 ||
             strcmp(type, "factory_reset") == 0 ||
             strcmp(type, "reboot") == 0 ||
-            strcmp(type, "update") == 0);
+            strcmp(type, "update") == 0 ||
+            strcmp(type, "lqi_refresh") == 0);
 }
 
 static esp_err_t parse_job_submit_root(cJSON *root, api_job_submit_request_t *out)

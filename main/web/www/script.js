@@ -36,7 +36,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     const refreshLqiBtn = document.getElementById('refreshLqiBtn');
     if (refreshLqiBtn) {
-        refreshLqiBtn.addEventListener('click', fetchLqiMap);
+        refreshLqiBtn.addEventListener('click', refreshLqiActive);
     }
 
     // WS is primary; periodic status refresh is a safety fallback.
@@ -263,6 +263,26 @@ function fetchLqiMap() {
             console.error('Error fetching LQI:', err);
             renderLqiTable([]);
         });
+}
+
+function refreshLqiActive() {
+    setButtonBusy('refreshLqiBtn', true);
+    submitJob('lqi_refresh', {}, { label: 'LQI refresh', timeoutMs: 12000 })
+        .then(info => {
+            const result = info.result || {};
+            const neighbors = Array.isArray(result.neighbors) ? result.neighbors : null;
+            if (neighbors) {
+                renderLqiTable(neighbors);
+            } else {
+                fetchLqiMap();
+            }
+        })
+        .catch(err => {
+            console.error('LQI refresh failed:', err);
+            showToast(err.message || 'LQI refresh failed');
+            fetchLqiMap();
+        })
+        .finally(() => setButtonBusy('refreshLqiBtn', false));
 }
 
 function applyHealthData(data) {

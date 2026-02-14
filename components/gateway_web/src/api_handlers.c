@@ -23,11 +23,17 @@ static const char *TAG = "API_HANDLERS";
 #define JOB_API_RESULT_JSON_LIMIT_FACTORY_RESET 1536
 #define JOB_API_RESULT_JSON_LIMIT_REBOOT        512
 #define JOB_API_RESULT_JSON_LIMIT_UPDATE        768
+#define JOB_API_RESULT_JSON_LIMIT_LQI_REFRESH   1024
 #define LQI_UNKNOWN_VALUE                       (-1)
 
-static const char *lqi_quality_label(int lqi)
+static bool lqi_measurement_invalid(int lqi, int rssi)
 {
-    if (lqi < 0) {
+    return (lqi <= 0 || rssi == 127 || rssi <= -127);
+}
+
+static const char *lqi_quality_label(int lqi, int rssi)
+{
+    if (lqi_measurement_invalid(lqi, rssi)) {
         return "unknown";
     }
     if (lqi >= 180) {
@@ -48,6 +54,8 @@ static size_t job_result_json_limit_for_type(zgw_job_type_t type)
         return JOB_API_RESULT_JSON_LIMIT_FACTORY_RESET;
     case ZGW_JOB_TYPE_REBOOT:
         return JOB_API_RESULT_JSON_LIMIT_REBOOT;
+    case ZGW_JOB_TYPE_LQI_REFRESH:
+        return JOB_API_RESULT_JSON_LIMIT_LQI_REFRESH;
     case ZGW_JOB_TYPE_UPDATE:
     default:
         return JOB_API_RESULT_JSON_LIMIT_UPDATE;
@@ -70,6 +78,9 @@ static zgw_job_type_t parse_job_type(const char *type)
     }
     if (strcmp(type, "update") == 0) {
         return ZGW_JOB_TYPE_UPDATE;
+    }
+    if (strcmp(type, "lqi_refresh") == 0) {
+        return ZGW_JOB_TYPE_LQI_REFRESH;
     }
     return ZGW_JOB_TYPE_WIFI_SCAN;
 }
@@ -330,14 +341,14 @@ esp_err_t api_lqi_handler(httpd_req_t *req)
 
         cJSON_AddNumberToObject(item, "short_addr", devices[i].short_addr);
         cJSON_AddStringToObject(item, "name", devices[i].name);
-        if (lqi >= 0) {
+        if (!lqi_measurement_invalid(lqi, rssi)) {
             cJSON_AddNumberToObject(item, "lqi", lqi);
             cJSON_AddNumberToObject(item, "rssi", rssi);
         } else {
             cJSON_AddNullToObject(item, "lqi");
             cJSON_AddNullToObject(item, "rssi");
         }
-        cJSON_AddStringToObject(item, "quality", lqi_quality_label(lqi));
+        cJSON_AddStringToObject(item, "quality", lqi_quality_label(lqi, rssi));
         cJSON_AddBoolToObject(item, "direct", direct);
         cJSON_AddItemToArray(arr, item);
     }

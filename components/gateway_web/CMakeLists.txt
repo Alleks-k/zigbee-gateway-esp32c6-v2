@@ -21,8 +21,7 @@ set(gateway_web_reqs
     nvs_flash
     esp_wifi
     esp_event
-    esp_timer
-    esp_driver_tsens)
+    esp_timer)
 
 if(CONFIG_GATEWAY_SELF_TEST_APP)
     list(APPEND gateway_web_srcs "test/gateway_web_self_tests.c")

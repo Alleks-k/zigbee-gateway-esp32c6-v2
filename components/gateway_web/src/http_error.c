@@ -102,12 +102,18 @@ esp_err_t http_success_send_data_json(httpd_req_t *req, const char *data_json)
         return ESP_ERR_INVALID_ARG;
     }
 
-    char body[640];
-    int written = snprintf(body, sizeof(body), "{\"status\":\"ok\",\"data\":%s}", data_json);
-    if (written < 0 || (size_t)written >= sizeof(body)) {
-        return ESP_ERR_NO_MEM;
-    }
-
     httpd_resp_set_type(req, "application/json");
-    return httpd_resp_sendstr(req, body);
+    esp_err_t ret = httpd_resp_sendstr_chunk(req, "{\"status\":\"ok\",\"data\":");
+    if (ret != ESP_OK) {
+        return ret;
+    }
+    ret = httpd_resp_sendstr_chunk(req, data_json);
+    if (ret != ESP_OK) {
+        return ret;
+    }
+    ret = httpd_resp_sendstr_chunk(req, "}");
+    if (ret != ESP_OK) {
+        return ret;
+    }
+    return httpd_resp_sendstr_chunk(req, NULL);
 }

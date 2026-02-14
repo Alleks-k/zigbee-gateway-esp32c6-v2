@@ -8,19 +8,8 @@
 #include "job_queue.h"
 #include "ws_manager.h"
 #include "esp_log.h"
-#include "esp_heap_caps.h"
 #include "esp_system.h"
 #include "esp_timer.h"
-#include "esp_wifi.h"
-#include "esp_netif.h"
-#include "lwip/ip4_addr.h"
-#include "freertos/task.h"
-#if __has_include("driver/temperature_sensor.h")
-#include "driver/temperature_sensor.h"
-#define GATEWAY_HAS_TEMP_SENSOR 1
-#else
-#define GATEWAY_HAS_TEMP_SENSOR 0
-#endif
 #include "cJSON.h"
 #include <string.h>
 #include <stdio.h>
@@ -37,108 +26,19 @@ static const char *TAG = "API_HANDLERS";
 #define JOB_API_RESULT_JSON_LIMIT_LQI_REFRESH   1024
 #define LQI_UNKNOWN_VALUE                       (-1)
 
-#if GATEWAY_HAS_TEMP_SENSOR
-static temperature_sensor_handle_t s_temp_sensor_handle = NULL;
-static bool s_temp_sensor_init_attempted = false;
-static bool s_temp_sensor_available = false;
-#endif
-
-static bool read_wifi_rssi(int32_t *out_rssi)
+static const char *wifi_link_quality_label(system_wifi_link_quality_t quality)
 {
-    if (!out_rssi) {
-        return false;
-    }
-    wifi_ap_record_t ap_info = {0};
-    if (esp_wifi_sta_get_ap_info(&ap_info) != ESP_OK) {
-        return false;
-    }
-    *out_rssi = (int32_t)ap_info.rssi;
-    return true;
-}
-
-static bool read_wifi_ip(char *out, size_t out_size)
-{
-    if (!out || out_size < 8) {
-        return false;
-    }
-    esp_netif_t *sta = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
-    if (!sta) {
-        return false;
-    }
-    esp_netif_ip_info_t ip_info = {0};
-    if (esp_netif_get_ip_info(sta, &ip_info) != ESP_OK || ip_info.ip.addr == 0) {
-        return false;
-    }
-    int written = snprintf(out, out_size, IPSTR, IP2STR(&ip_info.ip));
-    return (written > 0 && (size_t)written < out_size);
-}
-
-static int32_t get_stack_hwm_bytes(const char *task_name)
-{
-    if (!task_name) {
-        return -1;
-    }
-    TaskHandle_t h = xTaskGetHandle(task_name);
-    if (!h) {
-        return -1;
-    }
-    UBaseType_t words = uxTaskGetStackHighWaterMark(h);
-    return (int32_t)(words * sizeof(StackType_t));
-}
-
-static const char *wifi_link_quality_label(int32_t rssi, bool has_rssi)
-{
-    if (!has_rssi) {
+    switch (quality) {
+    case SYSTEM_WIFI_LINK_GOOD:
+        return "good";
+    case SYSTEM_WIFI_LINK_WARN:
+        return "warn";
+    case SYSTEM_WIFI_LINK_BAD:
+        return "bad";
+    case SYSTEM_WIFI_LINK_UNKNOWN:
+    default:
         return "unknown";
     }
-    if (rssi >= -65) {
-        return "good";
-    }
-    if (rssi >= -75) {
-        return "warn";
-    }
-    return "bad";
-}
-
-static bool read_temperature_c(float *out_temp_c)
-{
-    if (!out_temp_c) {
-        return false;
-    }
-#if GATEWAY_HAS_TEMP_SENSOR
-    if (!s_temp_sensor_init_attempted) {
-        s_temp_sensor_init_attempted = true;
-        const struct {
-            int min_c;
-            int max_c;
-        } ranges[] = {
-            {10, 50},
-            {20, 80},
-            {0, 60},
-        };
-        for (size_t i = 0; i < (sizeof(ranges) / sizeof(ranges[0])); i++) {
-            temperature_sensor_handle_t handle = NULL;
-            temperature_sensor_config_t cfg = TEMPERATURE_SENSOR_CONFIG_DEFAULT(ranges[i].min_c, ranges[i].max_c);
-            if (temperature_sensor_install(&cfg, &handle) == ESP_OK) {
-                if (temperature_sensor_enable(handle) == ESP_OK) {
-                    s_temp_sensor_handle = handle;
-                    s_temp_sensor_available = true;
-                    break;
-                }
-                (void)temperature_sensor_uninstall(handle);
-            }
-        }
-        if (!s_temp_sensor_available) {
-            s_temp_sensor_handle = NULL;
-        }
-    }
-    if (!s_temp_sensor_available || s_temp_sensor_handle == NULL) {
-        return false;
-    }
-    return (temperature_sensor_get_celsius(s_temp_sensor_handle, out_temp_c) == ESP_OK);
-#else
-    return false;
-#endif
 }
 
 static bool lqi_measurement_invalid(int lqi, int rssi)
@@ -316,8 +216,12 @@ static bool append_json_escaped(char **cursor, size_t *remaining, const char *sr
 
 static esp_err_t append_error_ring_array(char **cursor, size_t *remaining)
 {
-    gateway_error_entry_t entries[GATEWAY_ERROR_RING_CAPACITY];
-    size_t count = gateway_error_ring_snapshot(entries, GATEWAY_ERROR_RING_CAPACITY);
+    const size_t max_emit = 5;
+    gateway_error_entry_t entries[5];
+    size_t count = gateway_error_ring_snapshot(entries, max_emit);
+    if (count > max_emit) {
+        count = max_emit;
+    }
 
     if (!append_literal(cursor, remaining, "[")) {
         return ESP_ERR_NO_MEM;
@@ -646,20 +550,12 @@ esp_err_t build_health_json_compact(char *out, size_t out_size, size_t *out_len)
     if (!active_ssid) {
         active_ssid = "";
     }
-    const uint64_t uptime_ms = (uint64_t)(esp_timer_get_time() / 1000);
-    const uint64_t telemetry_updated_ms = uptime_ms;
-    const uint32_t heap_free = esp_get_free_heap_size();
-    const uint32_t heap_min_free = esp_get_minimum_free_heap_size();
-    const uint32_t heap_largest_free_block = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
-    int32_t wifi_rssi = 0;
-    const bool has_wifi_rssi = read_wifi_rssi(&wifi_rssi);
-    const char *wifi_link_quality = wifi_link_quality_label(wifi_rssi, has_wifi_rssi);
-    char wifi_ip[20] = {0};
-    const bool has_wifi_ip = read_wifi_ip(wifi_ip, sizeof(wifi_ip));
-    float temp_c = 0.0f;
-    const bool has_temp_c = read_temperature_c(&temp_c);
-    const int32_t main_stack_hwm = get_stack_hwm_bytes("main");
-    const int32_t httpd_stack_hwm = get_stack_hwm_bytes("httpd");
+    system_telemetry_t telemetry = {0};
+    esp_err_t tel_ret = api_usecase_collect_telemetry(&telemetry);
+    if (tel_ret != ESP_OK) {
+        return tel_ret;
+    }
+    const uint64_t telemetry_updated_ms = telemetry.uptime_ms;
 
     char *cursor = out;
     size_t remaining = out_size;
@@ -681,22 +577,22 @@ esp_err_t build_health_json_compact(char *out, size_t out_size, size_t *out_len)
     {
         return ESP_ERR_NO_MEM;
     }
-    if (has_wifi_rssi) {
-        if (!append_i32(&cursor, &remaining, wifi_rssi)) {
+    if (telemetry.has_wifi_rssi) {
+        if (!append_i32(&cursor, &remaining, telemetry.wifi_rssi)) {
             return ESP_ERR_NO_MEM;
         }
     } else if (!append_literal(&cursor, &remaining, "null")) {
         return ESP_ERR_NO_MEM;
     }
     if (!append_literal(&cursor, &remaining, ",\"link_quality\":\"") ||
-        !append_literal(&cursor, &remaining, wifi_link_quality) ||
+        !append_literal(&cursor, &remaining, wifi_link_quality_label(telemetry.wifi_link_quality)) ||
         !append_literal(&cursor, &remaining, "\",\"ip\":"))
     {
         return ESP_ERR_NO_MEM;
     }
-    if (has_wifi_ip) {
+    if (telemetry.has_wifi_ip) {
         if (!append_literal(&cursor, &remaining, "\"") ||
-            !append_json_escaped(&cursor, &remaining, wifi_ip) ||
+            !append_json_escaped(&cursor, &remaining, telemetry.wifi_ip) ||
             !append_literal(&cursor, &remaining, "\""))
         {
             return ESP_ERR_NO_MEM;
@@ -726,23 +622,23 @@ esp_err_t build_health_json_compact(char *out, size_t out_size, size_t *out_len)
         !append_i32(&cursor, &remaining, schema_ret == ESP_OK ? schema_version : -1) ||
         !append_literal(&cursor, &remaining, "},\"system\":{") ||
         !append_literal(&cursor, &remaining, "\"uptime_ms\":") ||
-        !append_u64(&cursor, &remaining, uptime_ms) ||
+        !append_u64(&cursor, &remaining, telemetry.uptime_ms) ||
         !append_literal(&cursor, &remaining, ",\"heap_free\":") ||
-        !append_u32(&cursor, &remaining, heap_free) ||
+        !append_u32(&cursor, &remaining, telemetry.heap_free) ||
         !append_literal(&cursor, &remaining, ",\"heap_min\":") ||
-        !append_u32(&cursor, &remaining, heap_min_free) ||
+        !append_u32(&cursor, &remaining, telemetry.heap_min) ||
         !append_literal(&cursor, &remaining, ",\"heap_largest_block\":") ||
-        !append_u32(&cursor, &remaining, heap_largest_free_block) ||
+        !append_u32(&cursor, &remaining, telemetry.heap_largest_block) ||
         !append_literal(&cursor, &remaining, ",\"main_stack_hwm_bytes\":") ||
-        !append_i32(&cursor, &remaining, main_stack_hwm) ||
+        !append_i32(&cursor, &remaining, telemetry.main_stack_hwm_bytes) ||
         !append_literal(&cursor, &remaining, ",\"httpd_stack_hwm_bytes\":") ||
-        !append_i32(&cursor, &remaining, httpd_stack_hwm) ||
+        !append_i32(&cursor, &remaining, telemetry.httpd_stack_hwm_bytes) ||
         !append_literal(&cursor, &remaining, ",\"temperature_c\":"))
     {
         return ESP_ERR_NO_MEM;
     }
-    if (has_temp_c) {
-        int written = snprintf(cursor, remaining, "%.2f", (double)temp_c);
+    if (telemetry.has_temperature_c) {
+        int written = snprintf(cursor, remaining, "%.2f", (double)telemetry.temperature_c);
         if (written < 0 || (size_t)written >= remaining) {
             return ESP_ERR_NO_MEM;
         }
@@ -775,18 +671,32 @@ esp_err_t build_health_json_compact(char *out, size_t out_size, size_t *out_len)
 
 esp_err_t api_health_handler(httpd_req_t *req)
 {
-    char health_json[2048];
-    size_t health_len = 0;
-    esp_err_t ret = build_health_json_compact(health_json, sizeof(health_json), &health_len);
-    if (ret != ESP_OK) {
-        return http_error_send_esp(req, ret, "Failed to build health payload");
+    size_t needed = 768;
+    for (int i = 0; i < 4; i++) {
+        char *health_json = (char *)malloc(needed);
+        if (!health_json) {
+            return http_error_send_esp(req, ESP_ERR_NO_MEM, "Out of memory");
+        }
+
+        size_t health_len = 0;
+        esp_err_t ret = build_health_json_compact(health_json, needed, &health_len);
+        if (ret == ESP_OK) {
+            esp_err_t send_ret = http_success_send_data_json(req, health_json);
+            free(health_json);
+            if (send_ret == ESP_ERR_NO_MEM) {
+                return http_error_send_esp(req, ESP_ERR_NO_MEM, "Failed to wrap health payload");
+            }
+            return send_ret;
+        }
+
+        free(health_json);
+        if (ret != ESP_ERR_NO_MEM) {
+            return http_error_send_esp(req, ret, "Failed to build health payload");
+        }
+        needed *= 2;
     }
 
-    esp_err_t send_ret = http_success_send_data_json(req, health_json);
-    if (send_ret == ESP_ERR_NO_MEM) {
-        return http_error_send_esp(req, ESP_ERR_NO_MEM, "Failed to wrap health payload");
-    }
-    return send_ret;
+    return http_error_send_esp(req, ESP_ERR_NO_MEM, "Health payload too large");
 }
 
     /* API: Відкрити мережу (Permit Join) */

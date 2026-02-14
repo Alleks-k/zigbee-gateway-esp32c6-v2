@@ -133,3 +133,8 @@ esp_err_t api_usecase_get_factory_reset_report(system_factory_reset_report_t *ou
 {
     return system_service_get_last_factory_reset_report(out_report);
 }
+
+esp_err_t api_usecase_collect_telemetry(system_telemetry_t *out)
+{
+    return system_service_collect_telemetry(out);
+}

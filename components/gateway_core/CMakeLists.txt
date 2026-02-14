@@ -17,10 +17,12 @@ set(gateway_core_reqs
     esp_rcp_update
     spiffs
     esp_wifi
+    esp_netif
     esp_event
     esp_timer
     esp_partition
-    esp_system)
+    esp_system
+    esp_driver_tsens)
 
 if(CONFIG_GATEWAY_SELF_TEST_APP)
     list(APPEND gateway_core_srcs "test/gateway_core_self_tests.c")

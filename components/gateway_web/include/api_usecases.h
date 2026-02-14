@@ -31,3 +31,4 @@ esp_err_t api_usecase_wifi_scan(wifi_ap_info_t **out_list, size_t *out_count);
 void api_usecase_wifi_scan_free(wifi_ap_info_t *list);
 esp_err_t api_usecase_schedule_reboot(uint32_t delay_ms);
 esp_err_t api_usecase_get_factory_reset_report(system_factory_reset_report_t *out_report);
+esp_err_t api_usecase_collect_telemetry(system_telemetry_t *out);

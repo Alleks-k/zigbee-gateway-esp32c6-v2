@@ -1,4 +1,10 @@
 /* Базові стилі та скидання */
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
 body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     background-color: #f4f4f9;
@@ -14,6 +20,7 @@ h2 {
     border-bottom: 1px solid #eee;
     padding-bottom: 10px;
     margin-bottom: 15px;
+    overflow-wrap: anywhere;
 }
 
 /* Іконки SVG */
@@ -48,9 +55,12 @@ h2 {
     box-shadow: 0 2px 8px rgba(0,0,0,0.05);
     padding: 20px;
     height: fit-content;
-    width: 100%;
     min-width: 0;
     overflow: hidden;
+}
+
+.card * {
+    max-width: 100%;
 }
 
 .card--status { grid-area: status; }
@@ -256,6 +266,8 @@ input[type="text"], input[type="password"] {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
     padding: 10px;
     border-bottom: 1px solid #eee;
 }
@@ -271,9 +283,11 @@ input[type="text"], input[type="password"] {
 
 .dev-actions {
     display: grid;
-    grid-template-columns: repeat(2, minmax(74px, 1fr));
+    grid-template-columns: repeat(2, minmax(64px, 1fr));
     gap: 6px;
-    min-width: 160px;
+    min-width: 0;
+    width: 100%;
+    max-width: 220px;
 }
 
 .dev-actions button {
@@ -549,6 +563,34 @@ input[type="text"], input[type="password"] {
     display: flex;
     gap: 10px;
     align-items: center;
+    flex-wrap: wrap;
+}
+
+.input-row input {
+    flex: 1 1 200px;
+    min-width: 0;
+}
+
+.input-row button {
+    flex: 0 0 auto;
+}
+
+.card--status h2,
+.card--lqi h2 {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+#ws-status {
+    float: none !important;
+    margin-left: auto;
+}
+
+#refreshLqiBtn {
+    float: none !important;
 }
 
 .scan-results {
@@ -661,6 +703,7 @@ input[type="text"], input[type="password"] {
     
     .input-row button {
         width: 100%;
+        flex: 1 1 auto;
     }
     
     .dev-actions {
@@ -668,6 +711,7 @@ input[type="text"], input[type="password"] {
         display: flex;
         flex-wrap: wrap;
         gap: 5px;
+        max-width: none;
     }
     
     .device-item {

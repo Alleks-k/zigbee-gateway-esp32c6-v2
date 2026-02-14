@@ -13,42 +13,44 @@ void send_on_off_command(uint16_t short_addr, uint8_t endpoint, uint8_t on_off);
 void delete_device(uint16_t short_addr);
 void update_device_name(uint16_t short_addr, const char *new_name);
 
-static SemaphoreHandle_t s_lqi_cache_mutex = NULL;
-static zigbee_neighbor_lqi_t s_lqi_cache[MAX_DEVICES];
-static int s_lqi_cache_count = 0;
-static zigbee_lqi_source_t s_lqi_cache_source = ZIGBEE_LQI_SOURCE_UNKNOWN;
-static uint64_t s_lqi_cache_updated_ms = 0;
-
-static SemaphoreHandle_t get_lqi_cache_mutex(void)
+static gateway_lqi_source_t to_gateway_lqi_source(zigbee_lqi_source_t src)
 {
-    if (!s_lqi_cache_mutex) {
-        s_lqi_cache_mutex = xSemaphoreCreateMutex();
+    switch (src) {
+    case ZIGBEE_LQI_SOURCE_NEIGHBOR_TABLE:
+        return GATEWAY_LQI_SOURCE_NEIGHBOR_TABLE;
+    case ZIGBEE_LQI_SOURCE_MGMT_LQI:
+        return GATEWAY_LQI_SOURCE_MGMT_LQI;
+    case ZIGBEE_LQI_SOURCE_UNKNOWN:
+    default:
+        return GATEWAY_LQI_SOURCE_UNKNOWN;
     }
-    return s_lqi_cache_mutex;
 }
 
-static void cache_lqi_snapshot(const zigbee_neighbor_lqi_t *items, int count, zigbee_lqi_source_t source)
+static zigbee_lqi_source_t from_gateway_lqi_source(gateway_lqi_source_t src)
 {
-    SemaphoreHandle_t mutex = get_lqi_cache_mutex();
-    if (!mutex) {
+    switch (src) {
+    case GATEWAY_LQI_SOURCE_NEIGHBOR_TABLE:
+        return ZIGBEE_LQI_SOURCE_NEIGHBOR_TABLE;
+    case GATEWAY_LQI_SOURCE_MGMT_LQI:
+        return ZIGBEE_LQI_SOURCE_MGMT_LQI;
+    case GATEWAY_LQI_SOURCE_UNKNOWN:
+    default:
+        return ZIGBEE_LQI_SOURCE_UNKNOWN;
+    }
+}
+
+static void update_gateway_lqi_from_snapshot(const zigbee_neighbor_lqi_t *items, int count, zigbee_lqi_source_t source)
+{
+    if (!items || count <= 0) {
         return;
     }
 
-    if (count < 0) {
-        count = 0;
+    uint64_t now_ms = (uint64_t)(esp_timer_get_time() / 1000);
+    gateway_lqi_source_t gw_src = to_gateway_lqi_source(source);
+    for (int i = 0; i < count; i++) {
+        uint64_t ts = items[i].updated_ms > 0 ? items[i].updated_ms : now_ms;
+        (void)gateway_state_update_device_lqi(items[i].short_addr, items[i].lqi, items[i].rssi, gw_src, ts);
     }
-    if (count > MAX_DEVICES) {
-        count = MAX_DEVICES;
-    }
-
-    xSemaphoreTake(mutex, portMAX_DELAY);
-    if (count > 0 && items) {
-        memcpy(s_lqi_cache, items, (size_t)count * sizeof(zigbee_neighbor_lqi_t));
-    }
-    s_lqi_cache_count = count;
-    s_lqi_cache_source = source;
-    s_lqi_cache_updated_ms = (uint64_t)(esp_timer_get_time() / 1000);
-    xSemaphoreGive(mutex);
 }
 
 esp_err_t zigbee_service_get_network_status(zigbee_network_status_t *out)
@@ -98,6 +100,7 @@ int zigbee_service_get_neighbor_lqi_snapshot(zigbee_neighbor_lqi_t *out, size_t 
 
     esp_zb_nwk_info_iterator_t it = ESP_ZB_NWK_INFO_ITERATOR_INIT;
     int count = 0;
+    uint64_t now_ms = (uint64_t)(esp_timer_get_time() / 1000);
     while ((size_t)count < max_items) {
         esp_zb_nwk_neighbor_info_t info = {0};
         esp_err_t ret = esp_zb_nwk_get_next_neighbor(&it, &info);
@@ -110,10 +113,12 @@ int zigbee_service_get_neighbor_lqi_snapshot(zigbee_neighbor_lqi_t *out, size_t 
         out[count].rssi = (int)info.rssi;
         out[count].relationship = info.relationship;
         out[count].depth = info.depth;
+        out[count].updated_ms = now_ms;
+        out[count].source = ZIGBEE_LQI_SOURCE_NEIGHBOR_TABLE;
         count++;
     }
 
-    cache_lqi_snapshot(out, count, ZIGBEE_LQI_SOURCE_NEIGHBOR_TABLE);
+    update_gateway_lqi_from_snapshot(out, count, ZIGBEE_LQI_SOURCE_NEIGHBOR_TABLE);
     return count;
 }
 
@@ -150,6 +155,8 @@ static void mgmt_lqi_rsp_cb(const esp_zb_zdo_mgmt_lqi_rsp_t *rsp, void *user_ctx
         ctx->out[ctx->count].rssi = 127; /* Not provided by Mgmt_Lqi_rsp */
         ctx->out[ctx->count].relationship = rec->relationship;
         ctx->out[ctx->count].depth = rec->depth;
+        ctx->out[ctx->count].updated_ms = (uint64_t)(esp_timer_get_time() / 1000);
+        ctx->out[ctx->count].source = ZIGBEE_LQI_SOURCE_MGMT_LQI;
         ctx->count++;
     }
 
@@ -216,7 +223,7 @@ esp_err_t zigbee_service_refresh_neighbor_lqi_snapshot(zigbee_neighbor_lqi_t *ou
 
     if (ret == ESP_OK) {
         *out_count = (int)ctx.count;
-        cache_lqi_snapshot(out, *out_count, ZIGBEE_LQI_SOURCE_MGMT_LQI);
+        update_gateway_lqi_from_snapshot(out, *out_count, ZIGBEE_LQI_SOURCE_MGMT_LQI);
     }
 
     vSemaphoreDelete(ctx.done_sem);
@@ -230,31 +237,46 @@ esp_err_t zigbee_service_get_cached_lqi_snapshot(zigbee_neighbor_lqi_t *out, siz
         return ESP_ERR_INVALID_ARG;
     }
 
-    SemaphoreHandle_t mutex = get_lqi_cache_mutex();
-    if (!mutex) {
-        return ESP_ERR_NO_MEM;
-    }
-
-    xSemaphoreTake(mutex, portMAX_DELAY);
-    int count = s_lqi_cache_count;
+    gateway_device_lqi_state_t snapshot[MAX_DEVICES];
+    int count = gateway_state_get_device_lqi_snapshot(snapshot, MAX_DEVICES);
     if (count < 0) {
         count = 0;
     }
     if ((size_t)count > max_items) {
         count = (int)max_items;
     }
-    if (count > 0) {
-        memcpy(out, s_lqi_cache, (size_t)count * sizeof(zigbee_neighbor_lqi_t));
+
+    zigbee_lqi_source_t latest_source = ZIGBEE_LQI_SOURCE_UNKNOWN;
+    uint64_t latest_ts = 0;
+    for (int i = 0; i < count; i++) {
+        out[i].short_addr = snapshot[i].short_addr;
+        out[i].lqi = snapshot[i].lqi;
+        out[i].rssi = snapshot[i].rssi;
+        out[i].relationship = 0;
+        out[i].depth = 0;
+        out[i].updated_ms = snapshot[i].updated_ms;
+        out[i].source = from_gateway_lqi_source(snapshot[i].source);
+        if (snapshot[i].updated_ms >= latest_ts) {
+            latest_ts = snapshot[i].updated_ms;
+            latest_source = out[i].source;
+        }
     }
+
     *out_count = count;
     if (out_source) {
-        *out_source = s_lqi_cache_source;
+        *out_source = latest_source;
     }
     if (out_updated_ms) {
-        *out_updated_ms = s_lqi_cache_updated_ms;
+        *out_updated_ms = latest_ts;
     }
-    xSemaphoreGive(mutex);
 
+    return ESP_OK;
+}
+
+esp_err_t zigbee_service_refresh_neighbor_lqi_from_table(void)
+{
+    zigbee_neighbor_lqi_t neighbors[MAX_DEVICES] = {0};
+    (void)zigbee_service_get_neighbor_lqi_snapshot(neighbors, MAX_DEVICES);
     return ESP_OK;
 }
 

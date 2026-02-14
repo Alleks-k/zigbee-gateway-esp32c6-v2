@@ -20,7 +20,9 @@
 #include "gateway_events.h"
 #include "gateway_state.h"
 #include "settings_manager.h"
+#include "zigbee_service.h"
 #include "esp_event.h"
+#include "esp_timer.h"
 #include <zcl/esp_zigbee_zcl_core.h>
 
 #include "esp_vfs_dev.h"
@@ -33,6 +35,8 @@
 
 static const char *TAG = "ESP_ZB_GATEWAY";
 static esp_event_handler_instance_t s_delete_req_handler = NULL;
+static int64_t s_last_live_lqi_refresh_us = 0;
+#define LIVE_LQI_REFRESH_MIN_INTERVAL_US (3 * 1000 * 1000)
 
 typedef struct app_production_config_s {
     uint16_t version;
@@ -60,6 +64,22 @@ esp_err_t esp_zb_gateway_console_init(void)
 static void bdb_start_top_level_commissioning_cb(uint8_t mode_mask)
 {
     esp_zb_bdb_start_top_level_commissioning(mode_mask);
+}
+
+static void refresh_lqi_from_live_event(const char *reason)
+{
+    int64_t now_us = esp_timer_get_time();
+    if ((now_us - s_last_live_lqi_refresh_us) < LIVE_LQI_REFRESH_MIN_INTERVAL_US) {
+        return;
+    }
+    s_last_live_lqi_refresh_us = now_us;
+
+    esp_err_t ret = zigbee_service_refresh_neighbor_lqi_from_table();
+    if (ret != ESP_OK) {
+        ESP_LOGW(TAG, "Live LQI refresh failed (%s): %s", reason, esp_err_to_name(ret));
+        return;
+    }
+    (void)esp_event_post(GATEWAY_EVENT, GATEWAY_EVENT_LQI_STATE_CHANGED, NULL, 0, 0);
 }
 
 static void gateway_state_publish(bool zigbee_started, bool factory_new)
@@ -186,6 +206,7 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
         } else {
             ESP_LOGW(TAG, "Failed to close permit join: %s", esp_err_to_name(close_ret));
         }
+        refresh_lqi_from_live_event("device_announce");
         break;
     }
 
@@ -207,6 +228,7 @@ static esp_err_t zb_action_handler(esp_zb_core_action_callback_id_t callback_id,
             bool state = *(bool *)report->attribute.data.value;
             ESP_LOGI(TAG, "Device 0x%04x report: State is %s", report->src_address.u.short_addr, state ? "ON" : "OFF");
         }
+        refresh_lqi_from_live_event("report_attr");
         break;
     }
     case ESP_ZB_CORE_CMD_DEFAULT_RESP_CB_ID:

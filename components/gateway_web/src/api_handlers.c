@@ -362,11 +362,15 @@ esp_err_t build_lqi_json_compact(char *out, size_t out_size, size_t *out_len)
         int lqi = LQI_UNKNOWN_VALUE;
         int rssi = 0;
         bool direct = false;
+        zigbee_lqi_source_t row_source = ZIGBEE_LQI_SOURCE_UNKNOWN;
+        uint64_t row_updated_ms = 0;
         for (int j = 0; j < nbr_count; j++) {
             if (neighbors[j].short_addr == devices[i].short_addr) {
                 lqi = neighbors[j].lqi;
                 rssi = neighbors[j].rssi;
                 direct = true;
+                row_source = neighbors[j].source;
+                row_updated_ms = neighbors[j].updated_ms;
                 break;
             }
         }
@@ -407,8 +411,9 @@ esp_err_t build_lqi_json_compact(char *out, size_t out_size, size_t *out_len)
             !append_literal(&cursor, &remaining, "\",\"direct\":") ||
             !append_literal(&cursor, &remaining, direct ? "true" : "false") ||
             !append_literal(&cursor, &remaining, ",\"source\":\"") ||
-            !append_literal(&cursor, &remaining, lqi_source_label(source)) ||
-            !append_literal(&cursor, &remaining, "\"") ||
+            !append_literal(&cursor, &remaining, lqi_source_label(row_source)) ||
+            !append_literal(&cursor, &remaining, "\",\"updated_ms\":") ||
+            !append_u64(&cursor, &remaining, row_updated_ms) ||
             !append_literal(&cursor, &remaining, "}"))
         {
             return ESP_ERR_NO_MEM;

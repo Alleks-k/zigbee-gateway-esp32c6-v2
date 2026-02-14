@@ -74,13 +74,27 @@ static bool read_temperature_c(float *out_temp_c)
 #if GATEWAY_HAS_TEMP_SENSOR
     if (!s_temp_sensor_init_attempted) {
         s_temp_sensor_init_attempted = true;
-        temperature_sensor_config_t cfg = TEMPERATURE_SENSOR_CONFIG_DEFAULT(-20, 100);
-        if (temperature_sensor_install(&cfg, &s_temp_sensor_handle) == ESP_OK &&
-            temperature_sensor_enable(s_temp_sensor_handle) == ESP_OK)
-        {
-            s_temp_sensor_available = true;
-        } else {
-            s_temp_sensor_available = false;
+        const struct {
+            int min_c;
+            int max_c;
+        } ranges[] = {
+            {10, 50},
+            {20, 80},
+            {0, 60},
+        };
+        for (size_t i = 0; i < (sizeof(ranges) / sizeof(ranges[0])); i++) {
+            temperature_sensor_handle_t handle = NULL;
+            temperature_sensor_config_t cfg = TEMPERATURE_SENSOR_CONFIG_DEFAULT(ranges[i].min_c, ranges[i].max_c);
+            if (temperature_sensor_install(&cfg, &handle) == ESP_OK) {
+                if (temperature_sensor_enable(handle) == ESP_OK) {
+                    s_temp_sensor_handle = handle;
+                    s_temp_sensor_available = true;
+                    break;
+                }
+                (void)temperature_sensor_uninstall(handle);
+            }
+        }
+        if (!s_temp_sensor_available) {
             s_temp_sensor_handle = NULL;
         }
     }

@@ -1,15 +1,30 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -eo pipefail
 
-PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PINNED_IDF="${PROJECT_DIR}/../esp-idf"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
-if [[ ! -f "${PINNED_IDF}/export.sh" ]]; then
-  echo "Pinned ESP-IDF not found: ${PINNED_IDF}" >&2
+IDF_CANDIDATES=(
+  "/home/alex/esp/esp-idf"
+  "/home/alex/dev/esp32/esp-idf"
+)
+
+IDF_ROOT=""
+for cand in "${IDF_CANDIDATES[@]}"; do
+  if [[ -f "${cand}/export.sh" && -f "${cand}/tools/idf.py" ]]; then
+    IDF_ROOT="${cand}"
+    break
+  fi
+done
+
+if [[ -z "${IDF_ROOT}" ]]; then
+  echo "ERROR: ESP-IDF not found. Checked:" >&2
+  for cand in "${IDF_CANDIDATES[@]}"; do
+    echo "  - ${cand}" >&2
+  done
   exit 1
 fi
 
-export IDF_PATH="${PINNED_IDF}"
-. "${IDF_PATH}/export.sh" >/dev/null 2>&1
-
-exec idf.py -C "${PROJECT_DIR}" "$@"
+cd "${SCRIPT_DIR}"
+# shellcheck disable=SC1090
+source "${IDF_ROOT}/export.sh" >/dev/null 2>&1
+exec idf.py "$@"

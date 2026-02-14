@@ -61,6 +61,7 @@
     }
 
     const jobs = new Map();
+    const submittedJobTypes = [];
     let nextJobId = 1;
     const statusPayload = {
         status: 'ok',
@@ -106,6 +107,7 @@
         }
         if (path.endsWith('/api/v1/jobs') && method === 'POST') {
             const body = options.body ? JSON.parse(options.body) : {};
+            submittedJobTypes.push(String(body.type || ''));
             const id = nextJobId++;
             const result = body.type === 'scan'
                 ? { networks: [{ ssid: 'TestNet-A', rssi: -40, auth: 3 }, { ssid: 'TestNet-B', rssi: -70, auth: 0 }] }
@@ -162,6 +164,43 @@
         });
         await waitFor(() => document.querySelectorAll('#lqiTableBody tr').length === 1, 2000, 'lqi table render');
         addResult(true, 'ws lqi_update contract rendered');
+        await waitFor(() => {
+            const badge = document.getElementById('lqiRssiInfoBadge');
+            return badge && badge.style.display !== 'none' && badge.textContent.includes('no RSSI in Mgmt LQI');
+        }, 1500, 'mgmt_lqi badge');
+        addResult(true, 'mgmt_lqi RSSI badge rendered');
+
+        window.renderLqiTable(
+            [{
+                short_addr: 0x2002,
+                name: 'Weak End Device',
+                lqi: 60,
+                rssi: -90,
+                quality: 'bad',
+                direct: false,
+                source: 'neighbor_table',
+                updated_ms: 1000,
+            }],
+            { source: 'neighbor_table', updated_ms: 1000 }
+        );
+        await waitFor(() => document.querySelector('.lqi-weak-badge') !== null, 1500, 'weak link badge');
+        addResult(true, 'weak-link badge rendered for low LQI');
+
+        const staleBadge = document.getElementById('lqiStaleBadge');
+        window.updateLqiMeta({ source: 'mgmt_lqi', updated_ms: 2000 });
+        await waitFor(() => staleBadge && staleBadge.textContent === 'fresh', 1000, 'fresh badge');
+        const originalDateNow = Date.now;
+        Date.now = () => originalDateNow() + 65000;
+        window.updateLqiMeta({ source: 'mgmt_lqi', updated_ms: 2000 });
+        await waitFor(() => staleBadge && staleBadge.textContent === 'stale', 1000, 'stale badge');
+        Date.now = originalDateNow;
+        window.updateLqiMeta({ source: 'mgmt_lqi', updated_ms: 3000 });
+        await waitFor(() => staleBadge && staleBadge.textContent === 'fresh', 1000, 'fresh after update');
+        addResult(true, 'LQI age stale/fresh branch covered');
+
+        window.maybeAutoRefreshLqi();
+        await waitFor(() => submittedJobTypes.includes('lqi_refresh'), 3000, 'auto lqi refresh job');
+        addResult(true, 'LQI auto-refresh branch covered');
 
         window.scanWifi();
         await waitFor(() => document.getElementById('wifi-scan-results').textContent.includes('TestNet-A'), 3000, 'wifi scan render');

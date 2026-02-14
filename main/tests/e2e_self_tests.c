@@ -1,6 +1,10 @@
 #include "unity.h"
 #include "api_contracts.h"
 #include "api_usecases.h"
+#include "wifi_service.h"
+#include "wifi_init.h"
+#include "gateway_state.h"
+#include <stdlib.h>
 #include <string.h>
 
 static int s_mock_send_on_off_called = 0;
@@ -17,6 +21,11 @@ static uint32_t s_mock_factory_reset_delay = 0;
 static esp_err_t s_mock_wifi_save_ret = ESP_OK;
 static esp_err_t s_mock_schedule_reboot_ret = ESP_OK;
 static esp_err_t s_mock_factory_reset_ret = ESP_OK;
+static int s_mock_wifi_scan_called = 0;
+static int s_mock_wifi_scan_free_called = 0;
+static int s_mock_wifi_net_platform_init_called = 0;
+static int s_mock_wifi_sta_connect_called = 0;
+static int s_mock_wifi_fallback_called = 0;
 
 static esp_err_t mock_send_on_off(uint16_t short_addr, uint8_t endpoint, uint8_t on_off)
 {
@@ -49,6 +58,62 @@ static esp_err_t mock_factory_reset_and_reboot(uint32_t reboot_delay_ms)
     return s_mock_factory_reset_ret;
 }
 
+static esp_err_t mock_wifi_scan_impl(wifi_ap_info_t **out_list, size_t *out_count)
+{
+    s_mock_wifi_scan_called++;
+    if (!out_list || !out_count) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    *out_count = 2;
+    wifi_ap_info_t *list = (wifi_ap_info_t *)calloc(*out_count, sizeof(wifi_ap_info_t));
+    TEST_ASSERT_NOT_NULL(list);
+    strlcpy(list[0].ssid, "TestNet-A", sizeof(list[0].ssid));
+    list[0].rssi = -48;
+    list[0].auth = 3;
+    strlcpy(list[1].ssid, "TestNet-B", sizeof(list[1].ssid));
+    list[1].rssi = -71;
+    list[1].auth = 0;
+    *out_list = list;
+    return ESP_OK;
+}
+
+static void mock_wifi_scan_free_impl(wifi_ap_info_t *list)
+{
+    s_mock_wifi_scan_free_called++;
+    free(list);
+}
+
+static void mock_net_platform_services_init(void)
+{
+    s_mock_wifi_net_platform_init_called++;
+}
+
+static esp_err_t mock_wifi_sta_connect_and_wait_fail_after_retries(wifi_runtime_ctx_t *ctx)
+{
+    s_mock_wifi_sta_connect_called++;
+    if (!ctx) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    ctx->sta_connected = false;
+    ctx->fallback_ap_active = false;
+    ctx->loaded_from_nvs = true;
+    ctx->retry_num = 5;
+    strlcpy(ctx->active_ssid, "HomeNet", sizeof(ctx->active_ssid));
+    return ESP_FAIL;
+}
+
+static esp_err_t mock_wifi_start_fallback_ap_ok(wifi_runtime_ctx_t *ctx)
+{
+    s_mock_wifi_fallback_called++;
+    if (!ctx) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    ctx->fallback_ap_active = true;
+    ctx->sta_connected = false;
+    strlcpy(ctx->active_ssid, "ZGW-Fallback", sizeof(ctx->active_ssid));
+    return ESP_OK;
+}
+
 static void reset_api_mocks(void)
 {
     s_mock_send_on_off_called = 0;
@@ -65,6 +130,11 @@ static void reset_api_mocks(void)
     s_mock_wifi_save_ret = ESP_OK;
     s_mock_schedule_reboot_ret = ESP_OK;
     s_mock_factory_reset_ret = ESP_OK;
+    s_mock_wifi_scan_called = 0;
+    s_mock_wifi_scan_free_called = 0;
+    s_mock_wifi_net_platform_init_called = 0;
+    s_mock_wifi_sta_connect_called = 0;
+    s_mock_wifi_fallback_called = 0;
 }
 
 static api_service_ops_t make_mock_ops(void)
@@ -210,6 +280,54 @@ static void test_e2e_endpoint_factory_reset_success(void)
     api_usecases_set_service_ops(NULL);
 }
 
+static void test_e2e_wifi_scan_contract_and_usecase(void)
+{
+    reset_api_mocks();
+    wifi_service_register_scan_impl(mock_wifi_scan_impl, mock_wifi_scan_free_impl);
+
+    wifi_ap_info_t *list = NULL;
+    size_t count = 0;
+    esp_err_t ret = api_usecase_wifi_scan(&list, &count);
+    TEST_ASSERT_EQUAL(ESP_OK, ret);
+    TEST_ASSERT_EQUAL_INT(1, s_mock_wifi_scan_called);
+    TEST_ASSERT_EQUAL_UINT32(2, (uint32_t)count);
+    TEST_ASSERT_NOT_NULL(list);
+    TEST_ASSERT_EQUAL_STRING("TestNet-A", list[0].ssid);
+    TEST_ASSERT_EQUAL_INT(-48, list[0].rssi);
+    TEST_ASSERT_EQUAL_INT(3, list[0].auth);
+    TEST_ASSERT_EQUAL_STRING("TestNet-B", list[1].ssid);
+
+    api_usecase_wifi_scan_free(list);
+    TEST_ASSERT_EQUAL_INT(1, s_mock_wifi_scan_free_called);
+
+    wifi_service_register_scan_impl(NULL, NULL);
+}
+
+static void test_e2e_wifi_connect_retry_exhausted_switches_to_ap_fallback(void)
+{
+    reset_api_mocks();
+    wifi_init_ops_t ops = {
+        .net_platform_services_init = mock_net_platform_services_init,
+        .wifi_sta_connect_and_wait = mock_wifi_sta_connect_and_wait_fail_after_retries,
+        .wifi_start_fallback_ap = mock_wifi_start_fallback_ap_ok,
+    };
+    wifi_init_set_ops_for_test(&ops);
+
+    esp_err_t ret = wifi_init_sta_and_wait();
+    TEST_ASSERT_EQUAL(ESP_OK, ret);
+    TEST_ASSERT_EQUAL_INT(1, s_mock_wifi_net_platform_init_called);
+    TEST_ASSERT_EQUAL_INT(1, s_mock_wifi_sta_connect_called);
+    TEST_ASSERT_EQUAL_INT(1, s_mock_wifi_fallback_called);
+
+    gateway_wifi_state_t state = {0};
+    TEST_ASSERT_EQUAL(ESP_OK, gateway_state_get_wifi(&state));
+    TEST_ASSERT_FALSE(state.sta_connected);
+    TEST_ASSERT_TRUE(state.fallback_ap_active);
+    TEST_ASSERT_EQUAL_STRING("ZGW-Fallback", state.active_ssid);
+
+    wifi_init_reset_ops_for_test();
+}
+
 void zgw_register_e2e_self_tests(void)
 {
     RUN_TEST(test_e2e_control_contract_and_usecase);
@@ -218,6 +336,8 @@ void zgw_register_e2e_self_tests(void)
     RUN_TEST(test_e2e_wifi_settings_contract_and_usecase);
     RUN_TEST(test_e2e_endpoint_wifi_settings_invalid_json_rejected);
     RUN_TEST(test_e2e_endpoint_wifi_settings_reboot_failure_propagates);
+    RUN_TEST(test_e2e_wifi_scan_contract_and_usecase);
+    RUN_TEST(test_e2e_wifi_connect_retry_exhausted_switches_to_ap_fallback);
     RUN_TEST(test_e2e_factory_reset_usecase_mock);
     RUN_TEST(test_e2e_endpoint_factory_reset_success);
 }

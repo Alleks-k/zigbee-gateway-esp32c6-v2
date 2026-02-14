@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Gateway Browser E2E Contract</title>
+    <style>
+        body { font-family: monospace; margin: 16px; background: #f6f8fb; color: #0f172a; }
+        h1 { font-size: 18px; margin: 0 0 12px; }
+        .panel { background: #fff; border: 1px solid #dbe2ea; border-radius: 8px; padding: 12px; margin-bottom: 12px; }
+        .pass { color: #0f766e; }
+        .fail { color: #b91c1c; }
+        #results li { margin: 4px 0; }
+        .grid { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+        .kv { border: 1px dashed #cbd5e1; border-radius: 6px; padding: 6px; min-height: 40px; background: #f8fafc; }
+    </style>
+</head>
+<body>
+    <h1>Browser E2E Contract Harness</h1>
+    <div class="panel">
+        <button id="run">Run tests</button>
+        <ul id="results"></ul>
+    </div>
+
+    <div class="panel grid">
+        <div class="kv">WS: <span id="ws-status">offline</span></div>
+        <div class="kv">PAN: <span id="panId">--</span></div>
+        <div class="kv">CH: <span id="channel">--</span></div>
+        <div class="kv">GW: <span id="gwAddr">--</span></div>
+        <div class="kv">Wi-Fi: <span id="wifiState">--</span></div>
+    </div>
+
+    <div class="panel">
+        <ul id="deviceList"></ul>
+        <div id="lqiSource">--</div>
+        <div id="lqiUpdated">--</div>
+        <div id="lqiStaleBadge">--</div>
+        <div id="lqiRssiInfoBadge"></div>
+        <button id="refreshLqiBtn">Refresh LQI</button>
+        <table><tbody id="lqiTableBody"></tbody></table>
+        <div id="lqiGraph"></div>
+        <ul id="lqiHints"></ul>
+    </div>
+
+    <div class="panel">
+        <button id="scanWifiBtn" onclick="scanWifi()">Scan Wi-Fi</button>
+        <input id="wifi-ssid" value="">
+        <input id="wifi-pass" value="">
+        <div id="wifi-scan-results"></div>
+    </div>
+
+    <div id="job-indicator" style="display:none;">
+        <span id="job-indicator-op"></span>
+        <span id="job-indicator-state"></span>
+        <span id="job-indicator-detail"></span>
+    </div>
+    <div id="backend-mode-badge"></div>
+    <div id="toast"></div>
+
+    <script src="e2e_contract.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>

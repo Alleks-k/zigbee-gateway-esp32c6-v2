@@ -41,14 +41,20 @@ static const char *wifi_link_quality_label(system_wifi_link_quality_t quality)
     }
 }
 
-static bool lqi_measurement_invalid(int lqi, int rssi)
+static bool lqi_value_invalid(int lqi)
 {
-    return (lqi <= 0 || rssi == 127 || rssi <= -127);
+    return (lqi <= 0);
+}
+
+static bool rssi_value_invalid(int rssi)
+{
+    return (rssi == 127 || rssi <= -127);
 }
 
 static const char *lqi_quality_label(int lqi, int rssi)
 {
-    if (lqi_measurement_invalid(lqi, rssi)) {
+    (void)rssi;
+    if (lqi_value_invalid(lqi)) {
         return "unknown";
     }
     if (lqi >= 180) {
@@ -418,7 +424,7 @@ esp_err_t build_lqi_json_compact(char *out, size_t out_size, size_t *out_len)
 
     for (int i = 0; i < dev_count; i++) {
         int lqi = LQI_UNKNOWN_VALUE;
-        int rssi = 0;
+        int rssi = 127;
         bool direct = false;
         zigbee_lqi_source_t row_source = ZIGBEE_LQI_SOURCE_UNKNOWN;
         uint64_t row_updated_ms = 0;
@@ -445,7 +451,7 @@ esp_err_t build_lqi_json_compact(char *out, size_t out_size, size_t *out_len)
             return ESP_ERR_NO_MEM;
         }
 
-        if (lqi_measurement_invalid(lqi, rssi)) {
+        if (lqi_value_invalid(lqi)) {
             if (!append_literal(&cursor, &remaining, "null")) {
                 return ESP_ERR_NO_MEM;
             }
@@ -456,7 +462,7 @@ esp_err_t build_lqi_json_compact(char *out, size_t out_size, size_t *out_len)
         if (!append_literal(&cursor, &remaining, ",\"rssi\":")) {
             return ESP_ERR_NO_MEM;
         }
-        if (lqi_measurement_invalid(lqi, rssi)) {
+        if (rssi_value_invalid(rssi)) {
             if (!append_literal(&cursor, &remaining, "null")) {
                 return ESP_ERR_NO_MEM;
             }

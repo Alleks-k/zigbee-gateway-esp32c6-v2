@@ -211,7 +211,8 @@ static esp_err_t build_update_result_json(char *out, size_t out_size)
 
 static const char *lqi_quality_label_from_value(int lqi, int rssi)
 {
-    if (lqi <= 0 || rssi == 127 || rssi <= -127) {
+    (void)rssi;
+    if (lqi <= 0) {
         return "unknown";
     }
     if (lqi >= 180) {
@@ -249,11 +250,15 @@ static esp_err_t build_lqi_refresh_result_json(char *out, size_t out_size)
             return ESP_ERR_NO_MEM;
         }
         cJSON_AddNumberToObject(item, "short_addr", neighbors[i].short_addr);
-        if (neighbors[i].lqi <= 0 || neighbors[i].rssi == 127 || neighbors[i].rssi <= -127) {
+        if (neighbors[i].lqi <= 0) {
             cJSON_AddNullToObject(item, "lqi");
-            cJSON_AddNullToObject(item, "rssi");
         } else {
             cJSON_AddNumberToObject(item, "lqi", neighbors[i].lqi);
+        }
+
+        if (neighbors[i].rssi == 127 || neighbors[i].rssi <= -127) {
+            cJSON_AddNullToObject(item, "rssi");
+        } else {
             cJSON_AddNumberToObject(item, "rssi", neighbors[i].rssi);
         }
         cJSON_AddStringToObject(item, "quality", lqi_quality_label_from_value(neighbors[i].lqi, neighbors[i].rssi));

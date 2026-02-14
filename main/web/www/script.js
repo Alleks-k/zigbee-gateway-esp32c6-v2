@@ -634,6 +634,16 @@ function renderRouterHints(rows) {
     const root = document.getElementById('lqiHints');
     if (!root) return;
 
+    const hasRows = Array.isArray(rows) && rows.length > 0;
+    const hasAnyMetric = hasRows && rows.some((r) => {
+        const q = normalizeLqiQuality(r && r.quality);
+        return q !== 'unknown';
+    });
+    if (hasRows && !hasAnyMetric) {
+        root.innerHTML = '<li class="hint-warn">Topology detected, but LQI metrics are unavailable. Run Refresh and wait for link reports.</li>';
+        return;
+    }
+
     const hints = buildRouterHints(rows || []);
     if (!hints.length) {
         root.innerHTML = '<li class="hint-empty">Topology looks stable. No router hints right now.</li>';
@@ -647,7 +657,7 @@ function qualityStrokeColor(quality) {
     if (quality === 'good') return '#16a34a';
     if (quality === 'warn') return '#d97706';
     if (quality === 'bad') return '#dc2626';
-    return '#94a3b8';
+    return '#64748b';
 }
 
 function qualityStrokeWidth(quality, lqiValue) {
@@ -661,7 +671,13 @@ function qualityStrokeWidth(quality, lqiValue) {
     if (quality === 'good') return 3;
     if (quality === 'warn') return 2.5;
     if (quality === 'bad') return 2;
-    return 1.5;
+    return 2.2;
+}
+
+function graphSignalLabel(lqiValue, rssiValue) {
+    const lqiText = (lqiValue === null || lqiValue === undefined) ? '--' : String(lqiValue);
+    const rssiText = (rssiValue === null || rssiValue === undefined) ? '--' : `${rssiValue} dBm`;
+    return `LQI ${lqiText} | RSSI ${rssiText}`;
 }
 
 function renderLqiGraph(rows) {
@@ -689,7 +705,8 @@ function renderLqiGraph(rows) {
             y: cy + radius * Math.sin(angle),
             name: (row.name || `0x${Number(row.short_addr || 0).toString(16)}`),
             quality: normalizeLqiQuality(row.quality),
-            lqi: row.lqi
+            lqi: row.lqi,
+            rssi: row.rssi
         };
     });
 
@@ -697,12 +714,13 @@ function renderLqiGraph(rows) {
         const color = qualityStrokeColor(n.quality);
         const widthPx = qualityStrokeWidth(n.quality, n.lqi);
         const dash = n.quality === 'unknown' ? ' stroke-dasharray="5 4"' : '';
-        return `<line x1="${cx}" y1="${cy}" x2="${n.x}" y2="${n.y}" stroke="${color}" stroke-width="${widthPx}"${dash}></line>`;
+        return `<line x1="${cx}" y1="${cy}" x2="${n.x}" y2="${n.y}" stroke="${color}" stroke-width="${widthPx}" stroke-linecap="round" opacity="0.95"${dash}></line>`;
     }).join('');
 
     const nodeSvg = nodes.map((n) => `
         <circle cx="${n.x}" cy="${n.y}" r="8" fill="#ffffff" stroke="${qualityStrokeColor(n.quality)}" stroke-width="2"></circle>
         <text x="${n.x + 11}" y="${n.y + 4}" font-size="11" fill="#334155">${n.name}</text>
+        <text x="${n.x + 11}" y="${n.y + 18}" font-size="10" fill="#64748b">${graphSignalLabel(n.lqi, n.rssi)}</text>
     `).join('');
 
     root.innerHTML = `
@@ -740,10 +758,13 @@ function updateLqiMeta(meta) {
     }
 
     sourceEl.textContent = lqiSourceLabel(source);
-    if (updatedMs > 0) {
-        updatedEl.textContent = `${Math.round(updatedMs / 1000)}s uptime`;
+    if (updatedMs > 0 && lastLqiMetaReceivedAtMs > 0) {
+        const ageSec = Math.max(0, Math.round((Date.now() - lastLqiMetaReceivedAtMs) / 1000));
+        updatedEl.textContent = `${formatAge(ageSec)} ago`;
+        updatedEl.title = `device uptime counter: ${Math.round(updatedMs / 1000)}s`;
     } else {
         updatedEl.textContent = '--';
+        updatedEl.title = '';
     }
 
     const ageMs = lastLqiMetaReceivedAtMs > 0 ? (Date.now() - lastLqiMetaReceivedAtMs) : Number.POSITIVE_INFINITY;
@@ -768,14 +789,22 @@ function renderLqiTable(rows, meta) {
     }
 
     updateLqiHistory(currentLqiRows);
-    const ageText = formatAge(getLqiAgeSeconds());
+    const globalAgeSec = getLqiAgeSeconds();
+    const metaUpdatedMs = meta && Number.isFinite(Number(meta.updated_ms)) ? Number(meta.updated_ms) : null;
     currentLqiRows.forEach(row => {
         const tr = document.createElement('tr');
         const addrHex = '0x' + Number(row.short_addr || 0).toString(16).toUpperCase().padStart(4, '0');
         const quality = normalizeLqiQuality(row.quality);
         const lqiText = row.lqi === null || row.lqi === undefined ? '--' : String(row.lqi);
         const rssiText = row.rssi === null || row.rssi === undefined ? '--' : `${row.rssi} dBm`;
-        const directText = row.direct ? 'direct' : 'indirect';
+        const rowUpdatedMs = Number.isFinite(Number(row.updated_ms)) ? Number(row.updated_ms) : null;
+        let rowAgeSec = globalAgeSec;
+        if (metaUpdatedMs !== null && rowUpdatedMs !== null && metaUpdatedMs >= rowUpdatedMs) {
+            rowAgeSec = Math.max(0, Math.round((metaUpdatedMs - rowUpdatedMs) / 1000));
+        }
+        const ageText = formatAge(rowAgeSec);
+        const hasMetrics = quality !== 'unknown';
+        const directText = hasMetrics ? (row.direct ? 'direct' : 'indirect') : 'unknown';
         const sourceText = lqiSourceLabel(row.source || (meta && meta.source) || 'unknown');
         const trend = trendForAddr(Number(row.short_addr || 0));
 

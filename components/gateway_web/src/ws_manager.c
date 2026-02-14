@@ -368,7 +368,8 @@ void ws_broadcast_status(void)
                             (lqi_len > 0) &&
                             (memcmp(s_ws_lqi_json_buf, s_last_ws_lqi_json, lqi_len) == 0);
             if (!same_lqi || (now_us - s_last_ws_lqi_send_us) >= WS_MIN_DUP_BROADCAST_INTERVAL_US) {
-                wrap_ret = ws_wrap_event_payload("lqi_state", s_ws_lqi_json_buf, lqi_len, &frame_len);
+                // Canonical WS event name for LQI updates.
+                wrap_ret = ws_wrap_event_payload("lqi_update", s_ws_lqi_json_buf, lqi_len, &frame_len);
                 if (wrap_ret == ESP_OK) {
                     (void)ws_send_frame_to_clients(s_ws_frame_buf, frame_len);
                     if (lqi_len < sizeof(s_last_ws_lqi_json)) {

@@ -207,7 +207,8 @@ function initWebSocket() {
             applyHealthData(data.data);
             return;
         }
-        if (data && data.type === 'lqi_state' && data.data) {
+        // Accept both canonical and legacy names for backward compatibility.
+        if (data && (data.type === 'lqi_update' || data.type === 'lqi_state') && data.data) {
             const neighbors = Array.isArray(data.data.neighbors) ? data.data.neighbors : [];
             renderLqiTable(neighbors, data.data);
             return;

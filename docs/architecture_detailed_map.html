@@ -437,7 +437,7 @@
         <div class="risk">
           <h3>Архітектурні залишки</h3>
           <ul>
-            <li><span class="md">Medium:</span> <code>gateway_web -> gateway_net</code> пряма compile залежність (частину краще тягнути через core/usecase).</li>
+            <li><span class="ok">Done:</span> пряма compile-залежність <code>gateway_web -> gateway_net</code> прибрана; звʼязок проходить через <code>gateway_web_static</code>/<code>gateway_web_api</code>.</li>
             <li><span class="md">Medium:</span> <code>api_handlers.c</code все ще великий (health/status/jobs); LQI вже винесений, інші builder-и можна винести так само.</li>
             <li><span class="md">Medium:</span> <code>gateway_core</code ще залишається великим, але Wi-Fi scan/telemetry platform-код уже винесено в <code>gateway_net</code> adapter.</li>
             <li><span class="ok">Done:</span> Health snapshot і LQI mapper винесені з handlers в окремі шари.</li>

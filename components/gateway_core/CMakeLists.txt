@@ -8,9 +8,6 @@ set(gateway_core_reqs
     gateway_core_wifi
     gateway_core_system
     gateway_core_jobs
-    json
-    esp-zigbee-lib
-    esp_event
 )
 
 if(CONFIG_GATEWAY_SELF_TEST_APP)

@@ -8,15 +8,7 @@ set(gateway_web_reqs
     gateway_web_api
     gateway_web_ws
     gateway_web_static
-    gateway_net
-    esp_http_server
-    mdns
-    spiffs
-    json
-    nvs_flash
-    esp_wifi
-    esp_event
-    esp_timer)
+    esp_http_server)
 
 if(CONFIG_GATEWAY_SELF_TEST_APP)
     list(APPEND gateway_web_srcs "test/gateway_web_self_tests.c")

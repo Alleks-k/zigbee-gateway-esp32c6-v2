@@ -2,7 +2,9 @@
 #include "api_handlers.h"
 #include "api_contracts.h"
 #include "api_usecases.h"
+#include "lqi_json_mapper.h"
 #include "error_ring.h"
+#include "gateway_state.h"
 #include "cJSON.h"
 #include <stdio.h>
 #include <string.h>
@@ -74,6 +76,117 @@ static void test_health_json_builder_with_large_error_ring_truncates_and_stays_v
     TEST_ASSERT_TRUE(cJSON_IsNumber(cJSON_GetObjectItem(system, "heap_min")));
     TEST_ASSERT_TRUE(cJSON_IsNumber(cJSON_GetObjectItem(system, "heap_largest_block")));
 
+    cJSON_Delete(root);
+}
+
+static cJSON *find_neighbor_by_addr(cJSON *neighbors, uint16_t short_addr)
+{
+    if (!cJSON_IsArray(neighbors)) {
+        return NULL;
+    }
+    const int n = cJSON_GetArraySize(neighbors);
+    for (int i = 0; i < n; i++) {
+        cJSON *item = cJSON_GetArrayItem(neighbors, i);
+        cJSON *addr = cJSON_GetObjectItem(item, "short_addr");
+        if (cJSON_IsNumber(addr) && (uint16_t)addr->valueint == short_addr) {
+            return item;
+        }
+    }
+    return NULL;
+}
+
+static void test_lqi_json_mapper_uses_cached_snapshot_contract(void)
+{
+    zb_device_t devices[2] = {
+        {.short_addr = 0x1001, .name = "Dev A"},
+        {.short_addr = 0x1002, .name = "Dev B"},
+    };
+    TEST_ASSERT_EQUAL(ESP_OK, gateway_state_set_devices(devices, 2));
+    TEST_ASSERT_EQUAL(ESP_OK, gateway_state_update_device_lqi(0x1001, 150, 127, GATEWAY_LQI_SOURCE_MGMT_LQI, 1000));
+    TEST_ASSERT_EQUAL(ESP_OK, gateway_state_update_device_lqi(0x1002, 70, -80, GATEWAY_LQI_SOURCE_NEIGHBOR_TABLE, 900));
+
+    char buf[2048];
+    size_t out_len = 0;
+    esp_err_t ret = build_lqi_json_compact(buf, sizeof(buf), &out_len);
+    TEST_ASSERT_EQUAL(ESP_OK, ret);
+    TEST_ASSERT_GREATER_THAN_UINT32(0, (uint32_t)out_len);
+
+    cJSON *root = cJSON_ParseWithLength(buf, out_len);
+    TEST_ASSERT_NOT_NULL(root);
+
+    cJSON *neighbors = cJSON_GetObjectItem(root, "neighbors");
+    TEST_ASSERT_TRUE(cJSON_IsArray(neighbors));
+    TEST_ASSERT_EQUAL_INT(2, cJSON_GetArraySize(neighbors));
+
+    cJSON *a = find_neighbor_by_addr(neighbors, 0x1001);
+    cJSON *b = find_neighbor_by_addr(neighbors, 0x1002);
+    TEST_ASSERT_NOT_NULL(a);
+    TEST_ASSERT_NOT_NULL(b);
+
+    TEST_ASSERT_TRUE(cJSON_IsNumber(cJSON_GetObjectItem(a, "lqi")));
+    TEST_ASSERT_EQUAL_INT(150, cJSON_GetObjectItem(a, "lqi")->valueint);
+    TEST_ASSERT_TRUE(cJSON_IsNull(cJSON_GetObjectItem(a, "rssi")));
+    TEST_ASSERT_EQUAL_STRING("warn", cJSON_GetObjectItem(a, "quality")->valuestring);
+    TEST_ASSERT_EQUAL_STRING("mgmt_lqi", cJSON_GetObjectItem(a, "source")->valuestring);
+
+    TEST_ASSERT_TRUE(cJSON_IsNumber(cJSON_GetObjectItem(b, "lqi")));
+    TEST_ASSERT_EQUAL_INT(70, cJSON_GetObjectItem(b, "lqi")->valueint);
+    TEST_ASSERT_TRUE(cJSON_IsNumber(cJSON_GetObjectItem(b, "rssi")));
+    TEST_ASSERT_EQUAL_INT(-80, cJSON_GetObjectItem(b, "rssi")->valueint);
+    TEST_ASSERT_EQUAL_STRING("bad", cJSON_GetObjectItem(b, "quality")->valuestring);
+    TEST_ASSERT_EQUAL_STRING("neighbor_table", cJSON_GetObjectItem(b, "source")->valuestring);
+
+    TEST_ASSERT_EQUAL_STRING("mgmt_lqi", cJSON_GetObjectItem(root, "source")->valuestring);
+    TEST_ASSERT_EQUAL_INT(1000, cJSON_GetObjectItem(root, "updated_ms")->valueint);
+
+    cJSON_Delete(root);
+}
+
+static void test_health_snapshot_usecase_contract(void)
+{
+    gateway_network_state_t net = {
+        .zigbee_started = true,
+        .factory_new = false,
+        .pan_id = 0x1234,
+        .channel = 15,
+        .short_addr = 0x0000,
+    };
+    gateway_wifi_state_t wifi = {
+        .sta_connected = true,
+        .fallback_ap_active = false,
+        .loaded_from_nvs = true,
+        .active_ssid = "SelfTestNet",
+    };
+    TEST_ASSERT_EQUAL(ESP_OK, gateway_state_set_network(&net));
+    TEST_ASSERT_EQUAL(ESP_OK, gateway_state_set_wifi(&wifi));
+
+    api_health_snapshot_t snap = {0};
+    esp_err_t ret = api_usecase_collect_health_snapshot(&snap);
+    TEST_ASSERT_EQUAL(ESP_OK, ret);
+
+    TEST_ASSERT_TRUE(snap.zigbee_started);
+    TEST_ASSERT_EQUAL_UINT16(0x1234, (uint16_t)snap.zigbee_pan_id);
+    TEST_ASSERT_EQUAL_UINT8(15, (uint8_t)snap.zigbee_channel);
+    TEST_ASSERT_TRUE(snap.wifi_sta_connected);
+    TEST_ASSERT_FALSE(snap.wifi_fallback_ap_active);
+    TEST_ASSERT_EQUAL_STRING("SelfTestNet", snap.wifi_active_ssid);
+    TEST_ASSERT_TRUE(snap.telemetry.uptime_ms >= 0);
+    TEST_ASSERT_TRUE(snap.telemetry.heap_free > 0);
+}
+
+static void test_health_json_wifi_active_ssid_is_canonical(void)
+{
+    char buf[4096];
+    size_t out_len = 0;
+    esp_err_t ret = build_health_json_compact(buf, sizeof(buf), &out_len);
+    TEST_ASSERT_EQUAL(ESP_OK, ret);
+
+    cJSON *root = cJSON_ParseWithLength(buf, out_len);
+    TEST_ASSERT_NOT_NULL(root);
+    cJSON *wifi = cJSON_GetObjectItem(root, "wifi");
+    TEST_ASSERT_TRUE(cJSON_IsObject(wifi));
+    TEST_ASSERT_TRUE(cJSON_IsString(cJSON_GetObjectItem(wifi, "active_ssid")));
+    TEST_ASSERT_NULL(cJSON_GetObjectItem(wifi, "ssid"));
     cJSON_Delete(root);
 }
 
@@ -171,6 +284,41 @@ static void test_frontend_contract_factory_reset_envelope_smoke(void)
     cJSON_Delete(root);
 }
 
+static void test_ws_lqi_update_envelope_smoke(void)
+{
+    const char *json =
+        "{\"version\":1,\"seq\":42,\"ts\":1700000000,\"type\":\"lqi_update\","
+        "\"data\":{\"neighbors\":[{\"short_addr\":4097,\"name\":\"Dev A\",\"lqi\":150,\"rssi\":null,"
+        "\"quality\":\"warn\",\"direct\":true,\"source\":\"mgmt_lqi\",\"updated_ms\":1000}],"
+        "\"updated_ms\":1000,\"source\":\"mgmt_lqi\"}}";
+
+    cJSON *root = cJSON_Parse(json);
+    TEST_ASSERT_NOT_NULL(root);
+
+    TEST_ASSERT_TRUE(cJSON_IsNumber(cJSON_GetObjectItem(root, "version")));
+    TEST_ASSERT_EQUAL_INT(1, cJSON_GetObjectItem(root, "version")->valueint);
+    TEST_ASSERT_TRUE(cJSON_IsNumber(cJSON_GetObjectItem(root, "seq")));
+    TEST_ASSERT_TRUE(cJSON_IsNumber(cJSON_GetObjectItem(root, "ts")));
+    TEST_ASSERT_TRUE(cJSON_IsString(cJSON_GetObjectItem(root, "type")));
+    TEST_ASSERT_EQUAL_STRING("lqi_update", cJSON_GetObjectItem(root, "type")->valuestring);
+
+    cJSON *data = cJSON_GetObjectItem(root, "data");
+    TEST_ASSERT_TRUE(cJSON_IsObject(data));
+    cJSON *neighbors = cJSON_GetObjectItem(data, "neighbors");
+    TEST_ASSERT_TRUE(cJSON_IsArray(neighbors));
+    TEST_ASSERT_EQUAL_INT(1, cJSON_GetArraySize(neighbors));
+
+    cJSON *n0 = cJSON_GetArrayItem(neighbors, 0);
+    TEST_ASSERT_TRUE(cJSON_IsObject(n0));
+    TEST_ASSERT_TRUE(cJSON_IsNumber(cJSON_GetObjectItem(n0, "short_addr")));
+    TEST_ASSERT_TRUE(cJSON_IsNumber(cJSON_GetObjectItem(n0, "lqi")));
+    TEST_ASSERT_TRUE(cJSON_IsString(cJSON_GetObjectItem(n0, "quality")));
+    TEST_ASSERT_TRUE(cJSON_IsBool(cJSON_GetObjectItem(n0, "direct")));
+    TEST_ASSERT_TRUE(cJSON_IsString(cJSON_GetObjectItem(n0, "source")));
+
+    cJSON_Delete(root);
+}
+
 void gateway_web_register_self_tests(void)
 {
     RUN_TEST(test_devices_json_builder_small_buffer_fails);
@@ -178,6 +326,9 @@ void gateway_web_register_self_tests(void)
     RUN_TEST(test_devices_json_builder_ok);
     RUN_TEST(test_status_json_builder_ok);
     RUN_TEST(test_health_json_builder_with_large_error_ring_truncates_and_stays_valid);
+    RUN_TEST(test_lqi_json_mapper_uses_cached_snapshot_contract);
+    RUN_TEST(test_health_snapshot_usecase_contract);
+    RUN_TEST(test_health_json_wifi_active_ssid_is_canonical);
     RUN_TEST(test_contract_boundaries_control);
     RUN_TEST(test_contract_boundaries_wifi_settings);
     RUN_TEST(test_contract_boundaries_rename);
@@ -185,4 +336,5 @@ void gateway_web_register_self_tests(void)
     RUN_TEST(test_frontend_contract_status_envelope_smoke);
     RUN_TEST(test_frontend_contract_scan_envelope_smoke);
     RUN_TEST(test_frontend_contract_factory_reset_envelope_smoke);
+    RUN_TEST(test_ws_lqi_update_envelope_smoke);
 }

@@ -13,6 +13,11 @@ idf_component_register(
         "../gateway_web/include"
     REQUIRES
         gateway_core
+        gateway_core_storage
+        gateway_core_zigbee
+        gateway_core_wifi
+        gateway_core_system
+        gateway_core_jobs
         esp_http_server
         json
         nvs_flash

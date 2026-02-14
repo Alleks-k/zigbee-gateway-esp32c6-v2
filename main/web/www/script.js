@@ -306,6 +306,11 @@ function applyHealthData(data) {
             ? `Fallback AP (${data.wifi.active_ssid || '-'})`
             : (data.wifi.sta_connected ? `STA Connected (${data.wifi.active_ssid || '-'})` : 'STA Disconnected');
         updateElementText('wifiState', state);
+        if (data.wifi.rssi !== undefined && data.wifi.rssi !== null) {
+            updateElementText('wifiRssi', `${data.wifi.rssi} dBm`);
+        } else {
+            updateElementText('wifiRssi', 'N/A');
+        }
     }
 
     if (data.nvs) {
@@ -314,6 +319,31 @@ function applyHealthData(data) {
     if (data.heap && data.heap.free !== undefined) {
         updateElementText('heapFree', `${Math.round(Number(data.heap.free) / 1024)} KB`);
     }
+    if (data.heap && data.heap.minimum_free !== undefined) {
+        updateElementText('heapMinFree', `${Math.round(Number(data.heap.minimum_free) / 1024)} KB`);
+    }
+    if (data.system) {
+        if (data.system.uptime_ms !== undefined) {
+            updateElementText('uptime', formatUptime(Number(data.system.uptime_ms)));
+        }
+        if (data.system.temperature_c !== undefined && data.system.temperature_c !== null) {
+            updateElementText('chipTemp', `${Number(data.system.temperature_c).toFixed(1)} C`);
+        } else {
+            updateElementText('chipTemp', 'N/A');
+        }
+    }
+}
+
+function formatUptime(ms) {
+    if (!Number.isFinite(ms) || ms < 0) return '--';
+    const totalSec = Math.floor(ms / 1000);
+    const days = Math.floor(totalSec / 86400);
+    const hours = Math.floor((totalSec % 86400) / 3600);
+    const mins = Math.floor((totalSec % 3600) / 60);
+    const secs = totalSec % 60;
+    if (days > 0) return `${days}d ${hours}h ${mins}m`;
+    if (hours > 0) return `${hours}h ${mins}m ${secs}s`;
+    return `${mins}m ${secs}s`;
 }
 
 /**

@@ -10,6 +10,13 @@
 #include "esp_heap_caps.h"
 #include "esp_system.h"
 #include "esp_timer.h"
+#include "esp_wifi.h"
+#if __has_include("driver/temperature_sensor.h")
+#include "driver/temperature_sensor.h"
+#define GATEWAY_HAS_TEMP_SENSOR 1
+#else
+#define GATEWAY_HAS_TEMP_SENSOR 0
+#endif
 #include "cJSON.h"
 #include <string.h>
 #include <stdio.h>
@@ -25,6 +32,52 @@ static const char *TAG = "API_HANDLERS";
 #define JOB_API_RESULT_JSON_LIMIT_UPDATE        768
 #define JOB_API_RESULT_JSON_LIMIT_LQI_REFRESH   1024
 #define LQI_UNKNOWN_VALUE                       (-1)
+
+#if GATEWAY_HAS_TEMP_SENSOR
+static temperature_sensor_handle_t s_temp_sensor_handle = NULL;
+static bool s_temp_sensor_init_attempted = false;
+static bool s_temp_sensor_available = false;
+#endif
+
+static bool read_wifi_rssi(int32_t *out_rssi)
+{
+    if (!out_rssi) {
+        return false;
+    }
+    wifi_ap_record_t ap_info = {0};
+    if (esp_wifi_sta_get_ap_info(&ap_info) != ESP_OK) {
+        return false;
+    }
+    *out_rssi = (int32_t)ap_info.rssi;
+    return true;
+}
+
+static bool read_temperature_c(float *out_temp_c)
+{
+    if (!out_temp_c) {
+        return false;
+    }
+#if GATEWAY_HAS_TEMP_SENSOR
+    if (!s_temp_sensor_init_attempted) {
+        s_temp_sensor_init_attempted = true;
+        temperature_sensor_config_t cfg = TEMPERATURE_SENSOR_CONFIG_DEFAULT(-20, 100);
+        if (temperature_sensor_install(&cfg, &s_temp_sensor_handle) == ESP_OK &&
+            temperature_sensor_enable(s_temp_sensor_handle) == ESP_OK)
+        {
+            s_temp_sensor_available = true;
+        } else {
+            s_temp_sensor_available = false;
+            s_temp_sensor_handle = NULL;
+        }
+    }
+    if (!s_temp_sensor_available || s_temp_sensor_handle == NULL) {
+        return false;
+    }
+    return (temperature_sensor_get_celsius(s_temp_sensor_handle, out_temp_c) == ESP_OK);
+#else
+    return false;
+#endif
+}
 
 static bool lqi_measurement_invalid(int lqi, int rssi)
 {
@@ -239,6 +292,14 @@ esp_err_t build_status_json_compact(char *out, size_t out_size, size_t *out_len)
         !append_u32(&cursor, &remaining, status.channel) ||
         !append_literal(&cursor, &remaining, ",\"short_addr\":") ||
         !append_u32(&cursor, &remaining, status.short_addr) ||
+        !append_literal(&cursor, &remaining, ",\"zigbee\":{") ||
+        !append_literal(&cursor, &remaining, "\"pan_id\":") ||
+        !append_u32(&cursor, &remaining, status.pan_id) ||
+        !append_literal(&cursor, &remaining, ",\"channel\":") ||
+        !append_u32(&cursor, &remaining, status.channel) ||
+        !append_literal(&cursor, &remaining, ",\"short_addr\":") ||
+        !append_u32(&cursor, &remaining, status.short_addr) ||
+        !append_literal(&cursor, &remaining, "}") ||
         !append_literal(&cursor, &remaining, ",\"devices\":["))
     {
         return ESP_ERR_NO_MEM;
@@ -492,6 +553,13 @@ esp_err_t build_health_json_compact(char *out, size_t out_size, size_t *out_len)
     if (!active_ssid) {
         active_ssid = "";
     }
+    const uint64_t uptime_ms = (uint64_t)(esp_timer_get_time() / 1000);
+    const uint32_t heap_free = esp_get_free_heap_size();
+    const uint32_t heap_min_free = esp_get_minimum_free_heap_size();
+    int32_t wifi_rssi = 0;
+    const bool has_wifi_rssi = read_wifi_rssi(&wifi_rssi);
+    float temp_c = 0.0f;
+    const bool has_temp_c = read_temperature_c(&temp_c);
 
     char *cursor = out;
     size_t remaining = out_size;
@@ -507,7 +575,19 @@ esp_err_t build_health_json_compact(char *out, size_t out_size, size_t *out_len)
         !append_literal(&cursor, &remaining, loaded_from_nvs ? "true" : "false") ||
         !append_literal(&cursor, &remaining, ",\"active_ssid\":\"") ||
         !append_json_escaped(&cursor, &remaining, active_ssid) ||
-        !append_literal(&cursor, &remaining, "\"},\"zigbee\":{") ||
+        !append_literal(&cursor, &remaining, "\",\"rssi\":"))
+    {
+        return ESP_ERR_NO_MEM;
+    }
+    if (has_wifi_rssi) {
+        if (!append_i32(&cursor, &remaining, wifi_rssi)) {
+            return ESP_ERR_NO_MEM;
+        }
+    } else if (!append_literal(&cursor, &remaining, "null")) {
+        return ESP_ERR_NO_MEM;
+    }
+
+    if (!append_literal(&cursor, &remaining, "\"},\"zigbee\":{") ||
         !append_literal(&cursor, &remaining, "\"started\":") ||
         !append_literal(&cursor, &remaining, gw_state.zigbee_started ? "true" : "false") ||
         !append_literal(&cursor, &remaining, ",\"factory_new\":") ||
@@ -526,11 +606,29 @@ esp_err_t build_health_json_compact(char *out, size_t out_size, size_t *out_len)
         !append_literal(&cursor, &remaining, schema_ret == ESP_OK ? "true" : "false") ||
         !append_literal(&cursor, &remaining, ",\"schema_version\":") ||
         !append_i32(&cursor, &remaining, schema_ret == ESP_OK ? schema_version : -1) ||
-        !append_literal(&cursor, &remaining, "},\"heap\":{") ||
+        !append_literal(&cursor, &remaining, "},\"system\":{") ||
+        !append_literal(&cursor, &remaining, "\"uptime_ms\":") ||
+        !append_u64(&cursor, &remaining, uptime_ms) ||
+        !append_literal(&cursor, &remaining, ",\"temperature_c\":"))
+    {
+        return ESP_ERR_NO_MEM;
+    }
+    if (has_temp_c) {
+        int written = snprintf(cursor, remaining, "%.2f", (double)temp_c);
+        if (written < 0 || (size_t)written >= remaining) {
+            return ESP_ERR_NO_MEM;
+        }
+        cursor += written;
+        remaining -= (size_t)written;
+    } else if (!append_literal(&cursor, &remaining, "null")) {
+        return ESP_ERR_NO_MEM;
+    }
+
+    if (!append_literal(&cursor, &remaining, "},\"heap\":{") ||
         !append_literal(&cursor, &remaining, "\"free\":") ||
-        !append_u32(&cursor, &remaining, esp_get_free_heap_size()) ||
+        !append_u32(&cursor, &remaining, heap_free) ||
         !append_literal(&cursor, &remaining, ",\"minimum_free\":") ||
-        !append_u32(&cursor, &remaining, esp_get_minimum_free_heap_size()) ||
+        !append_u32(&cursor, &remaining, heap_min_free) ||
         !append_literal(&cursor, &remaining, "}}"))
     {
         return ESP_ERR_NO_MEM;
@@ -544,7 +642,7 @@ esp_err_t build_health_json_compact(char *out, size_t out_size, size_t *out_len)
 
 esp_err_t api_health_handler(httpd_req_t *req)
 {
-    char health_json[512];
+    char health_json[768];
     size_t health_len = 0;
     esp_err_t ret = build_health_json_compact(health_json, sizeof(health_json), &health_len);
     if (ret != ESP_OK) {

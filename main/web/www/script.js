@@ -15,6 +15,8 @@ const JOB_POLL_INTERVAL_MS = 600;
 const JOB_TIMEOUT_MS = 30000;
 const LQI_STALE_MS = 60000;
 const LQI_HISTORY_WINDOW_MS = 15 * 60 * 1000;
+const TEMP_WARN_C = 75;
+const TEMP_CRIT_C = 85;
 let jobIndicatorHideTimer = null;
 let backendMode = 'unknown';
 let lastLqiUpdateCounter = 0;
@@ -311,6 +313,11 @@ function applyHealthData(data) {
         } else {
             updateElementText('wifiRssi', 'N/A');
         }
+        if (data.wifi.link_quality !== undefined && data.wifi.link_quality !== null) {
+            updateElementText('wifiLinkQuality', String(data.wifi.link_quality).toUpperCase());
+        } else {
+            updateElementText('wifiLinkQuality', 'UNKNOWN');
+        }
     }
 
     if (data.nvs) {
@@ -322,15 +329,24 @@ function applyHealthData(data) {
     if (data.heap && data.heap.minimum_free !== undefined) {
         updateElementText('heapMinFree', `${Math.round(Number(data.heap.minimum_free) / 1024)} KB`);
     }
+    if (data.heap && data.heap.largest_free_block !== undefined) {
+        updateElementText('heapLargest', `${Math.round(Number(data.heap.largest_free_block) / 1024)} KB`);
+    }
     if (data.system) {
         if (data.system.uptime_ms !== undefined) {
             updateElementText('uptime', formatUptime(Number(data.system.uptime_ms)));
         }
         if (data.system.temperature_c !== undefined && data.system.temperature_c !== null) {
-            updateElementText('chipTemp', `${Number(data.system.temperature_c).toFixed(1)} C`);
+            const t = Number(data.system.temperature_c);
+            updateElementText('chipTemp', `${t.toFixed(1)} C`);
+            applyTempAlarmState(t);
         } else {
             updateElementText('chipTemp', 'N/A');
+            applyTempAlarmState(null);
         }
+    }
+    if (data.telemetry && data.telemetry.updated_ms !== undefined) {
+        updateElementText('telemetryUpdated', formatUptime(Number(data.telemetry.updated_ms)));
     }
 }
 
@@ -344,6 +360,22 @@ function formatUptime(ms) {
     if (days > 0) return `${days}d ${hours}h ${mins}m`;
     if (hours > 0) return `${hours}h ${mins}m ${secs}s`;
     return `${mins}m ${secs}s`;
+}
+
+function applyTempAlarmState(tempC) {
+    const el = document.getElementById('chipTemp');
+    if (!el) return;
+    el.classList.remove('temp-ok', 'temp-warn', 'temp-critical');
+    if (!Number.isFinite(tempC)) return;
+    if (tempC >= TEMP_CRIT_C) {
+        el.classList.add('temp-critical');
+        return;
+    }
+    if (tempC >= TEMP_WARN_C) {
+        el.classList.add('temp-warn');
+        return;
+    }
+    el.classList.add('temp-ok');
 }
 
 /**

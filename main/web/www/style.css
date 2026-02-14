@@ -60,6 +60,21 @@ h2 {
     border: 1px solid #eee;
 }
 
+#chipTemp.temp-ok {
+    color: #1f7a38;
+    font-weight: 600;
+}
+
+#chipTemp.temp-warn {
+    color: #b26a00;
+    font-weight: 700;
+}
+
+#chipTemp.temp-critical {
+    color: #b00020;
+    font-weight: 700;
+}
+
 .backend-mode-badge {
     display: inline-block;
     font-size: 12px;

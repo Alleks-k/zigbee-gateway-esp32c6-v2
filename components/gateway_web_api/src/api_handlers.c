@@ -124,7 +124,7 @@ esp_err_t api_factory_reset_handler(httpd_req_t *req)
         return http_error_send_esp(req, err, "Factory reset failed");
     }
 
-    system_factory_reset_report_t report = {0};
+    api_factory_reset_report_t report = {0};
     err = api_usecase_get_factory_reset_report(&report);
     if (err != ESP_OK) {
         return http_error_send_esp(req, err, "Factory reset status unavailable");

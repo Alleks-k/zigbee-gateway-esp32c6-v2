@@ -40,6 +40,10 @@ static QueueHandle_t s_job_q = NULL;
 static TaskHandle_t s_worker = NULL;
 static zgw_job_slot_t s_jobs[ZGW_JOB_MAX];
 static uint32_t s_next_id = 1;
+static zgw_job_metrics_t s_metrics = {0};
+static uint32_t s_latency_samples_ms[64];
+static size_t s_latency_samples_count = 0;
+static size_t s_latency_samples_next = 0;
 
 static uint64_t now_ms(void)
 {
@@ -138,6 +142,55 @@ static void prune_completed_jobs_locked(uint64_t now)
             memset(&s_jobs[i], 0, sizeof(s_jobs[i]));
         }
     }
+}
+
+static uint32_t inflight_depth_locked(void)
+{
+    uint32_t depth = 0;
+    for (int i = 0; i < ZGW_JOB_MAX; i++) {
+        if (!s_jobs[i].used) {
+            continue;
+        }
+        if (s_jobs[i].state == ZGW_JOB_STATE_QUEUED || s_jobs[i].state == ZGW_JOB_STATE_RUNNING) {
+            depth++;
+        }
+    }
+    return depth;
+}
+
+static void push_latency_sample_ms(uint32_t latency_ms)
+{
+    s_latency_samples_ms[s_latency_samples_next] = latency_ms;
+    s_latency_samples_next = (s_latency_samples_next + 1U) % (sizeof(s_latency_samples_ms) / sizeof(s_latency_samples_ms[0]));
+    if (s_latency_samples_count < (sizeof(s_latency_samples_ms) / sizeof(s_latency_samples_ms[0]))) {
+        s_latency_samples_count++;
+    }
+}
+
+static uint32_t latency_p95_ms(void)
+{
+    if (s_latency_samples_count == 0) {
+        return 0;
+    }
+    uint32_t sorted[64];
+    size_t n = s_latency_samples_count;
+    for (size_t i = 0; i < n; i++) {
+        sorted[i] = s_latency_samples_ms[i];
+    }
+    for (size_t i = 1; i < n; i++) {
+        uint32_t key = sorted[i];
+        size_t j = i;
+        while (j > 0 && sorted[j - 1] > key) {
+            sorted[j] = sorted[j - 1];
+            j--;
+        }
+        sorted[j] = key;
+    }
+    size_t idx = (n == 1) ? 0 : ((n * 95 + 99) / 100) - 1;
+    if (idx >= n) {
+        idx = n - 1;
+    }
+    return sorted[idx];
 }
 
 static void set_job_result(zgw_job_slot_t *job, const char *json_data)
@@ -373,9 +426,17 @@ static void execute_job(uint32_t job_id)
     xSemaphoreTake(s_mutex, portMAX_DELAY);
     idx = find_slot_index_by_id(job_id);
     if (idx >= 0 && s_jobs[idx].used) {
+        uint64_t finished_ms = now_ms();
         s_jobs[idx].err = exec_err;
         s_jobs[idx].state = (exec_err == ESP_OK) ? ZGW_JOB_STATE_SUCCEEDED : ZGW_JOB_STATE_FAILED;
-        s_jobs[idx].updated_ms = now_ms();
+        s_jobs[idx].updated_ms = finished_ms;
+        uint64_t latency_ms = (finished_ms >= s_jobs[idx].created_ms) ? (finished_ms - s_jobs[idx].created_ms) : 0;
+        push_latency_sample_ms((latency_ms > UINT32_MAX) ? UINT32_MAX : (uint32_t)latency_ms);
+        if (exec_err == ESP_OK) {
+            s_metrics.completed_total++;
+        } else {
+            s_metrics.failed_total++;
+        }
         if (exec_err == ESP_OK) {
             set_job_result(&s_jobs[idx], result);
         } else {
@@ -454,6 +515,7 @@ esp_err_t job_queue_submit(zgw_job_type_t type, uint32_t reboot_delay_ms, uint32
     if (inflight_idx >= 0) {
         uint32_t inflight_id = s_jobs[inflight_idx].id;
         zgw_job_state_t inflight_state = s_jobs[inflight_idx].state;
+        s_metrics.dedup_reused_total++;
         *out_job_id = inflight_id;
         xSemaphoreGive(s_mutex);
         ESP_LOGI(TAG, "Job single-flight reuse id=%" PRIu32 " type=%s state=%s",
@@ -482,6 +544,11 @@ esp_err_t job_queue_submit(zgw_job_type_t type, uint32_t reboot_delay_ms, uint32
     s_jobs[idx].created_ms = now_ms();
     s_jobs[idx].updated_ms = s_jobs[idx].created_ms;
     s_jobs[idx].reboot_delay_ms = reboot_delay_ms;
+    s_metrics.submitted_total++;
+    s_metrics.queue_depth_current = inflight_depth_locked();
+    if (s_metrics.queue_depth_current > s_metrics.queue_depth_peak) {
+        s_metrics.queue_depth_peak = s_metrics.queue_depth_current;
+    }
     xSemaphoreGive(s_mutex);
 
     if (xQueueSend(s_job_q, &id, 0) != pdTRUE) {
@@ -521,6 +588,23 @@ esp_err_t job_queue_get(uint32_t job_id, zgw_job_info_t *out_info)
     out_info->updated_ms = s_jobs[idx].updated_ms;
     out_info->has_result = s_jobs[idx].has_result;
     strlcpy(out_info->result_json, s_jobs[idx].result_json, sizeof(out_info->result_json));
+    xSemaphoreGive(s_mutex);
+    return ESP_OK;
+}
+
+esp_err_t job_queue_get_metrics(zgw_job_metrics_t *out_metrics)
+{
+    if (!out_metrics) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    esp_err_t err = job_queue_init();
+    if (err != ESP_OK) {
+        return err;
+    }
+    xSemaphoreTake(s_mutex, portMAX_DELAY);
+    s_metrics.queue_depth_current = inflight_depth_locked();
+    s_metrics.latency_p95_ms = latency_p95_ms();
+    *out_metrics = s_metrics;
     xSemaphoreGive(s_mutex);
     return ESP_OK;
 }

@@ -8,16 +8,16 @@
 #include <stdio.h>
 #include <string.h>
 
-static const char *wifi_link_quality_label(system_wifi_link_quality_t quality)
+static const char *wifi_link_quality_label(api_system_wifi_link_quality_t quality)
 {
     switch (quality) {
-    case SYSTEM_WIFI_LINK_GOOD:
+    case API_WIFI_LINK_GOOD:
         return "good";
-    case SYSTEM_WIFI_LINK_WARN:
+    case API_WIFI_LINK_WARN:
         return "warn";
-    case SYSTEM_WIFI_LINK_BAD:
+    case API_WIFI_LINK_BAD:
         return "bad";
-    case SYSTEM_WIFI_LINK_UNKNOWN:
+    case API_WIFI_LINK_UNKNOWN:
     default:
         return "unknown";
     }
@@ -246,7 +246,32 @@ esp_err_t build_health_json_compact(char *out, size_t out_size, size_t *out_len)
     if (!append_literal(&cursor, &remaining, "},\"telemetry\":{") ||
         !append_literal(&cursor, &remaining, "\"updated_ms\":") ||
         !append_u64(&cursor, &remaining, telemetry_updated_ms) ||
-        !append_literal(&cursor, &remaining, "},\"errors\":"))
+        !append_literal(&cursor, &remaining, "},\"runtime\":{") ||
+        !append_literal(&cursor, &remaining, "\"jobs\":{") ||
+        !append_literal(&cursor, &remaining, "\"submitted_total\":") ||
+        !append_u32(&cursor, &remaining, hs.jobs_metrics.submitted_total) ||
+        !append_literal(&cursor, &remaining, ",\"dedup_reused_total\":") ||
+        !append_u32(&cursor, &remaining, hs.jobs_metrics.dedup_reused_total) ||
+        !append_literal(&cursor, &remaining, ",\"completed_total\":") ||
+        !append_u32(&cursor, &remaining, hs.jobs_metrics.completed_total) ||
+        !append_literal(&cursor, &remaining, ",\"failed_total\":") ||
+        !append_u32(&cursor, &remaining, hs.jobs_metrics.failed_total) ||
+        !append_literal(&cursor, &remaining, ",\"queue_depth\":") ||
+        !append_u32(&cursor, &remaining, hs.jobs_metrics.queue_depth_current) ||
+        !append_literal(&cursor, &remaining, ",\"queue_depth_peak\":") ||
+        !append_u32(&cursor, &remaining, hs.jobs_metrics.queue_depth_peak) ||
+        !append_literal(&cursor, &remaining, ",\"latency_p95_ms\":") ||
+        !append_u32(&cursor, &remaining, hs.jobs_metrics.latency_p95_ms) ||
+        !append_literal(&cursor, &remaining, "},\"ws\":{") ||
+        !append_literal(&cursor, &remaining, "\"dropped_frames_total\":") ||
+        !append_u32(&cursor, &remaining, hs.ws_metrics.dropped_frames_total) ||
+        !append_literal(&cursor, &remaining, ",\"reconnect_count\":") ||
+        !append_u32(&cursor, &remaining, hs.ws_metrics.reconnect_count) ||
+        !append_literal(&cursor, &remaining, ",\"connections_total\":") ||
+        !append_u32(&cursor, &remaining, hs.ws_metrics.connections_total) ||
+        !append_literal(&cursor, &remaining, ",\"broadcast_lock_skips_total\":") ||
+        !append_u32(&cursor, &remaining, hs.ws_metrics.broadcast_lock_skips_total) ||
+        !append_literal(&cursor, &remaining, "}},\"errors\":"))
     {
         return ESP_ERR_NO_MEM;
     }

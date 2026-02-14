@@ -356,12 +356,12 @@ static esp_err_t wait_job_done(uint32_t job_id, uint32_t timeout_ms, zgw_job_inf
     return ESP_ERR_TIMEOUT;
 }
 
-static void test_e2e_job_queue_reuses_completed_slots_without_saturation(void)
+static void test_e2e_job_queue_reuses_completed_slots_without_saturation_120_cycles(void)
 {
     reset_api_mocks();
     wifi_service_register_scan_impl(mock_wifi_scan_impl, mock_wifi_scan_free_impl);
 
-    for (int i = 0; i < 20; i++) {
+    for (int i = 0; i < 120; i++) {
         uint32_t job_id = 0;
         TEST_ASSERT_EQUAL(ESP_OK, job_queue_submit(ZGW_JOB_TYPE_WIFI_SCAN, 0, &job_id));
         TEST_ASSERT_NOT_EQUAL(0, job_id);
@@ -372,8 +372,14 @@ static void test_e2e_job_queue_reuses_completed_slots_without_saturation(void)
         TEST_ASSERT_EQUAL(ZGW_JOB_STATE_SUCCEEDED, info.state);
     }
 
-    TEST_ASSERT_GREATER_OR_EQUAL_INT(20, s_mock_wifi_scan_called);
-    TEST_ASSERT_GREATER_OR_EQUAL_INT(20, s_mock_wifi_scan_free_called);
+    zgw_job_metrics_t metrics = {0};
+    TEST_ASSERT_EQUAL(ESP_OK, job_queue_get_metrics(&metrics));
+    TEST_ASSERT_GREATER_OR_EQUAL_UINT32(120, metrics.submitted_total);
+    TEST_ASSERT_GREATER_OR_EQUAL_UINT32(120, metrics.completed_total);
+    TEST_ASSERT_EQUAL_UINT32(0, metrics.queue_depth_current);
+
+    TEST_ASSERT_GREATER_OR_EQUAL_INT(120, s_mock_wifi_scan_called);
+    TEST_ASSERT_GREATER_OR_EQUAL_INT(120, s_mock_wifi_scan_free_called);
     wifi_service_register_scan_impl(NULL, NULL);
 }
 
@@ -423,7 +429,7 @@ void zgw_register_e2e_self_tests(void)
     RUN_TEST(test_e2e_endpoint_wifi_settings_reboot_failure_propagates);
     RUN_TEST(test_e2e_wifi_scan_contract_and_usecase);
     RUN_TEST(test_e2e_wifi_connect_retry_exhausted_switches_to_ap_fallback);
-    RUN_TEST(test_e2e_job_queue_reuses_completed_slots_without_saturation);
+    RUN_TEST(test_e2e_job_queue_reuses_completed_slots_without_saturation_120_cycles);
     RUN_TEST(test_e2e_job_queue_singleflight_reuses_inflight_id);
     RUN_TEST(test_e2e_reboot_singleflight_schedules_once);
     RUN_TEST(test_e2e_factory_reset_usecase_mock);

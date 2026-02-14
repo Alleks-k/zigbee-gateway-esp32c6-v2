@@ -4,6 +4,7 @@
 #include "system_service.h"
 #include "gateway_state.h"
 #include "settings_manager.h"
+#include "job_queue.h"
 #include <string.h>
 
 static esp_err_t real_send_on_off(uint16_t short_addr, uint8_t endpoint, uint8_t on_off)
@@ -35,6 +36,7 @@ static const api_service_ops_t s_real_ops = {
 
 static const api_service_ops_t *s_ops = &s_real_ops;
 static api_ws_client_count_provider_t s_ws_client_count_provider = NULL;
+static api_ws_metrics_provider_t s_ws_metrics_provider = NULL;
 
 void api_usecases_set_service_ops(const api_service_ops_t *ops)
 {
@@ -44,6 +46,11 @@ void api_usecases_set_service_ops(const api_service_ops_t *ops)
 void api_usecases_set_ws_client_count_provider(api_ws_client_count_provider_t provider)
 {
     s_ws_client_count_provider = provider;
+}
+
+void api_usecases_set_ws_metrics_provider(api_ws_metrics_provider_t provider)
+{
+    s_ws_metrics_provider = provider;
 }
 
 esp_err_t api_usecase_control(const api_control_request_t *in)
@@ -138,14 +145,63 @@ esp_err_t api_usecase_schedule_reboot(uint32_t delay_ms)
     return system_service_schedule_reboot(delay_ms);
 }
 
-esp_err_t api_usecase_get_factory_reset_report(system_factory_reset_report_t *out_report)
+esp_err_t api_usecase_get_factory_reset_report(api_factory_reset_report_t *out_report)
 {
-    return system_service_get_last_factory_reset_report(out_report);
+    if (!out_report) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    system_factory_reset_report_t report = {0};
+    esp_err_t err = system_service_get_last_factory_reset_report(&report);
+    if (err != ESP_OK) {
+        return err;
+    }
+    out_report->wifi_err = report.wifi_err;
+    out_report->devices_err = report.devices_err;
+    out_report->zigbee_storage_err = report.zigbee_storage_err;
+    out_report->zigbee_fct_err = report.zigbee_fct_err;
+    return ESP_OK;
 }
 
-esp_err_t api_usecase_collect_telemetry(system_telemetry_t *out)
+static api_system_wifi_link_quality_t to_api_wifi_link_quality(system_wifi_link_quality_t quality)
 {
-    return system_service_collect_telemetry(out);
+    switch (quality) {
+    case SYSTEM_WIFI_LINK_GOOD:
+        return API_WIFI_LINK_GOOD;
+    case SYSTEM_WIFI_LINK_WARN:
+        return API_WIFI_LINK_WARN;
+    case SYSTEM_WIFI_LINK_BAD:
+        return API_WIFI_LINK_BAD;
+    case SYSTEM_WIFI_LINK_UNKNOWN:
+    default:
+        return API_WIFI_LINK_UNKNOWN;
+    }
+}
+
+esp_err_t api_usecase_collect_telemetry(api_system_telemetry_t *out)
+{
+    if (!out) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    system_telemetry_t telemetry = {0};
+    esp_err_t err = system_service_collect_telemetry(&telemetry);
+    if (err != ESP_OK) {
+        return err;
+    }
+    memset(out, 0, sizeof(*out));
+    out->uptime_ms = telemetry.uptime_ms;
+    out->heap_free = telemetry.heap_free;
+    out->heap_min = telemetry.heap_min;
+    out->heap_largest_block = telemetry.heap_largest_block;
+    out->main_stack_hwm_bytes = telemetry.main_stack_hwm_bytes;
+    out->httpd_stack_hwm_bytes = telemetry.httpd_stack_hwm_bytes;
+    out->has_temperature_c = telemetry.has_temperature_c;
+    out->temperature_c = telemetry.temperature_c;
+    out->has_wifi_rssi = telemetry.has_wifi_rssi;
+    out->wifi_rssi = telemetry.wifi_rssi;
+    out->has_wifi_ip = telemetry.has_wifi_ip;
+    strlcpy(out->wifi_ip, telemetry.wifi_ip, sizeof(out->wifi_ip));
+    out->wifi_link_quality = to_api_wifi_link_quality(telemetry.wifi_link_quality);
+    return ESP_OK;
 }
 
 esp_err_t api_usecase_collect_health_snapshot(api_health_snapshot_t *out)
@@ -183,9 +239,24 @@ esp_err_t api_usecase_collect_health_snapshot(api_health_snapshot_t *out)
 
     out->ws_clients = s_ws_client_count_provider ? s_ws_client_count_provider() : 0;
 
-    err = system_service_collect_telemetry(&out->telemetry);
+    err = api_usecase_collect_telemetry(&out->telemetry);
     if (err != ESP_OK) {
         return err;
+    }
+
+    zgw_job_metrics_t job_metrics = {0};
+    err = job_queue_get_metrics(&job_metrics);
+    if (err == ESP_OK) {
+        out->jobs_metrics.submitted_total = job_metrics.submitted_total;
+        out->jobs_metrics.dedup_reused_total = job_metrics.dedup_reused_total;
+        out->jobs_metrics.completed_total = job_metrics.completed_total;
+        out->jobs_metrics.failed_total = job_metrics.failed_total;
+        out->jobs_metrics.queue_depth_current = job_metrics.queue_depth_current;
+        out->jobs_metrics.queue_depth_peak = job_metrics.queue_depth_peak;
+        out->jobs_metrics.latency_p95_ms = job_metrics.latency_p95_ms;
+    }
+    if (s_ws_metrics_provider) {
+        (void)s_ws_metrics_provider(&out->ws_metrics);
     }
 
     return ESP_OK;

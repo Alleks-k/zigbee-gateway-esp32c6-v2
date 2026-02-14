@@ -32,9 +32,20 @@ typedef struct {
     char result_json[ZGW_JOB_RESULT_MAX_LEN];
 } zgw_job_info_t;
 
+typedef struct {
+    uint32_t submitted_total;
+    uint32_t dedup_reused_total;
+    uint32_t completed_total;
+    uint32_t failed_total;
+    uint32_t queue_depth_current;
+    uint32_t queue_depth_peak;
+    uint32_t latency_p95_ms;
+} zgw_job_metrics_t;
+
 esp_err_t job_queue_init(void);
 esp_err_t job_queue_submit(zgw_job_type_t type, uint32_t reboot_delay_ms, uint32_t *out_job_id);
 esp_err_t job_queue_get(uint32_t job_id, zgw_job_info_t *out_info);
+esp_err_t job_queue_get_metrics(zgw_job_metrics_t *out_metrics);
 
 const char *job_queue_type_to_string(zgw_job_type_t type);
 const char *job_queue_state_to_string(zgw_job_state_t state);

@@ -235,7 +235,7 @@ static void test_contract_boundaries_rename(void)
 
 static void test_factory_reset_report_smoke(void)
 {
-    system_factory_reset_report_t report = {0};
+    api_factory_reset_report_t report = {0};
     TEST_ASSERT_EQUAL(ESP_OK, api_usecase_get_factory_reset_report(&report));
     TEST_ASSERT_EQUAL(ESP_ERR_INVALID_STATE, report.wifi_err);
     TEST_ASSERT_EQUAL(ESP_ERR_INVALID_STATE, report.devices_err);

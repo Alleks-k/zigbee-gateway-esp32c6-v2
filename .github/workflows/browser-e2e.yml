@@ -1,0 +1,27 @@
+name: browser-e2e
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+
+jobs:
+  browser-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Playwright
+        run: |
+          npm --prefix main/web/www init -y
+          npm --prefix main/web/www install --no-audit --no-fund playwright@1.51.1
+          npx --prefix main/web/www playwright install --with-deps chromium
+
+      - name: Run headless browser contract
+        run: node main/web/www/e2e_headless_runner.mjs

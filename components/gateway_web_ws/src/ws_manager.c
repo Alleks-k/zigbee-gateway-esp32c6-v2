@@ -50,6 +50,22 @@ static size_t s_last_ws_lqi_json_len = 0;
 static int64_t s_last_ws_lqi_send_us = 0;
 static char s_ws_frame_buf[WS_FRAME_BUF_SIZE];
 static uint32_t s_ws_seq = 0;
+static api_ws_runtime_metrics_t s_ws_metrics = {0};
+
+static bool ws_metrics_provider(api_ws_runtime_metrics_t *out_metrics)
+{
+    if (!out_metrics) {
+        return false;
+    }
+    if (s_ws_mutex) {
+        xSemaphoreTake(s_ws_mutex, portMAX_DELAY);
+    }
+    *out_metrics = s_ws_metrics;
+    if (s_ws_mutex) {
+        xSemaphoreGive(s_ws_mutex);
+    }
+    return true;
+}
 
 #if CONFIG_GATEWAY_SELF_TEST_APP
 static esp_err_t ws_default_send_frame_async(httpd_handle_t hd, int fd, httpd_ws_frame_t *frame)
@@ -138,6 +154,7 @@ static esp_err_t ws_send_frame_to_clients(const char *json, size_t json_len)
             if (ret != ESP_OK) {
                 ESP_LOGW(TAG, "WS send failed (%s), removing client %d", esp_err_to_name(ret), ws_fds[i]);
                 gateway_error_ring_add("ws", (int32_t)ret, "send_frame_async failed");
+                s_ws_metrics.dropped_frames_total++;
                 ws_fds[i] = -1;
             }
         }
@@ -222,6 +239,7 @@ void ws_manager_init(httpd_handle_t server)
 {
     s_server = server;
     api_usecases_set_ws_client_count_provider(ws_client_count_provider);
+    api_usecases_set_ws_metrics_provider(ws_metrics_provider);
     for (int i = 0; i < MAX_WS_CLIENTS; i++) {
         ws_fds[i] = -1;
     }
@@ -285,6 +303,7 @@ void ws_manager_init(httpd_handle_t server)
     s_last_ws_lqi_json_len = 0;
     s_last_ws_lqi_send_us = 0;
     s_ws_seq = 0;
+    memset(&s_ws_metrics, 0, sizeof(s_ws_metrics));
 }
 
 void ws_httpd_close_fn(httpd_handle_t hd, int sockfd)
@@ -348,6 +367,16 @@ esp_err_t ws_handler(httpd_req_t *req)
 #endif
             return ESP_FAIL;
         }
+        if (s_ws_mutex) {
+            xSemaphoreTake(s_ws_mutex, portMAX_DELAY);
+        }
+        s_ws_metrics.connections_total++;
+        if (s_ws_metrics.connections_total > 1) {
+            s_ws_metrics.reconnect_count++;
+        }
+        if (s_ws_mutex) {
+            xSemaphoreGive(s_ws_mutex);
+        }
         if (s_ws_periodic_timer) {
             (void)esp_timer_stop(s_ws_periodic_timer);
             (void)esp_timer_start_periodic(s_ws_periodic_timer, 1000 * 1000);
@@ -393,6 +422,13 @@ void ws_broadcast_status(void)
         return;
     }
     if (s_ws_broadcast_mutex && xSemaphoreTake(s_ws_broadcast_mutex, 0) != pdTRUE) {
+        if (s_ws_mutex) {
+            xSemaphoreTake(s_ws_mutex, portMAX_DELAY);
+        }
+        s_ws_metrics.broadcast_lock_skips_total++;
+        if (s_ws_mutex) {
+            xSemaphoreGive(s_ws_mutex);
+        }
         if (s_ws_debounce_timer) {
             (void)esp_timer_stop(s_ws_debounce_timer);
             (void)esp_timer_start_once(s_ws_debounce_timer, WS_BROADCAST_RETRY_US);

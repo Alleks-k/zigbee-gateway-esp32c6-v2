@@ -5,7 +5,7 @@ idf_component_register(
     INCLUDE_DIRS
         "../gateway_web/include"
     REQUIRES
-        gateway_net
+        gateway_shared_config
         esp_http_server
         mdns
         spiffs

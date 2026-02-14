@@ -26,7 +26,7 @@ h2 {
 
 /* Адаптивний контейнер (Grid) */
 .container {
-    max-width: 1200px;
+    max-width: 1680px;
     margin: 0 auto;
     padding: 15px;
     display: grid;
@@ -46,7 +46,7 @@ h2 {
 /* Сітка статусів (PAN ID, Channel, Addr) */
 .status-grid {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
     gap: 10px;
     margin-bottom: 20px;
 }
@@ -392,7 +392,7 @@ input[type="text"], input[type="password"] {
 
 .lqi-graph {
     width: 100%;
-    min-height: 260px;
+    min-height: 220px;
     border: 1px solid #e4e7ec;
     border-radius: 8px;
     background: #fafbfd;
@@ -417,6 +417,8 @@ input[type="text"], input[type="password"] {
     border: 1px solid #e4e7ec;
     border-radius: 8px;
     background: #fff;
+    max-height: 180px;
+    overflow: auto;
 }
 
 .lqi-hints li {
@@ -574,24 +576,26 @@ input[type="text"], input[type="password"] {
     .container {
         grid-template-columns: repeat(2, 1fr); /* 2 колонки */
     }
-    
-    /* Картка пристроїв може займати всю ширину, якщо їх багато */
-    .card:nth-child(2) { 
-        grid-column: span 2; 
+
+    .card--lqi,
+    .card--wifi,
+    .card--system {
+        grid-column: span 2;
     }
 }
 
 /* Десктопи (від 992px) */
 @media (min-width: 992px) {
     .container {
-        grid-template-columns: repeat(3, 1fr); /* 3 колонки */
+        grid-template-columns: repeat(12, minmax(0, 1fr));
+        align-items: start;
     }
-    
-    /* Скидаємо розтягування картки пристроїв для 3 колонок */
-    .card:nth-child(2) { 
-        grid-column: auto; 
-        grid-row: span 2; /* Хай займає 2 рядки по висоті */
-    }
+
+    .card--status { grid-column: span 3; }
+    .card--devices { grid-column: span 3; }
+    .card--lqi { grid-column: span 6; }
+    .card--wifi { grid-column: span 6; }
+    .card--system { grid-column: span 6; }
 }
 
 /* Мобільні (дуже малі екрани) */

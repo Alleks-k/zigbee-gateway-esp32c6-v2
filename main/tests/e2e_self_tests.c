@@ -4,6 +4,9 @@
 #include "wifi_service.h"
 #include "wifi_init.h"
 #include "gateway_state.h"
+#include "job_queue.h"
+#include "esp_timer.h"
+#include "freertos/task.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -328,6 +331,44 @@ static void test_e2e_wifi_connect_retry_exhausted_switches_to_ap_fallback(void)
     wifi_init_reset_ops_for_test();
 }
 
+static esp_err_t wait_job_done(uint32_t job_id, uint32_t timeout_ms, zgw_job_info_t *out_info)
+{
+    if (!out_info || job_id == 0) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    int64_t start_us = esp_timer_get_time();
+    while (((esp_timer_get_time() - start_us) / 1000) < timeout_ms) {
+        esp_err_t err = job_queue_get(job_id, out_info);
+        if (err == ESP_OK &&
+            (out_info->state == ZGW_JOB_STATE_SUCCEEDED || out_info->state == ZGW_JOB_STATE_FAILED)) {
+            return ESP_OK;
+        }
+        vTaskDelay(pdMS_TO_TICKS(20));
+    }
+    return ESP_ERR_TIMEOUT;
+}
+
+static void test_e2e_job_queue_reuses_completed_slots_without_saturation(void)
+{
+    reset_api_mocks();
+    wifi_service_register_scan_impl(mock_wifi_scan_impl, mock_wifi_scan_free_impl);
+
+    for (int i = 0; i < 20; i++) {
+        uint32_t job_id = 0;
+        TEST_ASSERT_EQUAL(ESP_OK, job_queue_submit(ZGW_JOB_TYPE_WIFI_SCAN, 0, &job_id));
+        TEST_ASSERT_NOT_EQUAL(0, job_id);
+
+        zgw_job_info_t info = {0};
+        TEST_ASSERT_EQUAL(ESP_OK, wait_job_done(job_id, 2000, &info));
+        TEST_ASSERT_EQUAL_UINT32(job_id, info.id);
+        TEST_ASSERT_EQUAL(ZGW_JOB_STATE_SUCCEEDED, info.state);
+    }
+
+    TEST_ASSERT_GREATER_OR_EQUAL_INT(20, s_mock_wifi_scan_called);
+    TEST_ASSERT_GREATER_OR_EQUAL_INT(20, s_mock_wifi_scan_free_called);
+    wifi_service_register_scan_impl(NULL, NULL);
+}
+
 void zgw_register_e2e_self_tests(void)
 {
     RUN_TEST(test_e2e_control_contract_and_usecase);
@@ -338,6 +379,7 @@ void zgw_register_e2e_self_tests(void)
     RUN_TEST(test_e2e_endpoint_wifi_settings_reboot_failure_propagates);
     RUN_TEST(test_e2e_wifi_scan_contract_and_usecase);
     RUN_TEST(test_e2e_wifi_connect_retry_exhausted_switches_to_ap_fallback);
+    RUN_TEST(test_e2e_job_queue_reuses_completed_slots_without_saturation);
     RUN_TEST(test_e2e_factory_reset_usecase_mock);
     RUN_TEST(test_e2e_endpoint_factory_reset_success);
 }

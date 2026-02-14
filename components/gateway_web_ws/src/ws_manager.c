@@ -26,10 +26,12 @@ static const char *TAG = "WS_MANAGER";
 #define WS_MIN_BROADCAST_INTERVAL_US (120 * 1000)
 #define WS_MIN_HEALTH_BROADCAST_INTERVAL_US (800 * 1000)
 #define WS_MIN_LQI_BROADCAST_INTERVAL_US (800 * 1000)
+#define WS_BROADCAST_RETRY_US (20 * 1000)
 
 static int ws_fds[MAX_WS_CLIENTS];
 static httpd_handle_t s_server = NULL;
 static SemaphoreHandle_t s_ws_mutex = NULL;
+static SemaphoreHandle_t s_ws_broadcast_mutex = NULL;
 static esp_event_handler_instance_t s_list_changed_handler = NULL;
 static esp_event_handler_instance_t s_lqi_changed_handler = NULL;
 static esp_timer_handle_t s_ws_debounce_timer = NULL;
@@ -230,6 +232,12 @@ void ws_manager_init(httpd_handle_t server)
             ESP_LOGE(TAG, "Failed to create WS mutex");
         }
     }
+    if (!s_ws_broadcast_mutex) {
+        s_ws_broadcast_mutex = xSemaphoreCreateMutex();
+        if (!s_ws_broadcast_mutex) {
+            ESP_LOGE(TAG, "Failed to create WS broadcast mutex");
+        }
+    }
 
     if (s_list_changed_handler == NULL) {
         esp_err_t ret = esp_event_handler_instance_register(
@@ -384,12 +392,20 @@ void ws_broadcast_status(void)
     if (!s_server) {
         return;
     }
+    if (s_ws_broadcast_mutex && xSemaphoreTake(s_ws_broadcast_mutex, 0) != pdTRUE) {
+        if (s_ws_debounce_timer) {
+            (void)esp_timer_stop(s_ws_debounce_timer);
+            (void)esp_timer_start_once(s_ws_debounce_timer, WS_BROADCAST_RETRY_US);
+        }
+        return;
+    }
 
+    bool release_broadcast_lock = (s_ws_broadcast_mutex != NULL);
     size_t json_len = 0;
     esp_err_t build_ret = build_devices_json_compact(s_ws_devices_json_buf, sizeof(s_ws_devices_json_buf), &json_len);
     if (build_ret != ESP_OK) {
         ESP_LOGW(TAG, "Failed to build WS delta JSON payload: %s", esp_err_to_name(build_ret));
-        return;
+        goto out;
     }
 
     int64_t now_us = esp_timer_get_time();
@@ -397,7 +413,7 @@ void ws_broadcast_status(void)
                         (json_len > 0) &&
                         (memcmp(s_ws_devices_json_buf, s_last_ws_devices_json, json_len) == 0);
     if (same_payload && (now_us - s_last_ws_devices_send_us) < WS_MIN_DUP_BROADCAST_INTERVAL_US) {
-        return;
+        goto out;
     }
 
     int64_t elapsed_us = now_us - s_last_ws_devices_send_us;
@@ -410,7 +426,7 @@ void ws_broadcast_status(void)
             (void)esp_timer_stop(s_ws_debounce_timer);
             (void)esp_timer_start_once(s_ws_debounce_timer, (uint64_t)delay_us);
         }
-        return;
+        goto out;
     }
 
     size_t heap_before = heap_caps_get_free_size(MALLOC_CAP_8BIT);
@@ -485,6 +501,10 @@ void ws_broadcast_status(void)
     size_t heap_after = heap_caps_get_free_size(MALLOC_CAP_8BIT);
     ESP_LOGD(TAG, "WS broadcast heap: before=%u after=%u delta=%d",
              (unsigned)heap_before, (unsigned)heap_after, (int)(heap_after - heap_before));
+out:
+    if (release_broadcast_lock) {
+        xSemaphoreGive(s_ws_broadcast_mutex);
+    }
 }
 
 int ws_manager_get_client_count(void)

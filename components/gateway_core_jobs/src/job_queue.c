@@ -20,6 +20,7 @@
 static const char *TAG = "JOB_QUEUE";
 
 #define ZGW_JOB_MAX 12
+#define ZGW_JOB_COMPLETED_TTL_MS (30 * 1000ULL)
 
 typedef struct {
     bool used;
@@ -80,12 +81,43 @@ static int find_slot_index_by_id(uint32_t id)
 
 static int alloc_slot_index(void)
 {
+    int reclaim_idx = -1;
+    uint64_t reclaim_updated_ms = UINT64_MAX;
     for (int i = 0; i < ZGW_JOB_MAX; i++) {
         if (!s_jobs[i].used) {
             return i;
         }
+        if (s_jobs[i].state == ZGW_JOB_STATE_SUCCEEDED || s_jobs[i].state == ZGW_JOB_STATE_FAILED) {
+            if (s_jobs[i].updated_ms <= reclaim_updated_ms) {
+                reclaim_updated_ms = s_jobs[i].updated_ms;
+                reclaim_idx = i;
+            }
+        }
+    }
+    if (reclaim_idx >= 0) {
+        ESP_LOGW(TAG, "Job slots full, evicting completed job id=%" PRIu32, s_jobs[reclaim_idx].id);
+        memset(&s_jobs[reclaim_idx], 0, sizeof(s_jobs[reclaim_idx]));
+        return reclaim_idx;
     }
     return -1;
+}
+
+static void prune_completed_jobs_locked(uint64_t now)
+{
+    for (int i = 0; i < ZGW_JOB_MAX; i++) {
+        if (!s_jobs[i].used) {
+            continue;
+        }
+        if (s_jobs[i].state != ZGW_JOB_STATE_SUCCEEDED && s_jobs[i].state != ZGW_JOB_STATE_FAILED) {
+            continue;
+        }
+        if (now < s_jobs[i].updated_ms) {
+            continue;
+        }
+        if ((now - s_jobs[i].updated_ms) >= ZGW_JOB_COMPLETED_TTL_MS) {
+            memset(&s_jobs[i], 0, sizeof(s_jobs[i]));
+        }
+    }
 }
 
 static void set_job_result(zgw_job_slot_t *job, const char *json_data)
@@ -397,6 +429,7 @@ esp_err_t job_queue_submit(zgw_job_type_t type, uint32_t reboot_delay_ms, uint32
     }
 
     xSemaphoreTake(s_mutex, portMAX_DELAY);
+    prune_completed_jobs_locked(now_ms());
     int idx = alloc_slot_index();
     if (idx < 0) {
         xSemaphoreGive(s_mutex);

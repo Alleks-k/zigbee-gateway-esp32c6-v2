@@ -610,7 +610,7 @@ esp_err_t build_health_json_compact(char *out, size_t out_size, size_t *out_len)
         return ESP_ERR_NO_MEM;
     }
 
-    if (!append_literal(&cursor, &remaining, "\"},\"zigbee\":{") ||
+    if (!append_literal(&cursor, &remaining, "},\"zigbee\":{") ||
         !append_literal(&cursor, &remaining, "\"started\":") ||
         !append_literal(&cursor, &remaining, gw_state.zigbee_started ? "true" : "false") ||
         !append_literal(&cursor, &remaining, ",\"factory_new\":") ||

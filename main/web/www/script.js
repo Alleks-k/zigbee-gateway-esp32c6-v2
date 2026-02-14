@@ -352,6 +352,11 @@ function applyHealthData(data) {
         } else {
             updateElementText('wifiLinkQuality', 'UNKNOWN');
         }
+        if (data.wifi.ip !== undefined && data.wifi.ip !== null && data.wifi.ip !== '') {
+            updateElementText('wifiIp', String(data.wifi.ip));
+        } else {
+            updateElementText('wifiIp', '--');
+        }
     }
 
     if (data.nvs) {
@@ -370,6 +375,14 @@ function applyHealthData(data) {
         if (data.system.heap_largest_block !== undefined) {
             updateElementText('heapLargest', `${Math.round(Number(data.system.heap_largest_block) / 1024)} KB`);
         }
+        if (data.system.main_stack_hwm_bytes !== undefined) {
+            const v = Number(data.system.main_stack_hwm_bytes);
+            updateElementText('mainStackHwm', v >= 0 ? `${Math.round(v / 1024)} KB` : 'N/A');
+        }
+        if (data.system.httpd_stack_hwm_bytes !== undefined) {
+            const v = Number(data.system.httpd_stack_hwm_bytes);
+            updateElementText('httpdStackHwm', v >= 0 ? `${Math.round(v / 1024)} KB` : 'N/A');
+        }
         if (data.system.temperature_c !== undefined && data.system.temperature_c !== null) {
             const t = Number(data.system.temperature_c);
             updateElementText('chipTemp', `${t.toFixed(1)} C`);
@@ -381,6 +394,15 @@ function applyHealthData(data) {
     }
     if (data.telemetry && data.telemetry.updated_ms !== undefined) {
         updateElementText('telemetryUpdated', formatUptime(Number(data.telemetry.updated_ms)));
+    }
+    if (Array.isArray(data.errors) && data.errors.length > 0) {
+        const e = data.errors[0];
+        const src = e.source ? String(e.source) : 'sys';
+        const msg = e.message ? String(e.message) : 'error';
+        const code = (e.code !== undefined && e.code !== null) ? `(${e.code})` : '';
+        updateElementText('lastError', `${src}${code}: ${msg}`);
+    } else {
+        updateElementText('lastError', 'none');
     }
 }
 

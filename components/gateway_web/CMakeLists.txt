@@ -7,6 +7,7 @@ set(gateway_web_srcs
     "src/http_routes.c"
     "src/http_static.c"
     "src/ws_manager.c"
+    "src/error_ring.c"
     "src/mdns_service.c"
     "gateway_web_placeholder.c")
 

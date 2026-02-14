@@ -2,6 +2,7 @@
 #include "api_contracts.h"
 #include "api_usecases.h"
 #include "http_error.h"
+#include "error_ring.h"
 #include "gateway_state.h"
 #include "settings_manager.h"
 #include "job_queue.h"
@@ -11,6 +12,9 @@
 #include "esp_system.h"
 #include "esp_timer.h"
 #include "esp_wifi.h"
+#include "esp_netif.h"
+#include "lwip/ip4_addr.h"
+#include "freertos/task.h"
 #if __has_include("driver/temperature_sensor.h")
 #include "driver/temperature_sensor.h"
 #define GATEWAY_HAS_TEMP_SENSOR 1
@@ -50,6 +54,36 @@ static bool read_wifi_rssi(int32_t *out_rssi)
     }
     *out_rssi = (int32_t)ap_info.rssi;
     return true;
+}
+
+static bool read_wifi_ip(char *out, size_t out_size)
+{
+    if (!out || out_size < 8) {
+        return false;
+    }
+    esp_netif_t *sta = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
+    if (!sta) {
+        return false;
+    }
+    esp_netif_ip_info_t ip_info = {0};
+    if (esp_netif_get_ip_info(sta, &ip_info) != ESP_OK || ip_info.ip.addr == 0) {
+        return false;
+    }
+    int written = snprintf(out, out_size, IPSTR, IP2STR(&ip_info.ip));
+    return (written > 0 && (size_t)written < out_size);
+}
+
+static int32_t get_stack_hwm_bytes(const char *task_name)
+{
+    if (!task_name) {
+        return -1;
+    }
+    TaskHandle_t h = xTaskGetHandle(task_name);
+    if (!h) {
+        return -1;
+    }
+    UBaseType_t words = uxTaskGetStackHighWaterMark(h);
+    return (int32_t)(words * sizeof(StackType_t));
 }
 
 static const char *wifi_link_quality_label(int32_t rssi, bool has_rssi)
@@ -278,6 +312,37 @@ static bool append_json_escaped(char **cursor, size_t *remaining, const char *sr
     }
     **cursor = '\0';
     return true;
+}
+
+static esp_err_t append_error_ring_array(char **cursor, size_t *remaining)
+{
+    gateway_error_entry_t entries[GATEWAY_ERROR_RING_CAPACITY];
+    size_t count = gateway_error_ring_snapshot(entries, GATEWAY_ERROR_RING_CAPACITY);
+
+    if (!append_literal(cursor, remaining, "[")) {
+        return ESP_ERR_NO_MEM;
+    }
+    for (size_t i = 0; i < count; i++) {
+        if (i > 0 && !append_literal(cursor, remaining, ",")) {
+            return ESP_ERR_NO_MEM;
+        }
+        if (!append_literal(cursor, remaining, "{\"ts_ms\":") ||
+            !append_u64(cursor, remaining, entries[i].ts_ms) ||
+            !append_literal(cursor, remaining, ",\"source\":\"") ||
+            !append_json_escaped(cursor, remaining, entries[i].source) ||
+            !append_literal(cursor, remaining, "\",\"code\":") ||
+            !append_i32(cursor, remaining, entries[i].code) ||
+            !append_literal(cursor, remaining, ",\"message\":\"") ||
+            !append_json_escaped(cursor, remaining, entries[i].message) ||
+            !append_literal(cursor, remaining, "\"}"))
+        {
+            return ESP_ERR_NO_MEM;
+        }
+    }
+    if (!append_literal(cursor, remaining, "]")) {
+        return ESP_ERR_NO_MEM;
+    }
+    return ESP_OK;
 }
 
 static esp_err_t append_devices_array(char **cursor, size_t *remaining)
@@ -589,8 +654,12 @@ esp_err_t build_health_json_compact(char *out, size_t out_size, size_t *out_len)
     int32_t wifi_rssi = 0;
     const bool has_wifi_rssi = read_wifi_rssi(&wifi_rssi);
     const char *wifi_link_quality = wifi_link_quality_label(wifi_rssi, has_wifi_rssi);
+    char wifi_ip[20] = {0};
+    const bool has_wifi_ip = read_wifi_ip(wifi_ip, sizeof(wifi_ip));
     float temp_c = 0.0f;
     const bool has_temp_c = read_temperature_c(&temp_c);
+    const int32_t main_stack_hwm = get_stack_hwm_bytes("main");
+    const int32_t httpd_stack_hwm = get_stack_hwm_bytes("httpd");
 
     char *cursor = out;
     size_t remaining = out_size;
@@ -604,7 +673,9 @@ esp_err_t build_health_json_compact(char *out, size_t out_size, size_t *out_len)
         !append_literal(&cursor, &remaining, fallback_ap ? "true" : "false") ||
         !append_literal(&cursor, &remaining, ",\"loaded_from_nvs\":") ||
         !append_literal(&cursor, &remaining, loaded_from_nvs ? "true" : "false") ||
-        !append_literal(&cursor, &remaining, ",\"active_ssid\":\"") ||
+        !append_literal(&cursor, &remaining, ",\"ssid\":\"") ||
+        !append_json_escaped(&cursor, &remaining, active_ssid) ||
+        !append_literal(&cursor, &remaining, "\",\"active_ssid\":\"") ||
         !append_json_escaped(&cursor, &remaining, active_ssid) ||
         !append_literal(&cursor, &remaining, "\",\"rssi\":"))
     {
@@ -619,8 +690,18 @@ esp_err_t build_health_json_compact(char *out, size_t out_size, size_t *out_len)
     }
     if (!append_literal(&cursor, &remaining, ",\"link_quality\":\"") ||
         !append_literal(&cursor, &remaining, wifi_link_quality) ||
-        !append_literal(&cursor, &remaining, "\""))
+        !append_literal(&cursor, &remaining, "\",\"ip\":"))
     {
+        return ESP_ERR_NO_MEM;
+    }
+    if (has_wifi_ip) {
+        if (!append_literal(&cursor, &remaining, "\"") ||
+            !append_json_escaped(&cursor, &remaining, wifi_ip) ||
+            !append_literal(&cursor, &remaining, "\""))
+        {
+            return ESP_ERR_NO_MEM;
+        }
+    } else if (!append_literal(&cursor, &remaining, "null")) {
         return ESP_ERR_NO_MEM;
     }
 
@@ -652,6 +733,10 @@ esp_err_t build_health_json_compact(char *out, size_t out_size, size_t *out_len)
         !append_u32(&cursor, &remaining, heap_min_free) ||
         !append_literal(&cursor, &remaining, ",\"heap_largest_block\":") ||
         !append_u32(&cursor, &remaining, heap_largest_free_block) ||
+        !append_literal(&cursor, &remaining, ",\"main_stack_hwm_bytes\":") ||
+        !append_i32(&cursor, &remaining, main_stack_hwm) ||
+        !append_literal(&cursor, &remaining, ",\"httpd_stack_hwm_bytes\":") ||
+        !append_i32(&cursor, &remaining, httpd_stack_hwm) ||
         !append_literal(&cursor, &remaining, ",\"temperature_c\":"))
     {
         return ESP_ERR_NO_MEM;
@@ -670,8 +755,15 @@ esp_err_t build_health_json_compact(char *out, size_t out_size, size_t *out_len)
     if (!append_literal(&cursor, &remaining, "},\"telemetry\":{") ||
         !append_literal(&cursor, &remaining, "\"updated_ms\":") ||
         !append_u64(&cursor, &remaining, telemetry_updated_ms) ||
-        !append_literal(&cursor, &remaining, "}}"))
+        !append_literal(&cursor, &remaining, "},\"errors\":"))
     {
+        return ESP_ERR_NO_MEM;
+    }
+    esp_err_t ring_ret = append_error_ring_array(&cursor, &remaining);
+    if (ring_ret != ESP_OK) {
+        return ring_ret;
+    }
+    if (!append_literal(&cursor, &remaining, "}")) {
         return ESP_ERR_NO_MEM;
     }
 
@@ -683,7 +775,7 @@ esp_err_t build_health_json_compact(char *out, size_t out_size, size_t *out_len)
 
 esp_err_t api_health_handler(httpd_req_t *req)
 {
-    char health_json[1024];
+    char health_json[2048];
     size_t health_len = 0;
     esp_err_t ret = build_health_json_compact(health_json, sizeof(health_json), &health_len);
     if (ret != ESP_OK) {

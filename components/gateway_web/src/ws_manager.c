@@ -1,6 +1,7 @@
 #include "ws_manager.h"
 #include "api_handlers.h"
 #include "gateway_events.h"
+#include "error_ring.h"
 #include "esp_log.h"
 #include "esp_event.h"
 #include "esp_heap_caps.h"
@@ -78,6 +79,7 @@ static esp_err_t ws_send_frame_to_clients(const char *json, size_t json_len)
             esp_err_t ret = httpd_ws_send_frame_async(s_server, ws_fds[i], &ws_pkt);
             if (ret != ESP_OK) {
                 ESP_LOGW(TAG, "WS send failed (%s), removing client %d", esp_err_to_name(ret), ws_fds[i]);
+                gateway_error_ring_add("ws", (int32_t)ret, "send_frame_async failed");
                 ws_fds[i] = -1;
             }
         }
@@ -254,6 +256,7 @@ esp_err_t ws_handler(httpd_req_t *req)
         }
         if (!added) {
             ESP_LOGW(TAG, "WS client rejected: max clients reached (%d)", MAX_WS_CLIENTS);
+            gateway_error_ring_add("ws", (int32_t)ESP_ERR_NO_MEM, "client rejected: max clients");
             httpd_resp_set_status(req, "503 Service Unavailable");
             httpd_resp_send(req, "WS clients limit reached", HTTPD_RESP_USE_STRLEN);
             return ESP_FAIL;
@@ -272,6 +275,7 @@ esp_err_t ws_handler(httpd_req_t *req)
 
     esp_err_t ret = httpd_ws_recv_frame(req, &ws_pkt, 0);
     if (ret != ESP_OK) {
+        gateway_error_ring_add("ws", (int32_t)ret, "recv_frame failed");
         return ret;
     }
 

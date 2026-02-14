@@ -1,4 +1,5 @@
 #include "http_error.h"
+#include "error_ring.h"
 #include "nvs.h"
 #include <stdio.h>
 #include <string.h>
@@ -76,6 +77,7 @@ esp_err_t http_error_send(httpd_req_t *req, int http_status, const char *code, c
 
 esp_err_t http_error_send_esp(httpd_req_t *req, esp_err_t err, const char *message)
 {
+    gateway_error_ring_add("api", (int32_t)err, message ? message : "api error");
     return http_error_send(req, map_http_status(err), map_error_code(err), message);
 }
 

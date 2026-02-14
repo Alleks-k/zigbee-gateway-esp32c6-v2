@@ -21,6 +21,7 @@ esp_err_t api_usecase_wifi_save(const api_wifi_save_request_t *in);
 esp_err_t api_usecase_factory_reset(void);
 esp_err_t api_usecase_get_network_status(zigbee_network_status_t *out_status);
 int api_usecase_get_devices_snapshot(zb_device_t *out_devices, int max_devices);
+int api_usecase_get_neighbor_lqi_snapshot(zigbee_neighbor_lqi_t *out_neighbors, int max_neighbors);
 esp_err_t api_usecase_permit_join(uint8_t duration_seconds);
 esp_err_t api_usecase_delete_device(uint16_t short_addr);
 esp_err_t api_usecase_rename_device(uint16_t short_addr, const char *name);

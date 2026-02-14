@@ -24,6 +24,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Завантажуємо статус при завантаженні сторінки
     fetchStatus();
     fetchHealth();
+    fetchLqiMap();
     
     // Ініціалізуємо WebSocket
     initWebSocket();
@@ -33,9 +34,14 @@ document.addEventListener('DOMContentLoaded', () => {
     if (permitBtn) {
         permitBtn.addEventListener('click', permitJoin);
     }
+    const refreshLqiBtn = document.getElementById('refreshLqiBtn');
+    if (refreshLqiBtn) {
+        refreshLqiBtn.addEventListener('click', fetchLqiMap);
+    }
 
     // WS is primary; periodic status refresh is a safety fallback.
     setInterval(fetchStatus, 10000);
+    setInterval(fetchLqiMap, 15000);
 });
 
 async function requestJson(url, options = {}) {
@@ -190,6 +196,7 @@ function initWebSocket() {
         // New WS protocol: typed events
         if (data && data.type === 'devices_delta' && data.data && Array.isArray(data.data.devices)) {
             renderDevices(data.data.devices);
+            fetchLqiMap();
             return;
         }
         if (data && data.type === 'health_state' && data.data) {
@@ -243,6 +250,19 @@ function fetchHealth() {
             applyHealthData(data);
         })
         .catch(err => console.error('Error fetching health:', err));
+}
+
+function fetchLqiMap() {
+    requestJson(apiUrl('/lqi'))
+        .then(resp => {
+            const data = (resp && resp.data) ? resp.data : {};
+            const neighbors = Array.isArray(data.neighbors) ? data.neighbors : [];
+            renderLqiTable(neighbors);
+        })
+        .catch(err => {
+            console.error('Error fetching LQI:', err);
+            renderLqiTable([]);
+        });
 }
 
 function applyHealthData(data) {
@@ -322,6 +342,36 @@ function renderDevices(devices) {
         resetPermitJoinButton();
     }
     lastRenderedDeviceCount = currentCount;
+}
+
+function renderLqiTable(rows) {
+    const tbody = document.getElementById('lqiTableBody');
+    if (!tbody) return;
+
+    tbody.innerHTML = '';
+    if (!rows || rows.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="lqi-empty">No LQI data available</td></tr>';
+        return;
+    }
+
+    rows.forEach(row => {
+        const tr = document.createElement('tr');
+        const addrHex = '0x' + Number(row.short_addr || 0).toString(16).toUpperCase().padStart(4, '0');
+        const quality = String(row.quality || 'unknown').toLowerCase();
+        const lqiText = row.lqi === null || row.lqi === undefined ? '--' : String(row.lqi);
+        const rssiText = row.rssi === null || row.rssi === undefined ? '--' : `${row.rssi} dBm`;
+        const directText = row.direct ? 'direct' : 'indirect';
+
+        tr.innerHTML = `
+            <td>${(row.name || 'Пристрій')}</td>
+            <td>${addrHex}</td>
+            <td>${lqiText}</td>
+            <td>${rssiText}</td>
+            <td><span class="lqi-quality ${quality}">${quality}</span></td>
+            <td><span class="lqi-link">${directText}</span></td>
+        `;
+        tbody.appendChild(tr);
+    });
 }
 
 /**

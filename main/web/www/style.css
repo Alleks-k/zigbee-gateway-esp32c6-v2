@@ -223,6 +223,74 @@ input[type="text"], input[type="password"] {
     justify-content: center;
 }
 
+.lqi-wrap {
+    overflow-x: auto;
+}
+
+.lqi-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+
+.lqi-table th,
+.lqi-table td {
+    border-bottom: 1px solid #eceff3;
+    padding: 8px 6px;
+    text-align: left;
+    white-space: nowrap;
+}
+
+.lqi-table th {
+    color: #667085;
+    font-weight: 600;
+    font-size: 0.82rem;
+    text-transform: uppercase;
+}
+
+.lqi-empty {
+    color: #7a869a;
+    text-align: center;
+}
+
+.lqi-quality {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    border: 1px solid transparent;
+}
+
+.lqi-quality.good {
+    color: #146c43;
+    background: #d1f7e2;
+    border-color: #91e0b8;
+}
+
+.lqi-quality.fair {
+    color: #8a4f00;
+    background: #ffe8c2;
+    border-color: #ffd08a;
+}
+
+.lqi-quality.poor {
+    color: #9f1239;
+    background: #ffe0e7;
+    border-color: #ffb7c8;
+}
+
+.lqi-quality.unknown {
+    color: #495057;
+    background: #edf1f5;
+    border-color: #d9e0e8;
+}
+
+.lqi-link {
+    color: #0d6efd;
+    font-weight: 600;
+}
+
 /* Кнопки керування */
 .btn-on {
     background-color: #28a745; /* Green */

@@ -9,6 +9,7 @@
 #include "esp_log.h"
 #include "esp_heap_caps.h"
 #include "esp_system.h"
+#include "esp_timer.h"
 #include "cJSON.h"
 #include <string.h>
 #include <stdio.h>
@@ -22,6 +23,21 @@ static const char *TAG = "API_HANDLERS";
 #define JOB_API_RESULT_JSON_LIMIT_FACTORY_RESET 1536
 #define JOB_API_RESULT_JSON_LIMIT_REBOOT        512
 #define JOB_API_RESULT_JSON_LIMIT_UPDATE        768
+#define LQI_UNKNOWN_VALUE                       (-1)
+
+static const char *lqi_quality_label(int lqi)
+{
+    if (lqi < 0) {
+        return "unknown";
+    }
+    if (lqi >= 180) {
+        return "good";
+    }
+    if (lqi >= 120) {
+        return "fair";
+    }
+    return "poor";
+}
 
 static size_t job_result_json_limit_for_type(zgw_job_type_t type)
 {
@@ -271,6 +287,71 @@ esp_err_t api_status_handler(httpd_req_t *req)
     free((void *)json_str);
     if (ret == ESP_ERR_NO_MEM) {
         return http_error_send_esp(req, ret, "Failed to wrap status payload");
+    }
+    return ret;
+}
+
+esp_err_t api_lqi_handler(httpd_req_t *req)
+{
+    zb_device_t devices[MAX_DEVICES] = {0};
+    zigbee_neighbor_lqi_t neighbors[MAX_DEVICES] = {0};
+    int dev_count = api_usecase_get_devices_snapshot(devices, MAX_DEVICES);
+    int nbr_count = api_usecase_get_neighbor_lqi_snapshot(neighbors, MAX_DEVICES);
+
+    cJSON *root = cJSON_CreateObject();
+    cJSON *arr = cJSON_CreateArray();
+    if (!root || !arr) {
+        cJSON_Delete(root);
+        cJSON_Delete(arr);
+        return http_error_send_esp(req, ESP_ERR_NO_MEM, "Failed to allocate LQI response");
+    }
+
+    cJSON_AddItemToObject(root, "neighbors", arr);
+    cJSON_AddNumberToObject(root, "updated_ms", (double)(esp_timer_get_time() / 1000));
+
+    for (int i = 0; i < dev_count; i++) {
+        int lqi = LQI_UNKNOWN_VALUE;
+        int rssi = 0;
+        bool direct = false;
+        for (int j = 0; j < nbr_count; j++) {
+            if (neighbors[j].short_addr == devices[i].short_addr) {
+                lqi = neighbors[j].lqi;
+                rssi = neighbors[j].rssi;
+                direct = true;
+                break;
+            }
+        }
+
+        cJSON *item = cJSON_CreateObject();
+        if (!item) {
+            cJSON_Delete(root);
+            return http_error_send_esp(req, ESP_ERR_NO_MEM, "Failed to allocate LQI row");
+        }
+
+        cJSON_AddNumberToObject(item, "short_addr", devices[i].short_addr);
+        cJSON_AddStringToObject(item, "name", devices[i].name);
+        if (lqi >= 0) {
+            cJSON_AddNumberToObject(item, "lqi", lqi);
+            cJSON_AddNumberToObject(item, "rssi", rssi);
+        } else {
+            cJSON_AddNullToObject(item, "lqi");
+            cJSON_AddNullToObject(item, "rssi");
+        }
+        cJSON_AddStringToObject(item, "quality", lqi_quality_label(lqi));
+        cJSON_AddBoolToObject(item, "direct", direct);
+        cJSON_AddItemToArray(arr, item);
+    }
+
+    char *json_str = cJSON_PrintUnformatted(root);
+    cJSON_Delete(root);
+    if (!json_str) {
+        return http_error_send_esp(req, ESP_ERR_NO_MEM, "Failed to build LQI payload");
+    }
+
+    esp_err_t ret = http_success_send_data_json(req, json_str);
+    free(json_str);
+    if (ret == ESP_ERR_NO_MEM) {
+        return http_error_send_esp(req, ESP_ERR_NO_MEM, "LQI payload too large");
     }
     return ret;
 }

@@ -1,0 +1,1163 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Zigbee Gateway - Component Interaction Map</title>
+  <style>
+    :root {
+      --bg: #f3f7fb;
+      --panel: #ffffff;
+      --text: #1f2a37;
+      --muted: #5b6b7a;
+      --line: #d8e2ec;
+      --core: #e8f3ff;
+      --net: #eafaf1;
+      --web: #fff5e8;
+      --main: #f5eefe;
+      --storage: #eef4f2;
+      --events: #fef2f2;
+      --accent: #0f6abf;
+      --ok: #0b8a53;
+      --warn: #c96c00;
+      --danger: #b3261e;
+    }
+    body.theme-dark {
+      --bg: #0b1220;
+      --panel: #111c2d;
+      --text: #dce7f7;
+      --muted: #9fb2cc;
+      --line: #2a3b56;
+      --core: #13243a;
+      --net: #11281f;
+      --web: #2a1f12;
+      --main: #21192f;
+      --storage: #162821;
+      --events: #2a1618;
+      --accent: #5aa8ff;
+      --ok: #49b37b;
+      --warn: #d89b43;
+      --danger: #ff7f74;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Tahoma, sans-serif;
+      color: var(--text);
+      background: radial-gradient(circle at 20% 0%, #ffffff 0%, var(--bg) 55%);
+    }
+
+    .page {
+      max-width: 1500px;
+      margin: 0 auto;
+      padding: 18px;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 26px;
+      line-height: 1.2;
+    }
+
+    .subtitle {
+      margin: 0 0 14px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 14px;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--panel);
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--muted);
+      padding: 4px 8px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: #fff;
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+    }
+
+    .dot-sync { background: var(--accent); }
+    .dot-event { background: var(--danger); }
+    .dot-storage { background: var(--ok); }
+    .dot-transport { background: var(--warn); }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 12px;
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+      min-height: 120px;
+    }
+
+    .card h2 {
+      margin: 0 0 8px;
+      font-size: 15px;
+      letter-spacing: 0.2px;
+    }
+
+    .tag {
+      display: inline-block;
+      font-size: 11px;
+      padding: 2px 7px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+
+    .main { background: var(--main); }
+    .core { background: var(--core); }
+    .net { background: var(--net); }
+    .web { background: var(--web); }
+    .storage { background: var(--storage); }
+    .events { background: var(--events); }
+
+    ul { margin: 0; padding-left: 18px; }
+    li { margin: 3px 0; font-size: 13px; color: #2d3a47; }
+
+    .c-main { grid-column: span 3; }
+    .c-core { grid-column: span 3; }
+    .c-net { grid-column: span 3; }
+    .c-web { grid-column: span 3; }
+    .c-events { grid-column: span 6; }
+    .c-storage { grid-column: span 6; }
+
+    .flows {
+      margin-top: 14px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px;
+    }
+
+    .flows h2 {
+      margin: 0 0 8px;
+      font-size: 16px;
+    }
+
+    .flow-list {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(260px, 1fr));
+      gap: 8px;
+    }
+
+    .flow {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 8px;
+      background: #fff;
+      font-size: 13px;
+      line-height: 1.35;
+    }
+
+    .path {
+      display: inline-block;
+      margin-top: 4px;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 12px;
+      color: var(--muted);
+      background: #f7fafc;
+      border: 1px solid #e7edf3;
+      border-radius: 6px;
+      padding: 2px 6px;
+    }
+
+    .ascii {
+      margin-top: 14px;
+      background: #0f172a;
+      color: #dbe7ff;
+      border-radius: 12px;
+      padding: 12px;
+      overflow: auto;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 12px;
+      line-height: 1.45;
+      border: 1px solid #1e293b;
+    }
+
+    .footer {
+      margin-top: 12px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 12px;
+      padding: 10px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+    }
+
+    .toolbar input, .toolbar select, .toolbar button {
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--text);
+      border-radius: 8px;
+      padding: 6px 9px;
+      font-size: 12px;
+    }
+
+    .toolbar button {
+      cursor: pointer;
+      background: #f9fbfd;
+    }
+
+    .toolbar button.active {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: #edf5ff;
+      font-weight: 600;
+    }
+
+    .toolbar .meta {
+      margin-left: auto;
+      font-size: 12px;
+      color: var(--muted);
+      padding: 6px 8px;
+      border: 1px dashed var(--line);
+      border-radius: 8px;
+      background: #fcfdff;
+    }
+
+    .card {
+      transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+      cursor: pointer;
+    }
+
+    .card:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+    }
+
+    .card.is-dimmed { opacity: 0.35; }
+    .card.is-highlighted {
+      outline: 2px solid var(--accent);
+      box-shadow: 0 6px 18px rgba(15,106,191,0.2);
+    }
+
+    .flow {
+      transition: opacity 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+    }
+    .flow.is-hidden { display: none; }
+    .flow.is-dimmed { opacity: 0.35; }
+    .flow.is-highlighted {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 14px rgba(0,0,0,0.1);
+      border-color: #b8cbe0;
+    }
+
+    .collapsed .flow-list,
+    .collapsed .ascii {
+      display: none;
+    }
+
+    .section-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .section-head h2 {
+      margin: 0;
+    }
+
+    .small-btn {
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--muted);
+      border-radius: 8px;
+      padding: 4px 7px;
+      font-size: 11px;
+      cursor: pointer;
+    }
+
+    .small-btn:hover {
+      color: var(--text);
+      border-color: #b8cbe0;
+    }
+
+    .graph-panel {
+      margin: 12px 0;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 10px;
+    }
+
+    .graph-title {
+      margin: 0 0 8px;
+      font-size: 14px;
+      color: var(--muted);
+    }
+
+    .graph-wrap {
+      width: 100%;
+      overflow: auto;
+      border: 1px solid #e9eef4;
+      border-radius: 10px;
+      background: #fbfdff;
+    }
+
+    .graph-svg {
+      width: 100%;
+      min-width: 900px;
+      height: 320px; /* Збільшена висота для кращого розміщення при авто-макеті */
+      display: block;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    .edge {
+      stroke: #9db5cd;
+      stroke-width: 2.2;
+      fill: none;
+      marker-end: url(#arrow);
+      transition: stroke 0.15s ease, opacity 0.15s ease, stroke-width 0.15s ease;
+    }
+    .edge.event { stroke-dasharray: 7 4; }
+    .edge.storage { stroke: #4f9b74; }
+    .edge.transport { stroke: #c6842b; }
+    .edge.dimmed { opacity: 0.25; }
+    .edge.active { stroke: #0f6abf; stroke-width: 3; opacity: 1; }
+    .edge.is-hidden { opacity: 0.1; }
+
+    .gnode circle {
+      fill: #ffffff;
+      stroke: #88a3bf;
+      stroke-width: 2;
+      transition: fill 0.15s ease, stroke 0.15s ease, transform 0.15s ease, opacity 0.15s ease;
+      transform-origin: center;
+    }
+    .gnode text {
+      font-size: 12px;
+      fill: #1f2a37;
+      text-anchor: middle;
+      dominant-baseline: middle;
+      font-weight: 600;
+      pointer-events: none;
+    }
+    .gnode { cursor: grab; }
+    .gnode:active { cursor: grabbing; }
+    .gnode:hover circle { transform: scale(1.03); }
+    .gnode.dimmed { opacity: 0.35; }
+    .gnode.active circle { fill: #edf5ff; stroke: #0f6abf; }
+
+    .edge-particle {
+      fill: #0f6abf;
+      stroke: #ffffff;
+      stroke-width: 1.2;
+      opacity: 0.9;
+      transition: opacity 0.15s ease;
+      pointer-events: none;
+    }
+    .edge-particle.event { fill: #b3261e; }
+    .edge-particle.storage { fill: #0b8a53; }
+    .edge-particle.transport { fill: #c96c00; }
+    .edge-particle.hidden { opacity: 0.08; }
+
+    .help-box {
+      margin-top: 10px;
+      padding: 10px;
+      border: 1px dashed var(--line);
+      border-radius: 10px;
+      background: #fbfdff;
+      font-size: 12px;
+      color: var(--muted);
+      display: none;
+    }
+    .help-box.show { display: block; }
+    .help-box code {
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      padding: 1px 4px;
+      background: #fff;
+      color: var(--text);
+    }
+
+    .tooltip {
+      position: absolute;
+      background: rgba(15, 23, 42, 0.95);
+      color: #fff;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.15s, transform 0.15s;
+      z-index: 1000;
+      max-width: 250px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      transform: translateY(5px);
+    }
+    .tooltip.show { opacity: 1; transform: translateY(0); }
+    .tooltip strong { display: block; margin-bottom: 2px; color: #a5f3fc; }
+
+    .chip { cursor: pointer; user-select: none; transition: all 0.2s ease; }
+    .chip:hover { background: #f1f5f9; border-color: #cbd5e1; }
+    .chip.inactive { opacity: 0.5; filter: grayscale(1); text-decoration: line-through; }
+    
+    .edge.legend-hidden { opacity: 0.05; }
+    .edge-particle.legend-hidden { opacity: 0; }
+
+    @media print {
+      .toolbar, .help-box, .small-btn, .footer, .ascii { display: none !important; }
+      body { background: #fff !important; color: #000 !important; }
+      .card, .flows, .graph-panel, .legend { box-shadow: none !important; border: 1px solid #ccc !important; break-inside: avoid; }
+      .page { max-width: 100%; padding: 0; }
+      .graph-svg { height: auto; }
+    }
+
+    @media (max-width: 1000px) {
+      .c-main, .c-core, .c-net, .c-web, .c-events, .c-storage { grid-column: span 12; }
+      .flow-list { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <h1>Zigbee Gateway - Візуальна карта взаємодії компонентів</h1>
+    <p class="subtitle">Згенеровано по актуальній структурі папок проєкту: <code>main + components/gateway_*</code></p>
+
+    <div class="toolbar">
+      <input id="searchInput" type="text" placeholder="Пошук: module, flow, path..." />
+      <select id="flowFilter">
+        <option value="all">Всі потоки</option>
+        <option value="api">API/HTTP</option>
+        <option value="jobs">Jobs</option>
+        <option value="events">Event-driven</option>
+        <option value="storage">Storage/NVS</option>
+        <option value="network">Wi-Fi/AP</option>
+      </select>
+      <button id="btnResetView">Скинути фільтри</button>
+      <button id="btnToggleAscii">Показати/сховати ASCII</button>
+      <button id="btnToggleGraph">Сховати/показати graph</button>
+      <button id="btnTheme">Dark/Light</button>
+      <button id="btnHelp">Help</button>
+      <select id="criticalFilter" title="Критичні шляхи">
+        <option value="all">Critical: all</option>
+        <option value="boot">Critical: boot</option>
+        <option value="startup">Critical: startup</option>
+        <option value="error">Critical: error</option>
+      </select>
+      <button id="btnCriticalOnly">Only critical</button>
+      <button id="btnExportSvg">Export SVG</button>
+      <button id="btnExportPng">Export PNG</button>
+      <button id="btnAutoLayout">Auto-layout</button>
+      <span class="meta">Visible flows: <strong id="visibleFlowsCount">0</strong>/6</span>
+    </div>
+
+    <div class="legend">
+      <span class="chip" data-edge-type="default" title="Клік щоб сховати/показати"><span class="dot dot-sync"></span>Прямий виклик функції</span>
+      <span class="chip" data-edge-type="event" title="Клік щоб сховати/показати"><span class="dot dot-event"></span>Подія / Event Loop</span>
+      <span class="chip" data-edge-type="storage" title="Клік щоб сховати/показати"><span class="dot dot-storage"></span>NVS / Storage</span>
+      <span class="chip" data-edge-type="transport" title="Клік щоб сховати/показати"><span class="dot dot-transport"></span>HTTP/WS/mDNS/Wi-Fi/Zigbee</span>
+    </div>
+
+    <section class="graph-panel" id="graphPanel" style="min-height: 360px;"> <!-- Збільшена мінімальна висота для панелі графу -->
+      <p class="graph-title">Dependency graph (клік по вузлу = фокус компоненту)</p>
+      <div class="graph-wrap">
+        <svg class="graph-svg" viewBox="0 0 980 320" role="img" aria-label="Component dependency graph">
+          <defs>
+            <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="#9db5cd"></path>
+            </marker>
+          </defs>
+
+          <path class="edge transport" data-flow-type="api" data-critical="boot,startup" data-from="main" data-to="gateway_web" d="M 130 70 C 230 70, 265 70, 370 70"></path>
+          <path class="edge" data-flow-type="startup" data-critical="boot,startup" data-from="main" data-to="gateway_core" d="M 130 70 C 230 120, 280 140, 370 170"></path>
+          <path class="edge transport" data-flow-type="api" data-critical="startup" data-from="gateway_web" data-to="gateway_core" d="M 430 70 C 510 80, 545 120, 430 170"></path>
+          <path class="edge transport" data-flow-type="network" data-critical="boot,startup,error" data-from="gateway_core" data-to="gateway_net" d="M 430 170 C 530 160, 560 95, 670 70"></path>
+          <path class="edge event" data-flow-type="events" data-critical="startup" data-from="gateway_core" data-to="events" d="M 430 170 C 380 215, 320 235, 280 240"></path>
+          <path class="edge event" data-flow-type="events" data-critical="startup,error" data-from="gateway_net" data-to="events" d="M 730 70 C 640 135, 510 170, 280 240"></path>
+          <path class="edge event" data-flow-type="events" data-critical="startup,error" data-from="events" data-to="gateway_web" d="M 280 240 C 330 195, 360 150, 370 100"></path>
+          <path class="edge storage" data-flow-type="storage" data-critical="error" data-from="gateway_core" data-to="storage" d="M 430 170 C 430 230, 520 234, 580 240"></path>
+          <path class="edge storage" data-flow-type="storage" data-critical="error,startup" data-from="gateway_web" data-to="storage" d="M 430 70 C 470 145, 550 190, 580 240"></path>
+
+          <g class="gnode" data-node="main" transform="translate(100,70)">
+            <circle r="30"></circle><text>main</text>
+          </g>
+          <g class="gnode" data-node="gateway_web" transform="translate(400,70)">
+            <circle r="60"></circle><text>gateway_web</text>
+          </g>
+          <g class="gnode" data-node="gateway_core" transform="translate(400,170)">
+            <circle r="64"></circle><text>gateway_core</text>
+          </g>
+          <g class="gnode" data-node="gateway_net" transform="translate(700,70)">
+            <circle r="56"></circle><text>gateway_net</text>
+          </g>
+          <g class="gnode" data-node="events" transform="translate(250,240)">
+            <circle r="48"></circle><text>events</text>
+          </g>
+          <g class="gnode" data-node="storage" transform="translate(550,240)">
+            <circle r="52"></circle><text>storage</text>
+          </g>
+        </svg>
+      </div>
+      <div class="help-box" id="helpBox">
+        Гарячі клавіші:
+        <code>Esc</code> - скинути підсвітку,
+        <code>/</code> - фокус у пошук,
+        <code>D</code> - перемкнути тему.
+        Фільтри зберігаються у URL (<code>?q=...&type=...</code>).
+      </div>
+    </section>
+
+    <div class="grid" id="componentGrid">
+      <section class="card main c-main" data-card="main">
+        <h2>main</h2>
+        <div class="tag">Entry / orchestration</div>
+        <ul>
+          <li>Точка входу: <code>main/core/esp_zigbee_gateway.c</code></li>
+          <li>Ініціалізує NVS, event loop, мережу, Zigbee</li>
+          <li>Запускає web/server і бізнес-модулі</li>
+          <li><code>main/tests/*</code> - інтеграційні E2E self-tests</li>
+        </ul>
+      </section>
+
+      <section class="card core c-core" data-card="gateway_core">
+        <h2>components/gateway_core</h2>
+        <div class="tag">Domain / business logic</div>
+        <ul>
+          <li><code>zigbee_service</code>, <code>wifi_service</code>, <code>system_service</code></li>
+          <li><code>device_manager</code>, <code>gateway_state</code>, <code>job_queue</code></li>
+          <li><code>gateway_events</code> (ESP Event bridge)</li>
+          <li><code>settings_manager</code> (schema + migrations)</li>
+        </ul>
+      </section>
+
+      <section class="card net c-net" data-card="gateway_net">
+        <h2>components/gateway_net</h2>
+        <div class="tag">Wi-Fi runtime</div>
+        <ul>
+          <li><code>wifi_init</code>, <code>wifi_sta</code>, <code>wifi_ap_fallback</code></li>
+          <li>STA connect/retry + AP fallback</li>
+          <li>Дані runtime публікує у state/events</li>
+        </ul>
+      </section>
+
+      <section class="card web c-web" data-card="gateway_web">
+        <h2>components/gateway_web</h2>
+        <div class="tag">HTTP / WS / static UI</div>
+        <ul>
+          <li><code>web_server</code>, <code>http_routes</code>, <code>http_static</code></li>
+          <li><code>api_handlers</code> + <code>api_contracts</code> + <code>api_usecases</code></li>
+          <li><code>ws_manager</code>, <code>mdns_service</code>, <code>http_error</code></li>
+          <li>Фронт: <code>main/web/www/*</code> (SPIFFS)</li>
+        </ul>
+      </section>
+
+      <section class="card events c-events" data-card="events">
+        <h2>Event Spine</h2>
+        <div class="tag">Decoupling layer</div>
+        <ul>
+          <li><code>gateway_events</code> публікує/слухає системні та доменні події</li>
+          <li>Веб/WS читає з state-store та подій, а не напряму з Zigbee callback</li>
+          <li>Зменшує coupling між transport та core-логікою</li>
+        </ul>
+      </section>
+
+      <section class="card storage c-storage" data-card="storage">
+        <h2>Storage</h2>
+        <div class="tag">Persistent data</div>
+        <ul>
+          <li>NVS namespaces: Wi-Fi settings, devices, schema version</li>
+          <li><code>settings_manager</code> - owner міграцій формату</li>
+          <li><code>device_manager</code> - збереження девайсів</li>
+          <li>SPIFFS partition <code>www</code> - frontend assets</li>
+        </ul>
+      </section>
+    </div>
+
+    <section class="flows" id="flowsSection">
+      <div class="section-head">
+        <h2>Ключові потоки</h2>
+        <button class="small-btn" id="btnToggleFlows">Згорнути/розгорнути</button>
+      </div>
+      <div class="flow-list">
+        <div class="flow" data-flow-type="api" data-critical="startup" data-links="gateway_web,gateway_core">
+          <strong>1) UI command - ON/OFF device</strong><br />
+          Browser -> HTTP API -> api_usecases -> zigbee_service -> Zigbee SDK
+          <div class="path">main/web/www/script.js -> gateway_web -> gateway_core</div>
+        </div>
+
+        <div class="flow" data-flow-type="jobs" data-critical="startup,error" data-links="gateway_web,gateway_core,gateway_net,events">
+          <strong>2) Wi-Fi scan/settings</strong><br />
+          Browser -> /api/v1/jobs -> job_queue -> wifi_service/gateway_net -> state/events -> WS/UI
+          <div class="path">gateway_web <-> gateway_core <-> gateway_net</div>
+        </div>
+
+        <div class="flow" data-flow-type="events" data-critical="startup" data-links="gateway_core,events,gateway_web,storage">
+          <strong>3) Device announce from Zigbee</strong><br />
+          Zigbee callback -> zigbee_service -> device_manager/state -> gateway_events -> ws_manager
+          <div class="path">gateway_core -> gateway_web (event-driven)</div>
+        </div>
+
+        <div class="flow" data-flow-type="storage" data-critical="error" data-links="gateway_web,gateway_core,storage">
+          <strong>4) Factory reset</strong><br />
+          API -> system_service -> settings_manager/device_manager/NVS -> reboot schedule
+          <div class="path">gateway_web -> gateway_core -> nvs_flash</div>
+        </div>
+
+        <div class="flow" data-flow-type="api" data-critical="boot,startup" data-links="main,gateway_web,storage">
+          <strong>5) Static frontend delivery</strong><br />
+          HTTP GET / -> http_static (SPIFFS chunked, cache headers) -> browser
+          <div class="path">main/web/www -> SPIFFS partition "www" -> gateway_web</div>
+        </div>
+
+        <div class="flow" data-flow-type="network" data-critical="error,startup" data-links="gateway_net,gateway_web,main">
+          <strong>6) AP fallback mode</strong><br />
+          STA fail -> gateway_net starts SoftAP + DHCP -> web_server available at 192.168.4.1
+          <div class="path">wifi_ap_fallback -> web_server + mdns_service</div>
+        </div>
+      </div>
+    </section>
+
+    <pre class="ascii" id="asciiBlock">[ Browser/UI ]
+      |   HTTP/WS
+      v
+[ gateway_web ]  --calls-->  [ api_usecases ]  --service iface--> [ gateway_core ]
+      |                              |                                   |
+      |                              |                                   +--> [ zigbee_service ] --> Zigbee SDK
+      |                              |                                   +--> [ wifi_service ] ---> [ gateway_net ] --> Wi-Fi stack
+      |                              |                                   +--> [ system_service ] --> reboot/reset
+      |                              |
+      +<---- state/events/ws --------+-------- [ gateway_events + gateway_state ]
+                                                  |
+                                                  +--> [ settings_manager ] --> NVS
+                                                  +--> [ device_manager   ] --> NVS
+
+[ main ]: bootstraps runtime, starts components, mounts SPIFFS(www), runs app flow
+[ main/tests ]: E2E integration tests only
+[ components/*/test ]: module-scoped self tests</pre>
+
+    <p class="footer">Порада: відкрий файл у браузері локально для зручного перегляду та додай його в README як артефакт архітектури.</p>
+  </div>
+  <div id="tooltip" class="tooltip"></div>
+  <script>
+    (function () {
+      const cards = Array.from(document.querySelectorAll(".card[data-card]"));
+      const flows = Array.from(document.querySelectorAll(".flow"));
+      const searchInput = document.getElementById("searchInput");
+      const flowFilter = document.getElementById("flowFilter");
+      const btnResetView = document.getElementById("btnResetView");
+      const btnToggleAscii = document.getElementById("btnToggleAscii");
+      const btnToggleFlows = document.getElementById("btnToggleFlows");
+      const btnToggleGraph = document.getElementById("btnToggleGraph");
+      const btnTheme = document.getElementById("btnTheme");
+      const btnHelp = document.getElementById("btnHelp");
+      const criticalFilter = document.getElementById("criticalFilter");
+      const btnCriticalOnly = document.getElementById("btnCriticalOnly");
+      const btnExportSvg = document.getElementById("btnExportSvg");
+      const btnAutoLayout = document.getElementById("btnAutoLayout");
+      const btnExportPng = document.getElementById("btnExportPng");
+      const asciiBlock = document.getElementById("asciiBlock");
+      const flowsSection = document.getElementById("flowsSection");
+      const componentGrid = document.getElementById("componentGrid");
+      const graphPanel = document.getElementById("graphPanel");
+      const helpBox = document.getElementById("helpBox");
+      const graphNodes = Array.from(document.querySelectorAll(".gnode[data-node]"));
+      const graphEdges = Array.from(document.querySelectorAll(".edge[data-from]"));
+      const visibleFlowsCount = document.getElementById("visibleFlowsCount");
+      const tooltip = document.getElementById("tooltip");
+      const legendChips = document.querySelectorAll(".legend .chip");
+      let criticalOnly = false;
+      const NS = "http://www.w3.org/2000/svg";
+      const particles = [];
+      const svg = document.querySelector(".graph-svg");
+      let isDragging = false;
+      let dragTarget = null;
+      let dragOffset = { x: 0, y: 0 };
+      
+      // Заздалегідь визначені позиції для автоматичного макету
+      const autoLayoutPositions = {
+        "main": { x: 100, y: 70 },
+        "gateway_web": { x: 400, y: 70 },
+        "gateway_net": { x: 700, y: 70 },
+        "gateway_core": { x: 400, y: 170 },
+        "events": { x: 250, y: 240 },
+        "storage": { x: 550, y: 240 },
+      };
+
+      function resetHighlights() {
+        cards.forEach((c) => c.classList.remove("is-dimmed", "is-highlighted"));
+        flows.forEach((f) => f.classList.remove("is-dimmed", "is-highlighted"));
+        graphNodes.forEach((n) => n.classList.remove("dimmed", "active"));
+        graphEdges.forEach((e) => e.classList.remove("dimmed", "active"));
+      }
+
+      function applySearchAndFilter() {
+        const q = (searchInput.value || "").trim().toLowerCase();
+        const type = flowFilter.value;
+        const ctype = criticalFilter.value;
+        let visibleCount = 0;
+        flows.forEach((flow) => {
+          const text = flow.textContent.toLowerCase();
+          const flowType = flow.dataset.flowType;
+          const flowCritical = (flow.dataset.critical || "").split(",");
+          const matchType = type === "all" || flowType === type;
+          const matchCritical = ctype === "all" || flowCritical.includes(ctype);
+          const matchText = !q || text.includes(q);
+          const isVisible = matchType && matchText && (!criticalOnly || matchCritical);
+          flow.classList.toggle("is-hidden", !isVisible);
+          if (isVisible) visibleCount++;
+        });
+        visibleFlowsCount.textContent = String(visibleCount);
+
+        graphEdges.forEach((edge) => {
+          const edgeCritical = (edge.dataset.critical || "").split(",");
+          const showByCritical = !criticalOnly || ctype === "all" || edgeCritical.includes(ctype);
+          edge.classList.toggle("is-hidden", !showByCritical);
+        });
+
+        const params = new URLSearchParams(window.location.search);
+        if (q) params.set("q", q); else params.delete("q");
+        if (type && type !== "all") params.set("type", type); else params.delete("type");
+        if (ctype && ctype !== "all") params.set("critical", ctype); else params.delete("critical");
+        if (criticalOnly) params.set("critical_only", "1"); else params.delete("critical_only");
+        const newUrl = `${window.location.pathname}${params.toString() ? "?" + params.toString() : ""}`;
+        window.history.replaceState(null, "", newUrl);
+      }
+
+      function setGraphFocusByLinks(links) {
+        graphNodes.forEach((node) => {
+          if (links.includes(node.dataset.node)) node.classList.add("active");
+          else node.classList.add("dimmed");
+        });
+        graphEdges.forEach((edge) => {
+          const from = edge.dataset.from;
+          const to = edge.dataset.to;
+          if (links.includes(from) && links.includes(to)) edge.classList.add("active");
+          else edge.classList.add("dimmed");
+        });
+      }
+
+      function focusByCardKey(key) {
+        resetHighlights();
+        cards.forEach((c) => {
+          if (c.dataset.card !== key) c.classList.add("is-dimmed");
+          else {
+            c.classList.add("is-highlighted");
+            c.scrollIntoView({ behavior: 'smooth', block: 'center' }); // Плавне прокручування до картки
+          }
+        });
+        const linked = [key];
+        flows.forEach((flow) => {
+          const links = (flow.dataset.links || "").split(",");
+          if (links.includes(key)) {
+            flow.classList.add("is-highlighted");
+            links.forEach((l) => linked.push(l));
+          } else {
+            flow.classList.add("is-dimmed");
+          }
+        });
+        setGraphFocusByLinks([...new Set(linked)]);
+      }
+
+      function animateNodeTo(node, targetX, targetY, duration = 500) {
+        const startPos = getTranslation(node);
+        const startTime = performance.now();
+
+        function step(currentTime) {
+          const elapsed = currentTime - startTime;
+          const progress = Math.min(elapsed / duration, 1); // Обмежуємо між 0 та 1
+
+          const currentX = startPos.x + (targetX - startPos.x) * progress;
+          const currentY = startPos.y + (targetY - startPos.y) * progress;
+
+          node.setAttribute("transform", `translate(${currentX},${currentY})`);
+          updateEdges(); // Оновлюємо зв'язки під час руху вузла
+
+          if (progress < 1) {
+            requestAnimationFrame(step);
+          }
+        }
+        requestAnimationFrame(step);
+      }
+
+      function getSVGPoint(e) {
+        const p = svg.createSVGPoint();
+        p.x = e.clientX;
+        p.y = e.clientY;
+        const ctm = svg.getScreenCTM();
+        return p.matrixTransform(ctm.inverse());
+      }
+
+      function getTranslation(el) {
+        const transform = el.getAttribute("transform") || "translate(0,0)";
+        const m = transform.match(/translate\(([^, ]+)[, ]+([^)]+)\)/);
+        return m ? { x: parseFloat(m[1]), y: parseFloat(m[2]) } : { x: 0, y: 0 };
+      }
+
+      function updateEdges() {
+        graphEdges.forEach((edge) => {
+          const fromNode = graphNodes.find(n => n.dataset.node === edge.dataset.from);
+          const toNode = graphNodes.find(n => n.dataset.node === edge.dataset.to);
+          if (!fromNode || !toNode) return;
+
+          const fromPos = getTranslation(fromNode);
+          const toPos = getTranslation(toNode);
+          const fromR = parseFloat(fromNode.querySelector("circle").getAttribute("r"));
+          const toR = parseFloat(toNode.querySelector("circle").getAttribute("r"));
+
+          const dx = toPos.x - fromPos.x;
+          const dy = toPos.y - fromPos.y;
+          const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+          
+          const x1 = fromPos.x + (dx / dist) * fromR;
+          const y1 = fromPos.y + (dy / dist) * fromR;
+          const x2 = toPos.x - (dx / dist) * toR;
+          const y2 = toPos.y - (dy / dist) * toR;
+
+          const cp1x = x1 + (x2 - x1) * 0.5;
+          const cp2x = x1 + (x2 - x1) * 0.5;
+          
+          edge.setAttribute("d", `M ${x1} ${y1} C ${cp1x} ${y1}, ${cp2x} ${y2}, ${x2} ${y2}`);
+        });
+      }
+
+      graphNodes.forEach(node => {
+        node.addEventListener("mousedown", e => {
+          isDragging = true;
+          dragTarget = node;
+          const pos = getTranslation(node);
+          const mousePos = getSVGPoint(e);
+          dragOffset.x = mousePos.x - pos.x;
+          dragOffset.y = mousePos.y - pos.y;
+          node.classList.add("active");
+        });
+      });
+
+      window.addEventListener("mousemove", e => {
+        if (!isDragging) return;
+        const mousePos = getSVGPoint(e);
+        const newX = mousePos.x - dragOffset.x;
+        const newY = mousePos.y - dragOffset.y;
+        dragTarget.setAttribute("transform", `translate(${newX},${newY})`);
+        updateEdges();
+      });
+
+      window.addEventListener("mouseup", () => {
+        if (isDragging) {
+          dragTarget.classList.remove("active");
+          isDragging = false;
+          dragTarget = null;
+        }
+      });
+
+      function focusByEdge(from, to) {
+        resetHighlights();
+        cards.forEach((c) => {
+          if (c.dataset.card === from || c.dataset.card === to) c.classList.add("is-highlighted");
+          else c.classList.add("is-dimmed");
+        });
+        const linked = [from, to];
+        flows.forEach((flow) => {
+          const links = (flow.dataset.links || "").split(",");
+          if (links.includes(from) && links.includes(to)) {
+            flow.classList.add("is-highlighted");
+            links.forEach((l) => linked.push(l));
+          } else {
+            flow.classList.add("is-dimmed");
+          }
+        });
+        setGraphFocusByLinks([...new Set(linked)]);
+      }
+
+      function initParticles() {
+        graphEdges.forEach((edge, idx) => {
+          const p = document.createElementNS(NS, "circle");
+          p.setAttribute("r", "4");
+          const cls = `edge-particle ${edge.classList.contains("event") ? "event" : ""} ${edge.classList.contains("storage") ? "storage" : ""} ${edge.classList.contains("transport") ? "transport" : ""}`;
+          p.setAttribute("class", cls.trim());
+          svg.appendChild(p);
+          particles.push({
+            el: p,
+            path: edge,
+            speed: 0.06 + (idx % 3) * 0.018,
+            t: (idx * 0.17) % 1
+          });
+        });
+      }
+
+      function animateParticles() {
+        particles.forEach((p) => {
+          const hidden = p.path.classList.contains("is-hidden") || p.path.classList.contains("dimmed");
+          p.el.classList.toggle("hidden", hidden);
+          if (hidden) return;
+          const len = p.path.getTotalLength();
+          p.t = (p.t + p.speed / Math.max(len, 1)) % 1;
+          const pt = p.path.getPointAtLength(p.t * len);
+          p.el.setAttribute("cx", pt.x.toFixed(2));
+          p.el.setAttribute("cy", pt.y.toFixed(2));
+        });
+        requestAnimationFrame(animateParticles);
+      }
+
+      function exportGraphSvg() {
+        const svg = document.querySelector(".graph-svg");
+        const clone = svg.cloneNode(true);
+        clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+        const style = document.createElementNS(NS, "style");
+        style.textContent = `
+          .edge{stroke:#9db5cd;stroke-width:2.2;fill:none;marker-end:url(#arrow)}
+          .edge.event{stroke-dasharray:7 4}.edge.storage{stroke:#4f9b74}.edge.transport{stroke:#c6842b}
+          .gnode circle{fill:#fff;stroke:#88a3bf;stroke-width:2}
+          .gnode text{font-size:12px;fill:#1f2a37;text-anchor:middle;dominant-baseline:middle;font-weight:600}
+        `;
+        clone.insertBefore(style, clone.firstChild);
+        const data = new XMLSerializer().serializeToString(clone);
+        const blob = new Blob([data], { type: "image/svg+xml;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "component_interaction_graph.svg";
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+
+      function exportGraphPng() {
+        const svg = document.querySelector(".graph-svg");
+        const data = new XMLSerializer().serializeToString(svg);
+        const svgBlob = new Blob([data], { type: "image/svg+xml;charset=utf-8" });
+        const url = URL.createObjectURL(svgBlob);
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement("canvas");
+          canvas.width = 1600;
+          canvas.height = 460;
+          const ctx = canvas.getContext("2d");
+          ctx.fillStyle = "#ffffff";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          URL.revokeObjectURL(url);
+          const pngUrl = canvas.toDataURL("image/png");
+          const a = document.createElement("a");
+          a.href = pngUrl;
+          a.download = "component_interaction_graph.png";
+          a.click();
+        };
+        img.src = url;
+      }
+
+      cards.forEach((card) => {
+        card.addEventListener("click", () => {
+          focusByCardKey(card.dataset.card);
+        });
+      });
+
+      flows.forEach((flow) => {
+        flow.addEventListener("click", () => {
+          resetHighlights();
+          flow.classList.add("is-highlighted");
+          const links = (flow.dataset.links || "").split(",");
+          cards.forEach((c) => {
+            if (links.includes(c.dataset.card)) c.classList.add("is-highlighted");
+            else c.classList.add("is-dimmed");
+          });
+          setGraphFocusByLinks(links);
+          flows.forEach((other) => {
+            if (other !== flow) other.classList.add("is-dimmed");
+          });
+        });
+      });
+
+      graphNodes.forEach((node) => {
+        node.addEventListener("click", () => {
+          focusByCardKey(node.dataset.node);
+        });
+      });
+
+      // Tooltip logic
+      graphNodes.forEach((node) => {
+        node.addEventListener("mouseenter", (e) => {
+          const cardKey = node.dataset.node;
+          const card = cards.find(c => c.dataset.card === cardKey);
+          if (card) {
+            const title = card.querySelector("h2").textContent;
+            const tag = card.querySelector(".tag").textContent;
+            tooltip.innerHTML = `<strong>${title}</strong>${tag}`;
+            tooltip.classList.add("show");
+          }
+        });
+        node.addEventListener("mousemove", (e) => {
+          // Position tooltip near mouse but not under it
+          const x = e.pageX + 15;
+          const y = e.pageY + 15;
+          tooltip.style.left = x + "px";
+          tooltip.style.top = y + "px";
+        });
+        node.addEventListener("mouseleave", () => {
+          tooltip.classList.remove("show");
+        });
+      });
+
+      // Hide tooltip on scroll to prevent floating artifacts
+      window.addEventListener("scroll", () => tooltip.classList.remove("show"));
+
+      graphEdges.forEach((edge) => {
+        edge.style.cursor = "pointer";
+        edge.addEventListener("click", () => {
+          focusByEdge(edge.dataset.from, edge.dataset.to);
+        });
+      });
+
+      // Legend interaction
+      const activeEdgeTypes = new Set(["default", "event", "storage", "transport"]);
+      legendChips.forEach(chip => {
+        chip.addEventListener("click", () => {
+          const type = chip.dataset.edgeType;
+          if (activeEdgeTypes.has(type)) {
+            activeEdgeTypes.delete(type);
+            chip.classList.add("inactive");
+          } else {
+            activeEdgeTypes.add(type);
+            chip.classList.remove("inactive");
+          }
+          
+          graphEdges.forEach(edge => {
+            let etype = "default";
+            if (edge.classList.contains("event")) etype = "event";
+            else if (edge.classList.contains("storage")) etype = "storage";
+            else if (edge.classList.contains("transport")) etype = "transport";
+            
+            const isHidden = !activeEdgeTypes.has(etype);
+            edge.classList.toggle("legend-hidden", isHidden);
+          });
+          
+          particles.forEach(p => {
+             let etype = "default";
+             if (p.path.classList.contains("event")) etype = "event";
+             else if (p.path.classList.contains("storage")) etype = "storage";
+             else if (p.path.classList.contains("transport")) etype = "transport";
+             
+             const isHidden = !activeEdgeTypes.has(etype);
+             p.el.classList.toggle("legend-hidden", isHidden);
+          });
+        });
+      });
+
+      componentGrid.addEventListener("dblclick", resetHighlights);
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") resetHighlights();
+        if (e.key === "/") {
+          e.preventDefault();
+          searchInput.focus();
+        }
+        if (e.key.toLowerCase() === "d") {
+          document.body.classList.toggle("theme-dark");
+          localStorage.setItem("map_theme", document.body.classList.contains("theme-dark") ? "dark" : "light");
+        }
+      });
+
+      searchInput.addEventListener("input", applySearchAndFilter);
+      flowFilter.addEventListener("change", applySearchAndFilter);
+      criticalFilter.addEventListener("change", applySearchAndFilter);
+
+      btnResetView.addEventListener("click", () => {
+        searchInput.value = "";
+        flowFilter.value = "all";
+        applySearchAndFilter();
+        resetHighlights();
+      });
+
+      btnToggleAscii.addEventListener("click", () => {
+        asciiBlock.style.display = asciiBlock.style.display === "none" ? "block" : "none";
+        btnToggleAscii.classList.toggle("active", asciiBlock.style.display !== "none");
+      });
+
+      btnToggleFlows.addEventListener("click", () => {
+        flowsSection.classList.toggle("collapsed");
+        btnToggleFlows.classList.toggle("active", !flowsSection.classList.contains("collapsed"));
+      });
+
+      btnToggleGraph.addEventListener("click", () => {
+        graphPanel.style.display = graphPanel.style.display === "none" ? "block" : "none";
+        btnToggleGraph.classList.toggle("active", graphPanel.style.display !== "none");
+      });
+
+      btnCriticalOnly.addEventListener("click", () => {
+        criticalOnly = !criticalOnly;
+        btnCriticalOnly.classList.toggle("active", criticalOnly);
+        applySearchAndFilter();
+      });
+
+      btnAutoLayout.addEventListener("click", () => {
+        graphNodes.forEach(node => {
+          const pos = autoLayoutPositions[node.dataset.node];
+          if (pos) animateNodeTo(node, pos.x, pos.y);
+        });
+      });
+
+      btnExportSvg.addEventListener("click", exportGraphSvg);
+      btnExportPng.addEventListener("click", exportGraphPng);
+
+      btnTheme.addEventListener("click", () => {
+        document.body.classList.toggle("theme-dark");
+        btnTheme.classList.toggle("active", document.body.classList.contains("theme-dark"));
+        localStorage.setItem("map_theme", document.body.classList.contains("theme-dark") ? "dark" : "light");
+      });
+
+      btnHelp.addEventListener("click", () => {
+        helpBox.classList.toggle("show");
+        btnHelp.classList.toggle("active", helpBox.classList.contains("show"));
+      });
+
+      const params = new URLSearchParams(window.location.search);
+      const q0 = params.get("q");
+      const t0 = params.get("type");
+      const c0 = params.get("critical");
+      const cOnly = params.get("critical_only");
+      if (q0) searchInput.value = q0;
+      if (t0 && Array.from(flowFilter.options).some((o) => o.value === t0)) flowFilter.value = t0;
+      if (c0 && Array.from(criticalFilter.options).some((o) => o.value === c0)) criticalFilter.value = c0;
+      if (cOnly === "1") {
+        criticalOnly = true;
+        btnCriticalOnly.classList.add("active");
+      }
+      const savedTheme = localStorage.getItem("map_theme");
+      if (savedTheme === "dark") {
+        document.body.classList.add("theme-dark");
+        btnTheme.classList.add("active");
+      }
+
+      initParticles();
+      animateParticles();
+      updateEdges();
+      applySearchAndFilter();
+    })();
+  </script>
+</body>
+</html>

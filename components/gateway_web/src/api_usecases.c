@@ -79,6 +79,14 @@ int api_usecase_get_devices_snapshot(zb_device_t *out_devices, int max_devices)
     return zigbee_service_get_devices_snapshot(out_devices, max_devices);
 }
 
+int api_usecase_get_neighbor_lqi_snapshot(zigbee_neighbor_lqi_t *out_neighbors, int max_neighbors)
+{
+    if (!out_neighbors || max_neighbors <= 0) {
+        return 0;
+    }
+    return zigbee_service_get_neighbor_lqi_snapshot(out_neighbors, (size_t)max_neighbors);
+}
+
 esp_err_t api_usecase_permit_join(uint8_t duration_seconds)
 {
     return zigbee_service_permit_join(duration_seconds);

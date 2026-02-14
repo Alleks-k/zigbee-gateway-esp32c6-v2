@@ -16,6 +16,7 @@ esp_err_t build_health_json_compact(char *out, size_t out_size, size_t *out_len)
 
 /* API Handlers */
 esp_err_t api_status_handler(httpd_req_t *req);
+esp_err_t api_lqi_handler(httpd_req_t *req);
 esp_err_t api_permit_join_handler(httpd_req_t *req);
 esp_err_t api_control_handler(httpd_req_t *req);
 esp_err_t api_delete_device_handler(httpd_req_t *req);

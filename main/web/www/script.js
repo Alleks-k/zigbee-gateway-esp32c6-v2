@@ -17,6 +17,8 @@ const LQI_STALE_MS = 60000;
 const LQI_HISTORY_WINDOW_MS = 15 * 60 * 1000;
 const TEMP_WARN_C = 75;
 const TEMP_CRIT_C = 85;
+const WS_RETRY_BASE_MS = 1000;
+const WS_RETRY_MAX_MS = 10000;
 let jobIndicatorHideTimer = null;
 let backendMode = 'unknown';
 let lastLqiUpdateCounter = 0;
@@ -24,6 +26,8 @@ let lastLqiMetaReceivedAtMs = 0;
 let currentLqiMeta = null;
 let currentLqiRows = [];
 const lqiHistoryByAddr = new Map();
+let wsRetryAttempt = 0;
+let wsReconnectTimer = null;
 
 function apiUrl(path) {
     return API_BASE + path;
@@ -172,6 +176,17 @@ async function submitJob(jobType, extraPayload = {}, options = {}) {
 /**
  * Ініціалізація WebSocket з'єднання
  */
+function scheduleWsReconnect() {
+    if (wsReconnectTimer) return;
+    const delayMs = Math.min(WS_RETRY_BASE_MS * (2 ** wsRetryAttempt), WS_RETRY_MAX_MS);
+    wsRetryAttempt = Math.min(wsRetryAttempt + 1, 10);
+    console.warn(`WS reconnect scheduled in ${delayMs} ms (attempt ${wsRetryAttempt})`);
+    wsReconnectTimer = setTimeout(() => {
+        wsReconnectTimer = null;
+        initWebSocket();
+    }, delayMs);
+}
+
 function initWebSocket() {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${protocol}//${window.location.host}/ws`;
@@ -180,6 +195,11 @@ function initWebSocket() {
     ws.onopen = () => {
         console.log('WS Connected');
         lastWsSeq = 0;
+        wsRetryAttempt = 0;
+        if (wsReconnectTimer) {
+            clearTimeout(wsReconnectTimer);
+            wsReconnectTimer = null;
+        }
         updateConnectionStatus(true);
         // WS-first mode. HTTP pull only as one-time safety fallback.
         setTimeout(fetchLqiMap, 1200);
@@ -229,10 +249,24 @@ function initWebSocket() {
         if (data.devices) renderDevices(data.devices);
     };
 
-    ws.onclose = () => {
-        console.log('WS Disconnected, retrying in 3s...');
+    ws.onerror = (event) => {
+        console.error('WS error:', {
+            url: wsUrl,
+            readyState: ws.readyState,
+            eventType: event && event.type ? event.type : 'error'
+        });
+    };
+
+    ws.onclose = (event) => {
+        console.warn('WS Disconnected', {
+            url: wsUrl,
+            code: event.code,
+            reason: event.reason || '(empty)',
+            wasClean: event.wasClean,
+            readyState: ws.readyState
+        });
         updateConnectionStatus(false);
-        setTimeout(initWebSocket, 3000);
+        scheduleWsReconnect();
     };
 }
 

@@ -2,7 +2,9 @@
 #include "api_handlers.h"
 #include "api_contracts.h"
 #include "api_usecases.h"
+#include "error_ring.h"
 #include "cJSON.h"
+#include <stdio.h>
 #include <string.h>
 
 static void test_devices_json_builder_small_buffer_fails(void)
@@ -42,6 +44,37 @@ static void test_status_json_builder_ok(void)
     TEST_ASSERT_NOT_NULL(strstr(buf, "\"channel\""));
     TEST_ASSERT_NOT_NULL(strstr(buf, "\"short_addr\""));
     TEST_ASSERT_NOT_NULL(strstr(buf, "\"devices\""));
+}
+
+static void test_health_json_builder_with_large_error_ring_truncates_and_stays_valid(void)
+{
+    for (int i = 0; i < 10; i++) {
+        char msg[48];
+        snprintf(msg, sizeof(msg), "selftest error %d", i);
+        gateway_error_ring_add("api", -100 - i, msg);
+    }
+
+    char buf[4096];
+    size_t out_len = 0;
+    esp_err_t ret = build_health_json_compact(buf, sizeof(buf), &out_len);
+    TEST_ASSERT_EQUAL(ESP_OK, ret);
+    TEST_ASSERT_GREATER_THAN_UINT32(0, (uint32_t)out_len);
+
+    cJSON *root = cJSON_ParseWithLength(buf, out_len);
+    TEST_ASSERT_NOT_NULL(root);
+
+    cJSON *errors = cJSON_GetObjectItem(root, "errors");
+    TEST_ASSERT_TRUE(cJSON_IsArray(errors));
+    TEST_ASSERT_TRUE(cJSON_GetArraySize(errors) <= 5);
+
+    cJSON *system = cJSON_GetObjectItem(root, "system");
+    TEST_ASSERT_TRUE(cJSON_IsObject(system));
+    TEST_ASSERT_TRUE(cJSON_IsNumber(cJSON_GetObjectItem(system, "uptime_ms")));
+    TEST_ASSERT_TRUE(cJSON_IsNumber(cJSON_GetObjectItem(system, "heap_free")));
+    TEST_ASSERT_TRUE(cJSON_IsNumber(cJSON_GetObjectItem(system, "heap_min")));
+    TEST_ASSERT_TRUE(cJSON_IsNumber(cJSON_GetObjectItem(system, "heap_largest_block")));
+
+    cJSON_Delete(root);
 }
 
 static void test_contract_boundaries_control(void)
@@ -144,6 +177,7 @@ void gateway_web_register_self_tests(void)
     RUN_TEST(test_status_json_builder_small_buffer_fails);
     RUN_TEST(test_devices_json_builder_ok);
     RUN_TEST(test_status_json_builder_ok);
+    RUN_TEST(test_health_json_builder_with_large_error_ring_truncates_and_stays_valid);
     RUN_TEST(test_contract_boundaries_control);
     RUN_TEST(test_contract_boundaries_wifi_settings);
     RUN_TEST(test_contract_boundaries_rename);

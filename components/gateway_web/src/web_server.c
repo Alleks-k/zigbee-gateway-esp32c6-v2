@@ -19,6 +19,8 @@ void start_web_server(void)
     server = NULL;
     httpd_config_t httpd_config = HTTPD_DEFAULT_CONFIG();
     httpd_config.server_port = 80;
+    // Keep extra margin for telemetry/status JSON and WS handling.
+    httpd_config.stack_size += 2048;
     // Static + WS + API(v1 + legacy aliases) + wildcard routes require higher capacity.
     httpd_config.max_uri_handlers = 48;
     // Enable wildcard matching for dynamic routes like /api/v1/jobs/*.

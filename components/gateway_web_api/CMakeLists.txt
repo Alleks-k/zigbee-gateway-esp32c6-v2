@@ -2,6 +2,9 @@ idf_component_register(
     SRCS
         "src/api_contracts.c"
         "src/api_handlers.c"
+        "src/api_status_handlers.c"
+        "src/api_health_handlers.c"
+        "src/api_jobs_handlers.c"
         "src/api_usecases.c"
         "src/http_error.c"
         "src/error_ring.c"

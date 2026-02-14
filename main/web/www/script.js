@@ -468,6 +468,63 @@ function trendForAddr(addr) {
     return { cls: 'flat', text: '→ stable' };
 }
 
+function shortAddrHex(addr) {
+    return '0x' + Number(addr || 0).toString(16).toUpperCase().padStart(4, '0');
+}
+
+function buildRouterHints(rows) {
+    const hints = [];
+    const badRows = [];
+    const degradingRows = [];
+
+    rows.forEach((row) => {
+        const quality = normalizeLqiQuality(row.quality);
+        const trend = trendForAddr(Number(row.short_addr || 0));
+        if (quality === 'bad') {
+            badRows.push(row);
+        }
+        if ((quality === 'warn' || quality === 'bad') && trend.cls === 'down') {
+            degradingRows.push(row);
+        }
+    });
+
+    badRows.slice(0, 2).forEach((row) => {
+        hints.push({
+            cls: 'hint-bad',
+            text: `Weak link for ${(row.name || shortAddrHex(row.short_addr))} (${shortAddrHex(row.short_addr)}). Consider placing a router midway between GW and this device.`,
+        });
+    });
+
+    degradingRows.slice(0, 2).forEach((row) => {
+        hints.push({
+            cls: 'hint-warn',
+            text: `Link degrading for ${(row.name || shortAddrHex(row.short_addr))}. Consider moving/adding a router closer to this zone.`,
+        });
+    });
+
+    if (badRows.length >= 3) {
+        hints.push({
+            cls: 'hint-warn',
+            text: 'Multiple bad links detected. Consider at least one powered Zigbee router in each far room.',
+        });
+    }
+
+    return hints.slice(0, 4);
+}
+
+function renderRouterHints(rows) {
+    const root = document.getElementById('lqiHints');
+    if (!root) return;
+
+    const hints = buildRouterHints(rows || []);
+    if (!hints.length) {
+        root.innerHTML = '<li class="hint-empty">Topology looks stable. No router hints right now.</li>';
+        return;
+    }
+
+    root.innerHTML = hints.map((h) => `<li class="${h.cls}">${h.text}</li>`).join('');
+}
+
 function qualityStrokeColor(quality) {
     if (quality === 'good') return '#16a34a';
     if (quality === 'warn') return '#d97706';
@@ -588,6 +645,7 @@ function renderLqiTable(rows, meta) {
     if (!currentLqiRows || currentLqiRows.length === 0) {
         tbody.innerHTML = '<tr><td colspan="9" class="lqi-empty">No LQI data available</td></tr>';
         renderLqiGraph([]);
+        renderRouterHints([]);
         return;
     }
 
@@ -618,6 +676,7 @@ function renderLqiTable(rows, meta) {
     });
 
     renderLqiGraph(currentLqiRows);
+    renderRouterHints(currentLqiRows);
 }
 
 /**

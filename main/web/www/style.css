@@ -369,6 +369,42 @@ input[type="text"], input[type="password"] {
     font-size: 0.9rem;
 }
 
+.lqi-hints-wrap {
+    margin-top: 12px;
+}
+
+.lqi-hints {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    border: 1px solid #e4e7ec;
+    border-radius: 8px;
+    background: #fff;
+}
+
+.lqi-hints li {
+    padding: 9px 10px;
+    border-bottom: 1px solid #f1f3f6;
+    font-size: 0.9rem;
+    color: #344054;
+}
+
+.lqi-hints li:last-child {
+    border-bottom: none;
+}
+
+.lqi-hints .hint-empty {
+    color: #98a2b3;
+}
+
+.lqi-hints .hint-warn {
+    color: #9a3412;
+}
+
+.lqi-hints .hint-bad {
+    color: #b42318;
+}
+
 /* Кнопки керування */
 .btn-on {
     background-color: #28a745; /* Green */

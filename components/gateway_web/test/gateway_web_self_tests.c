@@ -5,9 +5,11 @@
 #include "lqi_json_mapper.h"
 #include "error_ring.h"
 #include "gateway_state.h"
+#include "ws_manager.h"
 #include "cJSON.h"
 #include <stdio.h>
 #include <string.h>
+#include <unistd.h>
 
 static void test_devices_json_builder_small_buffer_fails(void)
 {
@@ -319,6 +321,102 @@ static void test_ws_lqi_update_envelope_smoke(void)
     cJSON_Delete(root);
 }
 
+#if CONFIG_GATEWAY_SELF_TEST_APP
+static int s_ws_test_active_fd = 0;
+static int s_ws_test_send_calls = 0;
+static int s_ws_test_fail_fd = -1;
+static int s_ws_test_close_calls = 0;
+
+static esp_err_t ws_test_send_frame_async(httpd_handle_t hd, int fd, httpd_ws_frame_t *frame)
+{
+    (void)hd;
+    (void)frame;
+    s_ws_test_send_calls++;
+    if (fd == s_ws_test_fail_fd) {
+        return ESP_FAIL;
+    }
+    return ESP_OK;
+}
+
+static int ws_test_req_to_sockfd(httpd_req_t *req)
+{
+    (void)req;
+    return s_ws_test_active_fd;
+}
+
+static esp_err_t ws_test_recv_frame(httpd_req_t *req, httpd_ws_frame_t *pkt, size_t max_len)
+{
+    (void)req;
+    (void)max_len;
+    pkt->type = HTTPD_WS_TYPE_TEXT;
+    return ESP_OK;
+}
+
+static esp_err_t ws_test_resp_set_status(httpd_req_t *req, const char *status)
+{
+    (void)req;
+    (void)status;
+    return ESP_OK;
+}
+
+static esp_err_t ws_test_resp_send(httpd_req_t *req, const char *buf, ssize_t buf_len)
+{
+    (void)req;
+    (void)buf;
+    (void)buf_len;
+    return ESP_OK;
+}
+
+static int ws_test_close_socket(int fd)
+{
+    (void)fd;
+    s_ws_test_close_calls++;
+    return 0;
+}
+
+static void test_ws_runtime_socket_lifecycle_disconnect_reconnect_backpressure(void)
+{
+    s_ws_test_active_fd = 101;
+    s_ws_test_send_calls = 0;
+    s_ws_test_fail_fd = -1;
+    s_ws_test_close_calls = 0;
+
+    ws_manager_transport_ops_t ops = {
+        .send_frame_async = ws_test_send_frame_async,
+        .req_to_sockfd = ws_test_req_to_sockfd,
+        .ws_recv_frame = ws_test_recv_frame,
+        .resp_set_status = ws_test_resp_set_status,
+        .resp_send = ws_test_resp_send,
+        .close_socket = ws_test_close_socket,
+    };
+    ws_manager_set_transport_ops_for_test(&ops);
+
+    ws_manager_init((httpd_handle_t)0x1);
+
+    httpd_req_t req = {0};
+    req.method = HTTP_GET;
+    TEST_ASSERT_EQUAL(ESP_OK, ws_handler(&req));
+    TEST_ASSERT_EQUAL_INT(1, ws_manager_get_client_count());
+
+    usleep(130000);
+    s_ws_test_fail_fd = s_ws_test_active_fd;
+    ws_broadcast_status();
+    TEST_ASSERT_EQUAL_INT(0, ws_manager_get_client_count());
+    TEST_ASSERT_GREATER_THAN_INT(0, s_ws_test_send_calls);
+
+    s_ws_test_active_fd = 202;
+    s_ws_test_fail_fd = -1;
+    TEST_ASSERT_EQUAL(ESP_OK, ws_handler(&req));
+    TEST_ASSERT_EQUAL_INT(1, ws_manager_get_client_count());
+
+    ws_httpd_close_fn(NULL, s_ws_test_active_fd);
+    TEST_ASSERT_EQUAL_INT(0, ws_manager_get_client_count());
+    TEST_ASSERT_EQUAL_INT(1, s_ws_test_close_calls);
+
+    ws_manager_reset_transport_ops_for_test();
+}
+#endif
+
 void gateway_web_register_self_tests(void)
 {
     RUN_TEST(test_devices_json_builder_small_buffer_fails);
@@ -337,4 +435,7 @@ void gateway_web_register_self_tests(void)
     RUN_TEST(test_frontend_contract_scan_envelope_smoke);
     RUN_TEST(test_frontend_contract_factory_reset_envelope_smoke);
     RUN_TEST(test_ws_lqi_update_envelope_smoke);
+#if CONFIG_GATEWAY_SELF_TEST_APP
+    RUN_TEST(test_ws_runtime_socket_lifecycle_disconnect_reconnect_backpressure);
+#endif
 }

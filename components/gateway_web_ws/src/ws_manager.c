@@ -49,6 +49,47 @@ static int64_t s_last_ws_lqi_send_us = 0;
 static char s_ws_frame_buf[WS_FRAME_BUF_SIZE];
 static uint32_t s_ws_seq = 0;
 
+#if CONFIG_GATEWAY_SELF_TEST_APP
+static esp_err_t ws_default_send_frame_async(httpd_handle_t hd, int fd, httpd_ws_frame_t *frame)
+{
+    return httpd_ws_send_frame_async(hd, fd, frame);
+}
+
+static int ws_default_req_to_sockfd(httpd_req_t *req)
+{
+    return httpd_req_to_sockfd(req);
+}
+
+static esp_err_t ws_default_recv_frame(httpd_req_t *req, httpd_ws_frame_t *pkt, size_t max_len)
+{
+    return httpd_ws_recv_frame(req, pkt, max_len);
+}
+
+static esp_err_t ws_default_resp_set_status(httpd_req_t *req, const char *status)
+{
+    return httpd_resp_set_status(req, status);
+}
+
+static esp_err_t ws_default_resp_send(httpd_req_t *req, const char *buf, ssize_t buf_len)
+{
+    return httpd_resp_send(req, buf, buf_len);
+}
+
+static int ws_default_close_socket(int fd)
+{
+    return close(fd);
+}
+
+static ws_manager_transport_ops_t s_ws_transport_ops = {
+    .send_frame_async = ws_default_send_frame_async,
+    .req_to_sockfd = ws_default_req_to_sockfd,
+    .ws_recv_frame = ws_default_recv_frame,
+    .resp_set_status = ws_default_resp_set_status,
+    .resp_send = ws_default_resp_send,
+    .close_socket = ws_default_close_socket,
+};
+#endif
+
 static uint32_t ws_client_count_provider(void)
 {
     int count = ws_manager_get_client_count();
@@ -84,7 +125,14 @@ static esp_err_t ws_send_frame_to_clients(const char *json, size_t json_len)
     }
     for (int i = 0; i < MAX_WS_CLIENTS; i++) {
         if (ws_fds[i] != -1) {
-            esp_err_t ret = httpd_ws_send_frame_async(s_server, ws_fds[i], &ws_pkt);
+            esp_err_t ret = ESP_ERR_INVALID_STATE;
+#if CONFIG_GATEWAY_SELF_TEST_APP
+            if (s_ws_transport_ops.send_frame_async) {
+                ret = s_ws_transport_ops.send_frame_async(s_server, ws_fds[i], &ws_pkt);
+            }
+#else
+            ret = httpd_ws_send_frame_async(s_server, ws_fds[i], &ws_pkt);
+#endif
             if (ret != ESP_OK) {
                 ESP_LOGW(TAG, "WS send failed (%s), removing client %d", esp_err_to_name(ret), ws_fds[i]);
                 gateway_error_ring_add("ws", (int32_t)ret, "send_frame_async failed");
@@ -235,14 +283,27 @@ void ws_httpd_close_fn(httpd_handle_t hd, int sockfd)
 {
     (void)hd;
     ws_remove_fd(sockfd);
+#if CONFIG_GATEWAY_SELF_TEST_APP
+    if (s_ws_transport_ops.close_socket) {
+        (void)s_ws_transport_ops.close_socket(sockfd);
+    }
+#else
     close(sockfd);
+#endif
 }
 
 esp_err_t ws_handler(httpd_req_t *req)
 {
     if (req->method == HTTP_GET) {
         ESP_LOGI(TAG, "Handshake done, new WS connection");
-        int fd = httpd_req_to_sockfd(req);
+        int fd = -1;
+#if CONFIG_GATEWAY_SELF_TEST_APP
+        if (s_ws_transport_ops.req_to_sockfd) {
+            fd = s_ws_transport_ops.req_to_sockfd(req);
+        }
+#else
+        fd = httpd_req_to_sockfd(req);
+#endif
         bool added = false;
         if (s_ws_mutex) {
             xSemaphoreTake(s_ws_mutex, portMAX_DELAY);
@@ -266,8 +327,17 @@ esp_err_t ws_handler(httpd_req_t *req)
         if (!added) {
             ESP_LOGW(TAG, "WS client rejected: max clients reached (%d)", MAX_WS_CLIENTS);
             gateway_error_ring_add("ws", (int32_t)ESP_ERR_NO_MEM, "client rejected: max clients");
+#if CONFIG_GATEWAY_SELF_TEST_APP
+            if (s_ws_transport_ops.resp_set_status) {
+                (void)s_ws_transport_ops.resp_set_status(req, "503 Service Unavailable");
+            }
+            if (s_ws_transport_ops.resp_send) {
+                (void)s_ws_transport_ops.resp_send(req, "WS clients limit reached", HTTPD_RESP_USE_STRLEN);
+            }
+#else
             httpd_resp_set_status(req, "503 Service Unavailable");
             httpd_resp_send(req, "WS clients limit reached", HTTPD_RESP_USE_STRLEN);
+#endif
             return ESP_FAIL;
         }
         if (s_ws_periodic_timer) {
@@ -282,14 +352,28 @@ esp_err_t ws_handler(httpd_req_t *req)
     memset(&ws_pkt, 0, sizeof(httpd_ws_frame_t));
     ws_pkt.type = HTTPD_WS_TYPE_TEXT;
 
-    esp_err_t ret = httpd_ws_recv_frame(req, &ws_pkt, 0);
+    esp_err_t ret = ESP_ERR_INVALID_STATE;
+#if CONFIG_GATEWAY_SELF_TEST_APP
+    if (s_ws_transport_ops.ws_recv_frame) {
+        ret = s_ws_transport_ops.ws_recv_frame(req, &ws_pkt, 0);
+    }
+#else
+    ret = httpd_ws_recv_frame(req, &ws_pkt, 0);
+#endif
     if (ret != ESP_OK) {
         gateway_error_ring_add("ws", (int32_t)ret, "recv_frame failed");
         return ret;
     }
 
     if (ws_pkt.type == HTTPD_WS_TYPE_CLOSE) {
-        int fd = httpd_req_to_sockfd(req);
+        int fd = -1;
+#if CONFIG_GATEWAY_SELF_TEST_APP
+        if (s_ws_transport_ops.req_to_sockfd) {
+            fd = s_ws_transport_ops.req_to_sockfd(req);
+        }
+#else
+        fd = httpd_req_to_sockfd(req);
+#endif
         ws_remove_fd(fd);
     }
     return ESP_OK;
@@ -419,3 +503,23 @@ int ws_manager_get_client_count(void)
     }
     return count;
 }
+
+#if CONFIG_GATEWAY_SELF_TEST_APP
+void ws_manager_set_transport_ops_for_test(const ws_manager_transport_ops_t *ops)
+{
+    if (!ops) {
+        return;
+    }
+    s_ws_transport_ops = *ops;
+}
+
+void ws_manager_reset_transport_ops_for_test(void)
+{
+    s_ws_transport_ops.send_frame_async = ws_default_send_frame_async;
+    s_ws_transport_ops.req_to_sockfd = ws_default_req_to_sockfd;
+    s_ws_transport_ops.ws_recv_frame = ws_default_recv_frame;
+    s_ws_transport_ops.resp_set_status = ws_default_resp_set_status;
+    s_ws_transport_ops.resp_send = ws_default_resp_send;
+    s_ws_transport_ops.close_socket = ws_default_close_socket;
+}
+#endif

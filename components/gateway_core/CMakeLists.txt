@@ -10,9 +10,12 @@ set(gateway_core_reqs
     gateway_core_jobs
 )
 
+set(gateway_core_priv_reqs
+)
+
 if(CONFIG_GATEWAY_SELF_TEST_APP)
     list(APPEND gateway_core_srcs "test/gateway_core_self_tests.c")
-    list(APPEND gateway_core_reqs unity)
+    list(APPEND gateway_core_priv_reqs unity)
 endif()
 
 idf_component_register(
@@ -22,4 +25,6 @@ idf_component_register(
         "include"
     REQUIRES
         ${gateway_core_reqs}
+    PRIV_REQUIRES
+        ${gateway_core_priv_reqs}
 )

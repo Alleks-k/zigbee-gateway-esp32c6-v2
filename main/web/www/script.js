@@ -14,12 +14,14 @@ let lastWsSeq = 0;
 const JOB_POLL_INTERVAL_MS = 600;
 const JOB_TIMEOUT_MS = 30000;
 const LQI_STALE_MS = 60000;
+const LQI_HISTORY_WINDOW_MS = 15 * 60 * 1000;
 let jobIndicatorHideTimer = null;
 let backendMode = 'unknown';
 let lastLqiUpdateCounter = 0;
 let lastLqiMetaReceivedAtMs = 0;
 let currentLqiMeta = null;
 let currentLqiRows = [];
+const lqiHistoryByAddr = new Map();
 
 function apiUrl(path) {
     return API_BASE + path;
@@ -411,6 +413,61 @@ function updateLqiAgeCells() {
     });
 }
 
+function qualityToScore(quality) {
+    const q = normalizeLqiQuality(quality);
+    if (q === 'good') return 3;
+    if (q === 'warn') return 2;
+    if (q === 'bad') return 1;
+    return 0;
+}
+
+function updateLqiHistory(rows) {
+    const now = Date.now();
+    const seen = new Set();
+    rows.forEach((row) => {
+        const addr = Number(row.short_addr || 0);
+        if (!addr) return;
+        seen.add(addr);
+        const score = qualityToScore(row.quality);
+        const history = lqiHistoryByAddr.get(addr) || [];
+        history.push({ ts: now, score });
+        const minTs = now - LQI_HISTORY_WINDOW_MS;
+        while (history.length > 0 && history[0].ts < minTs) {
+            history.shift();
+        }
+        lqiHistoryByAddr.set(addr, history);
+    });
+
+    lqiHistoryByAddr.forEach((history, addr) => {
+        if (!seen.has(addr)) {
+            const minTs = now - LQI_HISTORY_WINDOW_MS;
+            while (history.length > 0 && history[0].ts < minTs) {
+                history.shift();
+            }
+            if (history.length === 0) {
+                lqiHistoryByAddr.delete(addr);
+            }
+        }
+    });
+}
+
+function trendForAddr(addr) {
+    const history = lqiHistoryByAddr.get(addr);
+    if (!history || history.length < 2) {
+        return { cls: 'na', text: '--' };
+    }
+    const first = history[0].score;
+    const last = history[history.length - 1].score;
+    const delta = last - first;
+    if (delta >= 1) {
+        return { cls: 'up', text: '↑ improving' };
+    }
+    if (delta <= -1) {
+        return { cls: 'down', text: '↓ degrading' };
+    }
+    return { cls: 'flat', text: '→ stable' };
+}
+
 function qualityStrokeColor(quality) {
     if (quality === 'good') return '#16a34a';
     if (quality === 'warn') return '#d97706';
@@ -529,11 +586,12 @@ function renderLqiTable(rows, meta) {
 
     tbody.innerHTML = '';
     if (!currentLqiRows || currentLqiRows.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" class="lqi-empty">No LQI data available</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9" class="lqi-empty">No LQI data available</td></tr>';
         renderLqiGraph([]);
         return;
     }
 
+    updateLqiHistory(currentLqiRows);
     const ageText = formatAge(getLqiAgeSeconds());
     currentLqiRows.forEach(row => {
         const tr = document.createElement('tr');
@@ -543,6 +601,7 @@ function renderLqiTable(rows, meta) {
         const rssiText = row.rssi === null || row.rssi === undefined ? '--' : `${row.rssi} dBm`;
         const directText = row.direct ? 'direct' : 'indirect';
         const sourceText = lqiSourceLabel(row.source || (meta && meta.source) || 'unknown');
+        const trend = trendForAddr(Number(row.short_addr || 0));
 
         tr.innerHTML = `
             <td>${(row.name || 'Пристрій')}</td>
@@ -551,6 +610,7 @@ function renderLqiTable(rows, meta) {
             <td class="lqi-age-cell">${ageText}</td>
             <td>${rssiText}</td>
             <td><span class="lqi-quality ${quality}">${quality}</span></td>
+            <td><span class="lqi-trend ${trend.cls}">${trend.text}</span></td>
             <td><span class="lqi-link">${directText}</span></td>
             <td>${sourceText}</td>
         `;

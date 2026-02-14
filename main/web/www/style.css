@@ -323,6 +323,26 @@ input[type="text"], input[type="password"] {
     font-weight: 600;
 }
 
+.lqi-trend {
+    font-weight: 700;
+}
+
+.lqi-trend.up {
+    color: #166534;
+}
+
+.lqi-trend.down {
+    color: #b42318;
+}
+
+.lqi-trend.flat {
+    color: #475467;
+}
+
+.lqi-trend.na {
+    color: #98a2b3;
+}
+
 .lqi-graph-wrap {
     margin-top: 12px;
 }

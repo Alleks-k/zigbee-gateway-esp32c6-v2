@@ -3,6 +3,7 @@
 #include "wifi_context.h"
 #include "wifi_sta.h"
 #include "wifi_ap_fallback.h"
+#include "net_platform_services.h"
 #include "gateway_state.h"
 #include <string.h>
 
@@ -25,6 +26,7 @@ void wifi_state_store_update(void)
 
 esp_err_t wifi_init_sta_and_wait(void)
 {
+    net_platform_services_init();
     wifi_state_store_update();
     esp_err_t ret = wifi_sta_connect_and_wait(&s_ctx);
     if (ret == ESP_OK) {

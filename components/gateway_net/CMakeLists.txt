@@ -3,6 +3,7 @@ idf_component_register(
         "src/wifi_init.c"
         "src/wifi_sta.c"
         "src/wifi_ap_fallback.c"
+        "src/net_platform_services.c"
         "gateway_net_placeholder.c"
     INCLUDE_DIRS
         "include"
@@ -12,5 +13,7 @@ idf_component_register(
         esp_netif
         esp_event
         esp_timer
+        esp_system
+        esp_driver_tsens
         nvs_flash
 )

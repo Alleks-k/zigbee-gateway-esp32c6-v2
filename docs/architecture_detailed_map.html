@@ -144,6 +144,7 @@
     .c-web  { grid-column: span 3; }
     .c-deps { grid-column: span 7; }
     .c-left { grid-column: span 5; }
+    .c-full { grid-column: span 12; }
 
     .muted { color: var(--muted); }
 
@@ -151,6 +152,27 @@
       overflow: auto;
       border: 1px solid var(--line);
       border-radius: 10px;
+      background: #fff;
+    }
+
+    .table-tools {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 0 0 8px;
+      padding: 8px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #fff;
+    }
+
+    .table-tools input,
+    .table-tools select {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 6px 8px;
+      font-size: 12px;
+      color: var(--text);
       background: #fff;
     }
 
@@ -248,7 +270,7 @@
     .highlight { outline: 2px solid var(--accent); }
 
     @media (max-width: 1100px) {
-      .c-main, .c-core, .c-net, .c-web, .c-deps, .c-left { grid-column: span 12; }
+      .c-main, .c-core, .c-net, .c-web, .c-deps, .c-left, .c-full { grid-column: span 12; }
     }
   </style>
 </head>
@@ -380,13 +402,13 @@
               </tr>
               <tr>
                 <td><code>gateway_net</code></td>
-                <td><code>gateway_core, esp_wifi, esp_netif, esp_event, ...</code></td>
-                <td>Нормально для network runtime</td>
+                <td><code>gateway_core, esp_wifi, esp_netif, esp_event, esp_driver_tsens, ...</code></td>
+                <td>Містить platform adapter-и (Wi-Fi scan + telemetry)</td>
               </tr>
               <tr>
                 <td><code>gateway_core</code></td>
-                <td><code>esp-zigbee-lib, esp_wifi, esp_netif, esp_driver_tsens, ...</code></td>
-                <td>Найщільніший компонент, кандидат на подальшу декомпозицію</td>
+                <td><code>esp-zigbee-lib, settings/nvs, events, ...</code></td>
+                <td>Після рефактору більше domain-centric, але ще щільний</td>
               </tr>
             </tbody>
           </table>
@@ -401,7 +423,7 @@
           <ul>
             <li><span class="md">Medium:</span> <code>gateway_web -> gateway_net</code> пряма compile залежність (частину краще тягнути через core/usecase).</li>
             <li><span class="md">Medium:</span> <code>api_handlers.c</code все ще великий (health/status/jobs); LQI вже винесений, інші builder-и можна винести так само.</li>
-            <li><span class="hi">High:</span> <code>gateway_core</code концентрує багато platform/API залежностей; логічний split на підкомпоненти (zigbee/wifi/system/settings).</li>
+            <li><span class="md">Medium:</span> <code>gateway_core</code ще залишається великим, але Wi-Fi scan/telemetry platform-код уже винесено в <code>gateway_net</code> adapter.</li>
             <li><span class="ok">Done:</span> Health snapshot і LQI mapper винесені з handlers в окремі шари.</li>
           </ul>
         </div>
@@ -412,6 +434,178 @@
             <li><span class="md">Medium:</span> бракує інтеграційного тесту WS broadcast на реальному httpd socket lifecycle.</li>
             <li><span class="md">Medium:</span> бракує e2e тесту фронт-контракту для нових LQI/health полів у браузері.</li>
           </ul>
+        </div>
+      </section>
+
+      <section class="card c-full" data-card="runtime">
+        <h2>Runtime Flows By Endpoint</h2>
+        <div class="tag">HTTP / WS / Jobs contract map</div>
+        <div class="table-tools">
+          <select id="runtimeTransportFilter">
+            <option value="all">Transport: all</option>
+            <option value="http">HTTP all</option>
+            <option value="http_get">HTTP GET</option>
+            <option value="http_post">HTTP POST</option>
+            <option value="ws">WS</option>
+          </select>
+          <input id="runtimeSearchInput" type="text" placeholder="Search endpoint/type..." />
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Transport</th>
+                <th>Endpoint / Type</th>
+                <th>Main Path</th>
+                <th>Depends On</th>
+                <th>Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>HTTP GET</td>
+                <td><code>/api/v1/status</code></td>
+                <td><code>api_status_handler -> build_status_json_compact</code></td>
+                <td><code>api_usecases -> zigbee_service</code></td>
+                <td>Snapshot status + devices</td>
+              </tr>
+              <tr>
+                <td>HTTP GET</td>
+                <td><code>/api/v1/health</code></td>
+                <td><code>api_health_handler -> build_health_json_compact</code></td>
+                <td><code>api_usecase_collect_health_snapshot</code></td>
+                <td>Канонічний Wi-Fi ключ: <code>active_ssid</code></td>
+              </tr>
+              <tr>
+                <td>HTTP GET</td>
+                <td><code>/api/v1/lqi</code></td>
+                <td><code>api_lqi_handler -> lqi_json_mapper</code></td>
+                <td><code>api_usecases cached LQI</code></td>
+                <td>LQI mapper винесений з handlers</td>
+              </tr>
+              <tr>
+                <td>HTTP POST</td>
+                <td><code>/api/v1/jobs</code></td>
+                <td><code>api_jobs_submit_handler -> job_queue_submit</code></td>
+                <td><code>gateway_core/job_queue</code></td>
+                <td>Types: <code>scan</code>, <code>lqi_refresh</code>, <code>reboot</code>, <code>factory_reset</code></td>
+              </tr>
+              <tr>
+                <td>HTTP GET</td>
+                <td><code>/api/v1/jobs/{id}</code></td>
+                <td><code>api_jobs_get_handler -> job_queue_get</code></td>
+                <td><code>gateway_core/job_queue</code></td>
+                <td>Result JSON size-guard per job type</td>
+              </tr>
+              <tr>
+                <td>HTTP POST</td>
+                <td><code>/api/v1/settings/wifi</code></td>
+                <td><code>api_wifi_save_handler -> api_usecase_wifi_save</code></td>
+                <td><code>wifi_service + system_service(reboot)</code></td>
+                <td>DTO validation in <code>api_contracts</code></td>
+              </tr>
+              <tr>
+                <td>HTTP POST</td>
+                <td><code>/api/v1/control</code></td>
+                <td><code>api_control_handler -> api_usecase_control</code></td>
+                <td><code>zigbee_service.send_on_off</code></td>
+                <td>Transport layer only in handler</td>
+              </tr>
+              <tr>
+                <td>WS</td>
+                <td><code>type: devices_delta</code></td>
+                <td><code>ws_manager -> build_devices_json_compact</code></td>
+                <td><code>gateway_events/device list</code></td>
+                <td>Debounced + deduplicated broadcast</td>
+              </tr>
+              <tr>
+                <td>WS</td>
+                <td><code>type: health_state</code></td>
+                <td><code>ws_manager -> build_health_json_compact</code></td>
+                <td><code>health snapshot usecase</code></td>
+                <td>Interval guarded</td>
+              </tr>
+              <tr>
+                <td>WS</td>
+                <td><code>type: lqi_update</code></td>
+                <td><code>ws_manager -> lqi_json_mapper</code></td>
+                <td><code>gateway_events LQI changed</code></td>
+                <td>Envelope: <code>version/seq/ts/type/data</code></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card c-full" data-card="tests">
+        <h2>Test Coverage Matrix</h2>
+        <div class="tag">Module -> current tests -> gaps</div>
+        <div class="table-tools">
+          <select id="testRiskFilter">
+            <option value="all">Risk: all</option>
+            <option value="high">High</option>
+            <option value="medium">Medium</option>
+            <option value="low">Low</option>
+            <option value="done">Done</option>
+          </select>
+          <input id="testSearchInput" type="text" placeholder="Search test/module..." />
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Module</th>
+                <th>Covered By</th>
+                <th>What is verified</th>
+                <th>Remaining Gaps</th>
+                <th>Risk</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>gateway_web/api_handlers</code></td>
+                <td><code>gateway_web_self_tests</code></td>
+                <td>status/devices builders, health large payload, contract parsing</td>
+                <td>No direct integration test with real httpd routes for all handlers</td>
+                <td><span class="md">Medium</span></td>
+              </tr>
+              <tr>
+                <td><code>gateway_web/lqi_json_mapper</code></td>
+                <td><code>test_lqi_json_mapper_uses_cached_snapshot_contract</code></td>
+                <td>LQI/RSSI nulling, quality/source mapping, envelope fields</td>
+                <td>No stress test for max device count / boundary memory</td>
+                <td><span class="md">Medium</span></td>
+              </tr>
+              <tr>
+                <td><code>gateway_web/api_usecases health snapshot</code></td>
+                <td><code>test_health_snapshot_usecase_contract</code></td>
+                <td>Mapping network/wifi/nvs/ws + telemetry basics</td>
+                <td>No negative-path tests for state/schema retrieval failures</td>
+                <td><span class="md">Medium</span></td>
+              </tr>
+              <tr>
+                <td><code>WS protocol</code></td>
+                <td><code>test_ws_lqi_update_envelope_smoke</code></td>
+                <td>Envelope fields: <code>type/version/seq/data</code> for lqi_update</td>
+                <td>No runtime socket lifecycle test (disconnect/reconnect/backpressure)</td>
+                <td><span class="md">Medium</span></td>
+              </tr>
+              <tr>
+                <td><code>gateway_core/wifi_service</code></td>
+                <td><code>gateway_core_self_tests</code></td>
+                <td>Input validation for credential save</td>
+                <td>No integration coverage for scan + connect retry/fallback paths</td>
+                <td><span class="hi">High</span></td>
+              </tr>
+              <tr>
+                <td><code>main e2e usecases</code></td>
+                <td><code>main/tests/e2e_self_tests.c</code></td>
+                <td>Mock e2e: wifi settings, factory reset behavior</td>
+                <td>No browser/frontend e2e contract test</td>
+                <td><span class="md">Medium</span></td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </section>
     </div>
@@ -429,6 +623,12 @@
         btnNet: 'gateway_net',
         btnMain: 'main'
       };
+      const runtimeTransportFilter = document.getElementById('runtimeTransportFilter');
+      const runtimeSearchInput = document.getElementById('runtimeSearchInput');
+      const testRiskFilter = document.getElementById('testRiskFilter');
+      const testSearchInput = document.getElementById('testSearchInput');
+      const runtimeRows = Array.from(document.querySelectorAll('[data-card="runtime"] tbody tr'));
+      const testRows = Array.from(document.querySelectorAll('[data-card="tests"] tbody tr'));
 
       function clearActiveButtons() {
         document.querySelectorAll('.toolbar button').forEach((b) => b.classList.remove('active'));
@@ -440,6 +640,43 @@
         edges.forEach((e) => e.classList.remove('dim', 'active'));
         clearActiveButtons();
         btnReset.classList.add('active');
+      }
+
+      function applyRuntimeTableFilters() {
+        const mode = runtimeTransportFilter ? runtimeTransportFilter.value : 'all';
+        const q = runtimeSearchInput ? runtimeSearchInput.value.trim().toLowerCase() : '';
+
+        runtimeRows.forEach((row) => {
+          const transport = (row.cells[0]?.textContent || '').trim().toLowerCase();
+          const endpoint = (row.cells[1]?.textContent || '').toLowerCase();
+          const modeMatch =
+            mode === 'all' ||
+            (mode === 'http' && transport.startsWith('http')) ||
+            (mode === 'http_get' && transport === 'http get') ||
+            (mode === 'http_post' && transport === 'http post') ||
+            (mode === 'ws' && transport === 'ws');
+          const queryMatch = !q || endpoint.includes(q);
+          row.style.display = modeMatch && queryMatch ? '' : 'none';
+        });
+      }
+
+      function applyTestTableFilters() {
+        const mode = testRiskFilter ? testRiskFilter.value : 'all';
+        const q = testSearchInput ? testSearchInput.value.trim().toLowerCase() : '';
+
+        testRows.forEach((row) => {
+          const risk = (row.cells[4]?.textContent || '').toLowerCase();
+          const module = (row.cells[0]?.textContent || '').toLowerCase();
+          const coveredBy = (row.cells[1]?.textContent || '').toLowerCase();
+          const modeMatch =
+            mode === 'all' ||
+            (mode === 'high' && risk.includes('high')) ||
+            (mode === 'medium' && risk.includes('medium')) ||
+            (mode === 'low' && risk.includes('low')) ||
+            (mode === 'done' && risk.includes('done'));
+          const queryMatch = !q || module.includes(q) || coveredBy.includes(q);
+          row.style.display = modeMatch && queryMatch ? '' : 'none';
+        });
       }
 
       function focus(key) {
@@ -494,11 +731,17 @@
       });
 
       btnReset.addEventListener('click', resetView);
+      if (runtimeTransportFilter) runtimeTransportFilter.addEventListener('change', applyRuntimeTableFilters);
+      if (runtimeSearchInput) runtimeSearchInput.addEventListener('input', applyRuntimeTableFilters);
+      if (testRiskFilter) testRiskFilter.addEventListener('change', applyTestTableFilters);
+      if (testSearchInput) testSearchInput.addEventListener('input', applyTestTableFilters);
       document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') resetView();
       });
 
       resetView();
+      applyRuntimeTableFilters();
+      applyTestTableFilters();
     })();
   </script>
 </body>

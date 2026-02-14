@@ -13,6 +13,7 @@ char* create_status_json(void);
 esp_err_t build_status_json_compact(char *out, size_t out_size, size_t *out_len);
 esp_err_t build_devices_json_compact(char *out, size_t out_size, size_t *out_len);
 esp_err_t build_health_json_compact(char *out, size_t out_size, size_t *out_len);
+esp_err_t build_lqi_json_compact(char *out, size_t out_size, size_t *out_len);
 
 /* API Handlers */
 esp_err_t api_status_handler(httpd_req_t *req);

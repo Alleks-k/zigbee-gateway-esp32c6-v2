@@ -5,12 +5,51 @@
 #include "zdo/esp_zigbee_zdo_command.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
+#include "esp_timer.h"
 #include <string.h>
 
 /* Implemented in app/main integration layer */
 void send_on_off_command(uint16_t short_addr, uint8_t endpoint, uint8_t on_off);
 void delete_device(uint16_t short_addr);
 void update_device_name(uint16_t short_addr, const char *new_name);
+
+static SemaphoreHandle_t s_lqi_cache_mutex = NULL;
+static zigbee_neighbor_lqi_t s_lqi_cache[MAX_DEVICES];
+static int s_lqi_cache_count = 0;
+static zigbee_lqi_source_t s_lqi_cache_source = ZIGBEE_LQI_SOURCE_UNKNOWN;
+static uint64_t s_lqi_cache_updated_ms = 0;
+
+static SemaphoreHandle_t get_lqi_cache_mutex(void)
+{
+    if (!s_lqi_cache_mutex) {
+        s_lqi_cache_mutex = xSemaphoreCreateMutex();
+    }
+    return s_lqi_cache_mutex;
+}
+
+static void cache_lqi_snapshot(const zigbee_neighbor_lqi_t *items, int count, zigbee_lqi_source_t source)
+{
+    SemaphoreHandle_t mutex = get_lqi_cache_mutex();
+    if (!mutex) {
+        return;
+    }
+
+    if (count < 0) {
+        count = 0;
+    }
+    if (count > MAX_DEVICES) {
+        count = MAX_DEVICES;
+    }
+
+    xSemaphoreTake(mutex, portMAX_DELAY);
+    if (count > 0 && items) {
+        memcpy(s_lqi_cache, items, (size_t)count * sizeof(zigbee_neighbor_lqi_t));
+    }
+    s_lqi_cache_count = count;
+    s_lqi_cache_source = source;
+    s_lqi_cache_updated_ms = (uint64_t)(esp_timer_get_time() / 1000);
+    xSemaphoreGive(mutex);
+}
 
 esp_err_t zigbee_service_get_network_status(zigbee_network_status_t *out)
 {
@@ -74,6 +113,7 @@ int zigbee_service_get_neighbor_lqi_snapshot(zigbee_neighbor_lqi_t *out, size_t 
         count++;
     }
 
+    cache_lqi_snapshot(out, count, ZIGBEE_LQI_SOURCE_NEIGHBOR_TABLE);
     return count;
 }
 
@@ -176,10 +216,46 @@ esp_err_t zigbee_service_refresh_neighbor_lqi_snapshot(zigbee_neighbor_lqi_t *ou
 
     if (ret == ESP_OK) {
         *out_count = (int)ctx.count;
+        cache_lqi_snapshot(out, *out_count, ZIGBEE_LQI_SOURCE_MGMT_LQI);
     }
 
     vSemaphoreDelete(ctx.done_sem);
     return ret;
+}
+
+esp_err_t zigbee_service_get_cached_lqi_snapshot(zigbee_neighbor_lqi_t *out, size_t max_items, int *out_count,
+                                                 zigbee_lqi_source_t *out_source, uint64_t *out_updated_ms)
+{
+    if (!out || max_items == 0 || !out_count) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    SemaphoreHandle_t mutex = get_lqi_cache_mutex();
+    if (!mutex) {
+        return ESP_ERR_NO_MEM;
+    }
+
+    xSemaphoreTake(mutex, portMAX_DELAY);
+    int count = s_lqi_cache_count;
+    if (count < 0) {
+        count = 0;
+    }
+    if ((size_t)count > max_items) {
+        count = (int)max_items;
+    }
+    if (count > 0) {
+        memcpy(out, s_lqi_cache, (size_t)count * sizeof(zigbee_neighbor_lqi_t));
+    }
+    *out_count = count;
+    if (out_source) {
+        *out_source = s_lqi_cache_source;
+    }
+    if (out_updated_ms) {
+        *out_updated_ms = s_lqi_cache_updated_ms;
+    }
+    xSemaphoreGive(mutex);
+
+    return ESP_OK;
 }
 
 esp_err_t zigbee_service_delete_device(uint16_t short_addr)

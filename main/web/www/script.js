@@ -13,8 +13,12 @@ const WS_PROTOCOL_VERSION = 1;
 let lastWsSeq = 0;
 const JOB_POLL_INTERVAL_MS = 600;
 const JOB_TIMEOUT_MS = 30000;
+const LQI_STALE_MS = 60000;
 let jobIndicatorHideTimer = null;
 let backendMode = 'unknown';
+let lastLqiUpdateCounter = 0;
+let lastLqiMetaReceivedAtMs = 0;
+let currentLqiMeta = null;
 
 function apiUrl(path) {
     return API_BASE + path;
@@ -24,7 +28,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // Завантажуємо статус при завантаженні сторінки
     fetchStatus();
     fetchHealth();
-    fetchLqiMap();
     
     // Ініціалізуємо WebSocket
     initWebSocket();
@@ -41,7 +44,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // WS is primary; periodic status refresh is a safety fallback.
     setInterval(fetchStatus, 10000);
-    setInterval(fetchLqiMap, 15000);
+    setInterval(() => updateLqiMeta(currentLqiMeta), 5000);
 });
 
 async function requestJson(url, options = {}) {
@@ -170,6 +173,8 @@ function initWebSocket() {
         console.log('WS Connected');
         lastWsSeq = 0;
         updateConnectionStatus(true);
+        // WS-first mode. HTTP pull only as one-time safety fallback.
+        setTimeout(fetchLqiMap, 1200);
     };
 
     ws.onmessage = (event) => {
@@ -196,11 +201,15 @@ function initWebSocket() {
         // New WS protocol: typed events
         if (data && data.type === 'devices_delta' && data.data && Array.isArray(data.data.devices)) {
             renderDevices(data.data.devices);
-            fetchLqiMap();
             return;
         }
         if (data && data.type === 'health_state' && data.data) {
             applyHealthData(data.data);
+            return;
+        }
+        if (data && data.type === 'lqi_state' && data.data) {
+            const neighbors = Array.isArray(data.data.neighbors) ? data.data.neighbors : [];
+            renderLqiTable(neighbors, data.data);
             return;
         }
 
@@ -257,30 +266,21 @@ function fetchLqiMap() {
         .then(resp => {
             const data = (resp && resp.data) ? resp.data : {};
             const neighbors = Array.isArray(data.neighbors) ? data.neighbors : [];
-            renderLqiTable(neighbors);
+            renderLqiTable(neighbors, data);
         })
         .catch(err => {
             console.error('Error fetching LQI:', err);
-            renderLqiTable([]);
+            renderLqiTable([], null);
         });
 }
 
 function refreshLqiActive() {
     setButtonBusy('refreshLqiBtn', true);
     submitJob('lqi_refresh', {}, { label: 'LQI refresh', timeoutMs: 12000 })
-        .then(info => {
-            const result = info.result || {};
-            const neighbors = Array.isArray(result.neighbors) ? result.neighbors : null;
-            if (neighbors) {
-                renderLqiTable(neighbors);
-            } else {
-                fetchLqiMap();
-            }
-        })
+        .then(() => fetchLqiMap())
         .catch(err => {
             console.error('LQI refresh failed:', err);
             showToast(err.message || 'LQI refresh failed');
-            fetchLqiMap();
         })
         .finally(() => setButtonBusy('refreshLqiBtn', false));
 }
@@ -364,13 +364,57 @@ function renderDevices(devices) {
     lastRenderedDeviceCount = currentCount;
 }
 
-function renderLqiTable(rows) {
+function lqiSourceLabel(source) {
+    if (source === 'mgmt_lqi') return 'Mgmt LQI';
+    if (source === 'neighbor_table') return 'Neighbor Table';
+    return 'Unknown';
+}
+
+function updateLqiMeta(meta) {
+    const sourceEl = document.getElementById('lqiSource');
+    const updatedEl = document.getElementById('lqiUpdated');
+    const staleEl = document.getElementById('lqiStaleBadge');
+    if (!sourceEl || !updatedEl || !staleEl) return;
+
+    if (meta && typeof meta === 'object') {
+        currentLqiMeta = meta;
+    }
+
+    const source = currentLqiMeta && typeof currentLqiMeta.source === 'string' ? currentLqiMeta.source : 'unknown';
+    const updatedMs = currentLqiMeta && Number.isFinite(Number(currentLqiMeta.updated_ms))
+        ? Number(currentLqiMeta.updated_ms)
+        : 0;
+    if (updatedMs > 0) {
+        if (updatedMs !== lastLqiUpdateCounter) {
+            lastLqiUpdateCounter = updatedMs;
+            lastLqiMetaReceivedAtMs = Date.now();
+        } else if (lastLqiMetaReceivedAtMs === 0) {
+            lastLqiMetaReceivedAtMs = Date.now();
+        }
+    }
+
+    sourceEl.textContent = lqiSourceLabel(source);
+    if (updatedMs > 0) {
+        updatedEl.textContent = `${Math.round(updatedMs / 1000)}s uptime`;
+    } else {
+        updatedEl.textContent = '--';
+    }
+
+    const ageMs = lastLqiMetaReceivedAtMs > 0 ? (Date.now() - lastLqiMetaReceivedAtMs) : Number.POSITIVE_INFINITY;
+    const stale = !Number.isFinite(ageMs) || ageMs > LQI_STALE_MS;
+    staleEl.classList.remove('ok', 'stale');
+    staleEl.classList.add(stale ? 'stale' : 'ok');
+    staleEl.textContent = stale ? 'stale' : 'fresh';
+}
+
+function renderLqiTable(rows, meta) {
     const tbody = document.getElementById('lqiTableBody');
     if (!tbody) return;
+    updateLqiMeta(meta || null);
 
     tbody.innerHTML = '';
     if (!rows || rows.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" class="lqi-empty">No LQI data available</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" class="lqi-empty">No LQI data available</td></tr>';
         return;
     }
 
@@ -381,6 +425,7 @@ function renderLqiTable(rows) {
         const lqiText = row.lqi === null || row.lqi === undefined ? '--' : String(row.lqi);
         const rssiText = row.rssi === null || row.rssi === undefined ? '--' : `${row.rssi} dBm`;
         const directText = row.direct ? 'direct' : 'indirect';
+        const sourceText = lqiSourceLabel(row.source || (meta && meta.source) || 'unknown');
 
         tr.innerHTML = `
             <td>${(row.name || 'Пристрій')}</td>
@@ -389,6 +434,7 @@ function renderLqiTable(rows) {
             <td>${rssiText}</td>
             <td><span class="lqi-quality ${quality}">${quality}</span></td>
             <td><span class="lqi-link">${directText}</span></td>
+            <td>${sourceText}</td>
         `;
         tbody.appendChild(tr);
     });

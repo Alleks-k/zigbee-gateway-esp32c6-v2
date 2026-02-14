@@ -22,11 +22,13 @@ static const char *TAG = "WS_MANAGER";
 #define WS_MIN_DUP_BROADCAST_INTERVAL_US (250 * 1000)
 #define WS_MIN_BROADCAST_INTERVAL_US (120 * 1000)
 #define WS_MIN_HEALTH_BROADCAST_INTERVAL_US (800 * 1000)
+#define WS_MIN_LQI_BROADCAST_INTERVAL_US (800 * 1000)
 
 static int ws_fds[MAX_WS_CLIENTS];
 static httpd_handle_t s_server = NULL;
 static SemaphoreHandle_t s_ws_mutex = NULL;
 static esp_event_handler_instance_t s_list_changed_handler = NULL;
+static esp_event_handler_instance_t s_lqi_changed_handler = NULL;
 static esp_timer_handle_t s_ws_debounce_timer = NULL;
 static esp_timer_handle_t s_ws_periodic_timer = NULL;
 static char s_ws_devices_json_buf[WS_JSON_BUF_SIZE];
@@ -37,6 +39,10 @@ static char s_ws_health_json_buf[WS_JSON_BUF_SIZE];
 static char s_last_ws_health_json[WS_JSON_BUF_SIZE];
 static size_t s_last_ws_health_json_len = 0;
 static int64_t s_last_ws_health_send_us = 0;
+static char s_ws_lqi_json_buf[WS_JSON_BUF_SIZE];
+static char s_last_ws_lqi_json[WS_JSON_BUF_SIZE];
+static size_t s_last_ws_lqi_json_len = 0;
+static int64_t s_last_ws_lqi_send_us = 0;
 static char s_ws_frame_buf[WS_FRAME_BUF_SIZE];
 static uint32_t s_ws_seq = 0;
 
@@ -143,6 +149,15 @@ static void device_list_changed_handler(void *arg, esp_event_base_t event_base, 
     }
 }
 
+static void lqi_state_changed_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data)
+{
+    (void)arg;
+    (void)event_data;
+    if (event_base == GATEWAY_EVENT && event_id == GATEWAY_EVENT_LQI_STATE_CHANGED) {
+        ws_broadcast_status();
+    }
+}
+
 void ws_manager_init(httpd_handle_t server)
 {
     s_server = server;
@@ -162,6 +177,13 @@ void ws_manager_init(httpd_handle_t server)
             GATEWAY_EVENT, GATEWAY_EVENT_DEVICE_LIST_CHANGED, device_list_changed_handler, NULL, &s_list_changed_handler);
         if (ret != ESP_OK) {
             ESP_LOGE(TAG, "Failed to register DEVICE_LIST_CHANGED handler: %s", esp_err_to_name(ret));
+        }
+    }
+    if (s_lqi_changed_handler == NULL) {
+        esp_err_t ret = esp_event_handler_instance_register(
+            GATEWAY_EVENT, GATEWAY_EVENT_LQI_STATE_CHANGED, lqi_state_changed_handler, NULL, &s_lqi_changed_handler);
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to register LQI_STATE_CHANGED handler: %s", esp_err_to_name(ret));
         }
     }
 
@@ -193,6 +215,8 @@ void ws_manager_init(httpd_handle_t server)
     s_last_ws_devices_send_us = 0;
     s_last_ws_health_json_len = 0;
     s_last_ws_health_send_us = 0;
+    s_last_ws_lqi_json_len = 0;
+    s_last_ws_lqi_send_us = 0;
     s_ws_seq = 0;
 }
 
@@ -330,6 +354,31 @@ void ws_broadcast_status(void)
                         s_last_ws_health_json_len = 0;
                     }
                     s_last_ws_health_send_us = now_us;
+                }
+            }
+        }
+    }
+
+    // LQI state event is throttled and deduplicated separately.
+    if ((now_us - s_last_ws_lqi_send_us) >= WS_MIN_LQI_BROADCAST_INTERVAL_US) {
+        size_t lqi_len = 0;
+        esp_err_t lqi_ret = build_lqi_json_compact(s_ws_lqi_json_buf, sizeof(s_ws_lqi_json_buf), &lqi_len);
+        if (lqi_ret == ESP_OK) {
+            bool same_lqi = (lqi_len == s_last_ws_lqi_json_len) &&
+                            (lqi_len > 0) &&
+                            (memcmp(s_ws_lqi_json_buf, s_last_ws_lqi_json, lqi_len) == 0);
+            if (!same_lqi || (now_us - s_last_ws_lqi_send_us) >= WS_MIN_DUP_BROADCAST_INTERVAL_US) {
+                wrap_ret = ws_wrap_event_payload("lqi_state", s_ws_lqi_json_buf, lqi_len, &frame_len);
+                if (wrap_ret == ESP_OK) {
+                    (void)ws_send_frame_to_clients(s_ws_frame_buf, frame_len);
+                    if (lqi_len < sizeof(s_last_ws_lqi_json)) {
+                        memcpy(s_last_ws_lqi_json, s_ws_lqi_json_buf, lqi_len);
+                        s_last_ws_lqi_json[lqi_len] = '\0';
+                        s_last_ws_lqi_json_len = lqi_len;
+                    } else {
+                        s_last_ws_lqi_json_len = 0;
+                    }
+                    s_last_ws_lqi_send_us = now_us;
                 }
             }
         }

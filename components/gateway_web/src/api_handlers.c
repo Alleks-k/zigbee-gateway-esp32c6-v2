@@ -45,6 +45,19 @@ static const char *lqi_quality_label(int lqi, int rssi)
     return "poor";
 }
 
+static const char *lqi_source_label(zigbee_lqi_source_t source)
+{
+    switch (source) {
+    case ZIGBEE_LQI_SOURCE_MGMT_LQI:
+        return "mgmt_lqi";
+    case ZIGBEE_LQI_SOURCE_NEIGHBOR_TABLE:
+        return "neighbor_table";
+    case ZIGBEE_LQI_SOURCE_UNKNOWN:
+    default:
+        return "unknown";
+    }
+}
+
 static size_t job_result_json_limit_for_type(zgw_job_type_t type)
 {
     switch (type) {
@@ -117,6 +130,17 @@ static bool append_literal(char **cursor, size_t *remaining, const char *text)
 static bool append_u32(char **cursor, size_t *remaining, uint32_t value)
 {
     int written = snprintf(*cursor, *remaining, "%" PRIu32, value);
+    if (written < 0 || (size_t)written >= *remaining) {
+        return false;
+    }
+    *cursor += written;
+    *remaining -= (size_t)written;
+    return true;
+}
+
+static bool append_u64(char **cursor, size_t *remaining, uint64_t value)
+{
+    int written = snprintf(*cursor, *remaining, "%" PRIu64, value);
     if (written < 0 || (size_t)written >= *remaining) {
         return false;
     }
@@ -302,23 +326,37 @@ esp_err_t api_status_handler(httpd_req_t *req)
     return ret;
 }
 
-esp_err_t api_lqi_handler(httpd_req_t *req)
+esp_err_t build_lqi_json_compact(char *out, size_t out_size, size_t *out_len)
 {
+    if (!out || out_size < 2) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
     zb_device_t devices[MAX_DEVICES] = {0};
     zigbee_neighbor_lqi_t neighbors[MAX_DEVICES] = {0};
     int dev_count = api_usecase_get_devices_snapshot(devices, MAX_DEVICES);
-    int nbr_count = api_usecase_get_neighbor_lqi_snapshot(neighbors, MAX_DEVICES);
+    int nbr_count = 0;
+    zigbee_lqi_source_t source = ZIGBEE_LQI_SOURCE_UNKNOWN;
+    uint64_t updated_ms = 0;
 
-    cJSON *root = cJSON_CreateObject();
-    cJSON *arr = cJSON_CreateArray();
-    if (!root || !arr) {
-        cJSON_Delete(root);
-        cJSON_Delete(arr);
-        return http_error_send_esp(req, ESP_ERR_NO_MEM, "Failed to allocate LQI response");
+    esp_err_t cached_ret = api_usecase_get_cached_lqi_snapshot(
+        neighbors, MAX_DEVICES, &nbr_count, &source, &updated_ms);
+    if (cached_ret != ESP_OK) {
+        return cached_ret;
     }
 
-    cJSON_AddItemToObject(root, "neighbors", arr);
-    cJSON_AddNumberToObject(root, "updated_ms", (double)(esp_timer_get_time() / 1000));
+    if (updated_ms == 0) {
+        /* Prime cache from neighbor table if cache is empty. */
+        nbr_count = api_usecase_get_neighbor_lqi_snapshot(neighbors, MAX_DEVICES);
+        source = ZIGBEE_LQI_SOURCE_NEIGHBOR_TABLE;
+        updated_ms = (uint64_t)(esp_timer_get_time() / 1000);
+    }
+
+    char *cursor = out;
+    size_t remaining = out_size;
+    if (!append_literal(&cursor, &remaining, "{\"neighbors\":[")) {
+        return ESP_ERR_NO_MEM;
+    }
 
     for (int i = 0; i < dev_count; i++) {
         int lqi = LQI_UNKNOWN_VALUE;
@@ -333,38 +371,93 @@ esp_err_t api_lqi_handler(httpd_req_t *req)
             }
         }
 
-        cJSON *item = cJSON_CreateObject();
-        if (!item) {
-            cJSON_Delete(root);
-            return http_error_send_esp(req, ESP_ERR_NO_MEM, "Failed to allocate LQI row");
+        if (i > 0 && !append_literal(&cursor, &remaining, ",")) {
+            return ESP_ERR_NO_MEM;
+        }
+        if (!append_literal(&cursor, &remaining, "{\"short_addr\":") ||
+            !append_u32(&cursor, &remaining, devices[i].short_addr) ||
+            !append_literal(&cursor, &remaining, ",\"name\":\"") ||
+            !append_json_escaped(&cursor, &remaining, devices[i].name) ||
+            !append_literal(&cursor, &remaining, "\",\"lqi\":"))
+        {
+            return ESP_ERR_NO_MEM;
         }
 
-        cJSON_AddNumberToObject(item, "short_addr", devices[i].short_addr);
-        cJSON_AddStringToObject(item, "name", devices[i].name);
-        if (!lqi_measurement_invalid(lqi, rssi)) {
-            cJSON_AddNumberToObject(item, "lqi", lqi);
-            cJSON_AddNumberToObject(item, "rssi", rssi);
-        } else {
-            cJSON_AddNullToObject(item, "lqi");
-            cJSON_AddNullToObject(item, "rssi");
+        if (lqi_measurement_invalid(lqi, rssi)) {
+            if (!append_literal(&cursor, &remaining, "null")) {
+                return ESP_ERR_NO_MEM;
+            }
+        } else if (!append_i32(&cursor, &remaining, lqi)) {
+            return ESP_ERR_NO_MEM;
         }
-        cJSON_AddStringToObject(item, "quality", lqi_quality_label(lqi, rssi));
-        cJSON_AddBoolToObject(item, "direct", direct);
-        cJSON_AddItemToArray(arr, item);
+
+        if (!append_literal(&cursor, &remaining, ",\"rssi\":")) {
+            return ESP_ERR_NO_MEM;
+        }
+        if (lqi_measurement_invalid(lqi, rssi)) {
+            if (!append_literal(&cursor, &remaining, "null")) {
+                return ESP_ERR_NO_MEM;
+            }
+        } else if (!append_i32(&cursor, &remaining, rssi)) {
+            return ESP_ERR_NO_MEM;
+        }
+
+        if (!append_literal(&cursor, &remaining, ",\"quality\":\"") ||
+            !append_literal(&cursor, &remaining, lqi_quality_label(lqi, rssi)) ||
+            !append_literal(&cursor, &remaining, "\",\"direct\":") ||
+            !append_literal(&cursor, &remaining, direct ? "true" : "false") ||
+            !append_literal(&cursor, &remaining, ",\"source\":\"") ||
+            !append_literal(&cursor, &remaining, lqi_source_label(source)) ||
+            !append_literal(&cursor, &remaining, "\"") ||
+            !append_literal(&cursor, &remaining, "}"))
+        {
+            return ESP_ERR_NO_MEM;
+        }
     }
 
-    char *json_str = cJSON_PrintUnformatted(root);
-    cJSON_Delete(root);
-    if (!json_str) {
-        return http_error_send_esp(req, ESP_ERR_NO_MEM, "Failed to build LQI payload");
+    if (!append_literal(&cursor, &remaining, "],\"updated_ms\":") ||
+        !append_u64(&cursor, &remaining, updated_ms) ||
+        !append_literal(&cursor, &remaining, ",\"source\":\"") ||
+        !append_literal(&cursor, &remaining, lqi_source_label(source)) ||
+        !append_literal(&cursor, &remaining, "\"}"))
+    {
+        return ESP_ERR_NO_MEM;
     }
 
-    esp_err_t ret = http_success_send_data_json(req, json_str);
-    free(json_str);
-    if (ret == ESP_ERR_NO_MEM) {
-        return http_error_send_esp(req, ESP_ERR_NO_MEM, "LQI payload too large");
+    if (out_len) {
+        *out_len = (size_t)(cursor - out);
     }
-    return ret;
+    return ESP_OK;
+}
+
+esp_err_t api_lqi_handler(httpd_req_t *req)
+{
+    size_t needed = 1024;
+    for (int i = 0; i < 4; i++) {
+        char *json = (char *)malloc(needed);
+        if (!json) {
+            return http_error_send_esp(req, ESP_ERR_NO_MEM, "Out of memory");
+        }
+
+        size_t out_len = 0;
+        esp_err_t ret = build_lqi_json_compact(json, needed, &out_len);
+        if (ret == ESP_OK) {
+            esp_err_t send_ret = http_success_send_data_json(req, json);
+            free(json);
+            if (send_ret == ESP_ERR_NO_MEM) {
+                return http_error_send_esp(req, ESP_ERR_NO_MEM, "LQI payload too large");
+            }
+            return send_ret;
+        }
+
+        free(json);
+        if (ret != ESP_ERR_NO_MEM) {
+            return http_error_send_esp(req, ret, "Failed to build LQI payload");
+        }
+        needed *= 2;
+    }
+
+    return http_error_send_esp(req, ESP_ERR_NO_MEM, "LQI payload too large");
 }
 
 esp_err_t build_health_json_compact(char *out, size_t out_size, size_t *out_len)

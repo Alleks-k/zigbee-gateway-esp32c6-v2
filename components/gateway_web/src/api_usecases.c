@@ -87,6 +87,15 @@ int api_usecase_get_neighbor_lqi_snapshot(zigbee_neighbor_lqi_t *out_neighbors, 
     return zigbee_service_get_neighbor_lqi_snapshot(out_neighbors, (size_t)max_neighbors);
 }
 
+esp_err_t api_usecase_get_cached_lqi_snapshot(zigbee_neighbor_lqi_t *out_neighbors, int max_neighbors, int *out_count,
+                                              zigbee_lqi_source_t *out_source, uint64_t *out_updated_ms)
+{
+    if (!out_neighbors || max_neighbors <= 0 || !out_count) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    return zigbee_service_get_cached_lqi_snapshot(out_neighbors, (size_t)max_neighbors, out_count, out_source, out_updated_ms);
+}
+
 esp_err_t api_usecase_permit_join(uint8_t duration_seconds)
 {
     return zigbee_service_permit_join(duration_seconds);

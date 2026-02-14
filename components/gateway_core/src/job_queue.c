@@ -4,8 +4,10 @@
 #include "settings_manager.h"
 #include "rcp_tool.h"
 #include "zigbee_service.h"
+#include "gateway_events.h"
 #include "esp_timer.h"
 #include "esp_log.h"
+#include "esp_event.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
@@ -329,6 +331,13 @@ static void execute_job(uint32_t job_id)
         }
     }
     xSemaphoreGive(s_mutex);
+
+    if (exec_err == ESP_OK && type == ZGW_JOB_TYPE_LQI_REFRESH) {
+        esp_err_t post_ret = esp_event_post(GATEWAY_EVENT, GATEWAY_EVENT_LQI_STATE_CHANGED, NULL, 0, 0);
+        if (post_ret != ESP_OK) {
+            ESP_LOGW(TAG, "Failed to post LQI_STATE_CHANGED: %s", esp_err_to_name(post_ret));
+        }
+    }
 }
 
 static void job_worker_task(void *arg)

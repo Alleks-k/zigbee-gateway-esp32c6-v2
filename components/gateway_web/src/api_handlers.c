@@ -402,9 +402,7 @@ esp_err_t build_health_json_compact(char *out, size_t out_size, size_t *out_len)
         !append_literal(&cursor, &remaining, hs.wifi_fallback_ap_active ? "true" : "false") ||
         !append_literal(&cursor, &remaining, ",\"loaded_from_nvs\":") ||
         !append_literal(&cursor, &remaining, hs.wifi_loaded_from_nvs ? "true" : "false") ||
-        !append_literal(&cursor, &remaining, ",\"ssid\":\"") ||
-        !append_json_escaped(&cursor, &remaining, hs.wifi_active_ssid) ||
-        !append_literal(&cursor, &remaining, "\",\"active_ssid\":\"") ||
+        !append_literal(&cursor, &remaining, ",\"active_ssid\":\"") ||
         !append_json_escaped(&cursor, &remaining, hs.wifi_active_ssid) ||
         !append_literal(&cursor, &remaining, "\",\"rssi\":"))
     {

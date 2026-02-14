@@ -357,18 +357,18 @@ function applyHealthData(data) {
     if (data.nvs) {
         updateElementText('nvsSchema', data.nvs.schema_version !== undefined ? String(data.nvs.schema_version) : '--');
     }
-    if (data.heap && data.heap.free !== undefined) {
-        updateElementText('heapFree', `${Math.round(Number(data.heap.free) / 1024)} KB`);
-    }
-    if (data.heap && data.heap.minimum_free !== undefined) {
-        updateElementText('heapMinFree', `${Math.round(Number(data.heap.minimum_free) / 1024)} KB`);
-    }
-    if (data.heap && data.heap.largest_free_block !== undefined) {
-        updateElementText('heapLargest', `${Math.round(Number(data.heap.largest_free_block) / 1024)} KB`);
-    }
     if (data.system) {
         if (data.system.uptime_ms !== undefined) {
             updateElementText('uptime', formatUptime(Number(data.system.uptime_ms)));
+        }
+        if (data.system.heap_free !== undefined) {
+            updateElementText('heapFree', `${Math.round(Number(data.system.heap_free) / 1024)} KB`);
+        }
+        if (data.system.heap_min !== undefined) {
+            updateElementText('heapMinFree', `${Math.round(Number(data.system.heap_min) / 1024)} KB`);
+        }
+        if (data.system.heap_largest_block !== undefined) {
+            updateElementText('heapLargest', `${Math.round(Number(data.system.heap_largest_block) / 1024)} KB`);
         }
         if (data.system.temperature_c !== undefined && data.system.temperature_c !== null) {
             const t = Number(data.system.temperature_c);

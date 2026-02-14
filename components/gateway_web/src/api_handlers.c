@@ -646,6 +646,12 @@ esp_err_t build_health_json_compact(char *out, size_t out_size, size_t *out_len)
         !append_literal(&cursor, &remaining, "},\"system\":{") ||
         !append_literal(&cursor, &remaining, "\"uptime_ms\":") ||
         !append_u64(&cursor, &remaining, uptime_ms) ||
+        !append_literal(&cursor, &remaining, ",\"heap_free\":") ||
+        !append_u32(&cursor, &remaining, heap_free) ||
+        !append_literal(&cursor, &remaining, ",\"heap_min\":") ||
+        !append_u32(&cursor, &remaining, heap_min_free) ||
+        !append_literal(&cursor, &remaining, ",\"heap_largest_block\":") ||
+        !append_u32(&cursor, &remaining, heap_largest_free_block) ||
         !append_literal(&cursor, &remaining, ",\"temperature_c\":"))
     {
         return ESP_ERR_NO_MEM;
@@ -661,14 +667,7 @@ esp_err_t build_health_json_compact(char *out, size_t out_size, size_t *out_len)
         return ESP_ERR_NO_MEM;
     }
 
-    if (!append_literal(&cursor, &remaining, "},\"heap\":{") ||
-        !append_literal(&cursor, &remaining, "\"free\":") ||
-        !append_u32(&cursor, &remaining, heap_free) ||
-        !append_literal(&cursor, &remaining, ",\"minimum_free\":") ||
-        !append_u32(&cursor, &remaining, heap_min_free) ||
-        !append_literal(&cursor, &remaining, ",\"largest_free_block\":") ||
-        !append_u32(&cursor, &remaining, heap_largest_free_block) ||
-        !append_literal(&cursor, &remaining, "},\"telemetry\":{") ||
+    if (!append_literal(&cursor, &remaining, "},\"telemetry\":{") ||
         !append_literal(&cursor, &remaining, "\"updated_ms\":") ||
         !append_u64(&cursor, &remaining, telemetry_updated_ms) ||
         !append_literal(&cursor, &remaining, "}}"))

@@ -19,6 +19,7 @@ let backendMode = 'unknown';
 let lastLqiUpdateCounter = 0;
 let lastLqiMetaReceivedAtMs = 0;
 let currentLqiMeta = null;
+let currentLqiRows = [];
 
 function apiUrl(path) {
     return API_BASE + path;
@@ -44,7 +45,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // WS is primary; periodic status refresh is a safety fallback.
     setInterval(fetchStatus, 10000);
-    setInterval(() => updateLqiMeta(currentLqiMeta), 5000);
+    setInterval(() => {
+        updateLqiMeta(currentLqiMeta);
+        updateLqiAgeCells();
+    }, 5000);
 });
 
 async function requestJson(url, options = {}) {
@@ -379,6 +383,34 @@ function normalizeLqiQuality(raw) {
     return 'unknown';
 }
 
+function getLqiAgeSeconds() {
+    if (!(lastLqiMetaReceivedAtMs > 0)) {
+        return null;
+    }
+    const sec = Math.floor((Date.now() - lastLqiMetaReceivedAtMs) / 1000);
+    return sec >= 0 ? sec : 0;
+}
+
+function formatAge(ageSec) {
+    if (ageSec === null || ageSec === undefined) {
+        return '--';
+    }
+    if (ageSec < 60) {
+        return `${ageSec}s`;
+    }
+    const min = Math.floor(ageSec / 60);
+    const sec = ageSec % 60;
+    return `${min}m ${sec}s`;
+}
+
+function updateLqiAgeCells() {
+    const ageSec = getLqiAgeSeconds();
+    const ageText = formatAge(ageSec);
+    document.querySelectorAll('.lqi-age-cell').forEach((el) => {
+        el.textContent = ageText;
+    });
+}
+
 function updateLqiMeta(meta) {
     const sourceEl = document.getElementById('lqiSource');
     const updatedEl = document.getElementById('lqiUpdated');
@@ -419,15 +451,17 @@ function updateLqiMeta(meta) {
 function renderLqiTable(rows, meta) {
     const tbody = document.getElementById('lqiTableBody');
     if (!tbody) return;
+    currentLqiRows = Array.isArray(rows) ? rows : [];
     updateLqiMeta(meta || null);
 
     tbody.innerHTML = '';
-    if (!rows || rows.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" class="lqi-empty">No LQI data available</td></tr>';
+    if (!currentLqiRows || currentLqiRows.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" class="lqi-empty">No LQI data available</td></tr>';
         return;
     }
 
-    rows.forEach(row => {
+    const ageText = formatAge(getLqiAgeSeconds());
+    currentLqiRows.forEach(row => {
         const tr = document.createElement('tr');
         const addrHex = '0x' + Number(row.short_addr || 0).toString(16).toUpperCase().padStart(4, '0');
         const quality = normalizeLqiQuality(row.quality);
@@ -440,6 +474,7 @@ function renderLqiTable(rows, meta) {
             <td>${(row.name || 'Пристрій')}</td>
             <td>${addrHex}</td>
             <td>${lqiText}</td>
+            <td class="lqi-age-cell">${ageText}</td>
             <td>${rssiText}</td>
             <td><span class="lqi-quality ${quality}">${quality}</span></td>
             <td><span class="lqi-link">${directText}</span></td>

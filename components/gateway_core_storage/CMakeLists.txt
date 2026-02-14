@@ -7,9 +7,9 @@ idf_component_register(
         "../gateway_core/include"
     REQUIRES
         gateway_core_events
+    PRIV_REQUIRES
         nvs_flash
         json
-        esp-zigbee-lib
         esp_event
         esp_timer
         esp_partition

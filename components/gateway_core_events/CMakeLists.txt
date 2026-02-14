@@ -5,5 +5,4 @@ idf_component_register(
         "../gateway_core/include"
     REQUIRES
         esp_event
-        esp-zigbee-lib
 )

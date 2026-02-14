@@ -7,6 +7,7 @@
 #include "esp_event.h"
 #include "gateway_events.h"
 #include "gateway_state.h"
+#include "cJSON.h"
 
 static const char *TAG = "DEV_MANAGER";
 static SemaphoreHandle_t devices_mutex = NULL;
@@ -58,7 +59,7 @@ static void post_device_list_changed_event(void)
     }
 }
 
-static void post_device_delete_request_event(uint16_t short_addr, esp_zb_ieee_addr_t ieee_addr)
+static void post_device_delete_request_event(uint16_t short_addr, gateway_ieee_addr_t ieee_addr)
 {
     gateway_device_delete_request_event_t evt = {
         .short_addr = short_addr,
@@ -120,13 +121,13 @@ void device_manager_init(void) {
     }
 }
 
-void add_device_with_ieee(uint16_t addr, esp_zb_ieee_addr_t ieee) {
+void add_device_with_ieee(uint16_t addr, gateway_ieee_addr_t ieee) {
     if (devices_mutex != NULL) xSemaphoreTake(devices_mutex, portMAX_DELAY);
 
     for (int i = 0; i < device_count; i++) {
         if (devices[i].short_addr == addr) {
             ESP_LOGI(TAG, "Device 0x%04x is already in the list, updating IEEE", addr);
-            memcpy(devices[i].ieee_addr, ieee, sizeof(esp_zb_ieee_addr_t));
+            memcpy(devices[i].ieee_addr, ieee, sizeof(gateway_ieee_addr_t));
             sync_gateway_state_devices_locked();
             if (devices_mutex != NULL) xSemaphoreGive(devices_mutex);
             return;
@@ -135,7 +136,7 @@ void add_device_with_ieee(uint16_t addr, esp_zb_ieee_addr_t ieee) {
 
     if (device_count < MAX_DEVICES) {
         devices[device_count].short_addr = addr;
-        memcpy(devices[device_count].ieee_addr, ieee, sizeof(esp_zb_ieee_addr_t));
+        memcpy(devices[device_count].ieee_addr, ieee, sizeof(gateway_ieee_addr_t));
         snprintf(devices[device_count].name, sizeof(devices[device_count].name), "Пристрій 0x%04x", addr);
         device_count++;
         ESP_LOGI(TAG, "New device added: 0x%04x. Total: %d", addr, device_count);

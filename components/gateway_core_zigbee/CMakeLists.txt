@@ -5,6 +5,7 @@ idf_component_register(
         "../gateway_core/include"
     REQUIRES
         gateway_core_storage
+    PRIV_REQUIRES
         esp-zigbee-lib
         esp_timer
 )

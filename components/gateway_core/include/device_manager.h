@@ -1,14 +1,16 @@
 #pragma once
 
-#include "esp_zigbee_core.h"
-#include "cJSON.h"
 #include <stddef.h>
+#include <stdint.h>
+#include "gateway_types.h"
+
+typedef struct cJSON cJSON;
 
 #define MAX_DEVICES 10
 
 typedef struct {
     uint16_t short_addr;
-    esp_zb_ieee_addr_t ieee_addr; 
+    gateway_ieee_addr_t ieee_addr;
     char name[32]; 
 } zb_device_t;
 
@@ -20,7 +22,7 @@ void device_manager_init(void);
 /**
  * @brief Додавання або оновлення пристрою
  */
-void add_device_with_ieee(uint16_t addr, esp_zb_ieee_addr_t ieee);
+void add_device_with_ieee(uint16_t addr, gateway_ieee_addr_t ieee);
 
 /**
  * @brief Оновлення назви пристрою

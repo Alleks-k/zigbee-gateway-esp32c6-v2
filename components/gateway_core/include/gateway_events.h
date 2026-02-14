@@ -1,8 +1,8 @@
 #pragma once
 
 #include "esp_event.h"
-#include "esp_zigbee_core.h"
 #include <stdint.h>
+#include "gateway_types.h"
 
 ESP_EVENT_DECLARE_BASE(GATEWAY_EVENT);
 
@@ -15,10 +15,10 @@ typedef enum {
 
 typedef struct {
     uint16_t short_addr;
-    esp_zb_ieee_addr_t ieee_addr;
+    gateway_ieee_addr_t ieee_addr;
 } gateway_device_announce_event_t;
 
 typedef struct {
     uint16_t short_addr;
-    esp_zb_ieee_addr_t ieee_addr;
+    gateway_ieee_addr_t ieee_addr;
 } gateway_device_delete_request_event_t;

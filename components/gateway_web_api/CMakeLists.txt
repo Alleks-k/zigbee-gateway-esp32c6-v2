@@ -10,11 +10,8 @@ idf_component_register(
         "../gateway_web/include"
     REQUIRES
         gateway_core
-        gateway_net
         esp_http_server
         json
         nvs_flash
-        esp_wifi
-        esp_event
         esp_timer
 )

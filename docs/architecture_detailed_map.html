@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Zigbee Gateway - Detailed Architecture Map</title>
+  <style>
+    :root {
+      --bg: #f5f7fb;
+      --panel: #ffffff;
+      --text: #1f2937;
+      --muted: #667085;
+      --line: #d6deea;
+      --core: #e8f2ff;
+      --net: #e9faef;
+      --web: #fff4e6;
+      --main: #f3ecff;
+      --warn: #b45309;
+      --ok: #166534;
+      --bad: #b42318;
+      --accent: #1d4ed8;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: linear-gradient(180deg, #f9fbff 0%, var(--bg) 50%);
+      color: var(--text);
+      font-family: "Segoe UI", Arial, sans-serif;
+    }
+
+    .wrap {
+      max-width: 1600px;
+      margin: 0 auto;
+      padding: 16px;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 28px;
+    }
+
+    .sub {
+      margin: 0 0 12px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .toolbar {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+      padding: 10px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+    }
+
+    .toolbar button {
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--text);
+      border-radius: 8px;
+      padding: 6px 10px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    .toolbar button.active {
+      border-color: var(--accent);
+      color: var(--accent);
+      font-weight: 700;
+      background: #eef4ff;
+    }
+
+    .legend {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .chip {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 4px 10px;
+      background: #fff;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(12, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px;
+      background: var(--panel);
+      min-height: 120px;
+      box-shadow: 0 2px 8px rgba(16, 24, 40, 0.05);
+      cursor: pointer;
+      transition: all .15s ease;
+    }
+
+    .card:hover { transform: translateY(-1px); }
+
+    .card h2 {
+      margin: 0 0 6px;
+      font-size: 16px;
+    }
+
+    .tag {
+      display: inline-block;
+      font-size: 11px;
+      color: var(--muted);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 2px 8px;
+      margin-bottom: 8px;
+      background: #fff;
+    }
+
+    .card ul {
+      margin: 0;
+      padding-left: 16px;
+      font-size: 13px;
+    }
+
+    .card li { margin: 3px 0; }
+
+    .main { background: var(--main); }
+    .core { background: var(--core); }
+    .net  { background: var(--net); }
+    .web  { background: var(--web); }
+
+    .c-main { grid-column: span 3; }
+    .c-core { grid-column: span 3; }
+    .c-net  { grid-column: span 3; }
+    .c-web  { grid-column: span 3; }
+    .c-deps { grid-column: span 7; }
+    .c-left { grid-column: span 5; }
+
+    .muted { color: var(--muted); }
+
+    .table-wrap {
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #fff;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    th, td {
+      border-bottom: 1px solid #edf1f7;
+      padding: 8px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      font-size: 12px;
+      text-transform: uppercase;
+      color: var(--muted);
+      background: #f9fbff;
+      position: sticky;
+      top: 0;
+    }
+
+    .edge-panel {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #fff;
+      overflow: auto;
+    }
+
+    .edge-svg {
+      width: 100%;
+      min-width: 900px;
+      height: 330px;
+      display: block;
+      background: #fcfdff;
+    }
+
+    .edge {
+      stroke: #8aa8c8;
+      stroke-width: 2;
+      fill: none;
+      marker-end: url(#arr);
+      transition: opacity .15s ease, stroke .15s ease, stroke-width .15s ease;
+    }
+
+    .edge.soft { stroke-dasharray: 6 4; }
+    .edge.active { stroke: var(--accent); stroke-width: 3; }
+    .edge.dim { opacity: .2; }
+
+    .node {
+      cursor: pointer;
+      transition: opacity .15s ease;
+    }
+
+    .node circle {
+      fill: #fff;
+      stroke: #7f9ab7;
+      stroke-width: 2;
+    }
+
+    .node text {
+      font-size: 12px;
+      fill: #243447;
+      text-anchor: middle;
+      dominant-baseline: middle;
+      font-weight: 700;
+      pointer-events: none;
+    }
+
+    .node.active circle { stroke: var(--accent); fill: #eef4ff; }
+    .node.dim { opacity: .25; }
+
+    .risk {
+      margin-top: 10px;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #fff;
+    }
+
+    .risk h3 {
+      margin: 0 0 8px;
+      font-size: 15px;
+    }
+
+    .risk li { margin: 4px 0; font-size: 13px; }
+    .risk .hi { color: var(--bad); font-weight: 700; }
+    .risk .md { color: var(--warn); font-weight: 700; }
+    .risk .ok { color: var(--ok); font-weight: 700; }
+
+    .dimmed { opacity: .28; }
+    .highlight { outline: 2px solid var(--accent); }
+
+    @media (max-width: 1100px) {
+      .c-main, .c-core, .c-net, .c-web, .c-deps, .c-left { grid-column: span 12; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Zigbee Gateway - Детальна Архітектурна Схема</h1>
+    <p class="sub">Актуально для структури: <code>main/</code> + <code>components/gateway_core</code> + <code>components/gateway_net</code> + <code>components/gateway_web</code></p>
+
+    <div class="toolbar">
+      <button id="btnReset" class="active">Reset View</button>
+      <button id="btnCore">Focus Core</button>
+      <button id="btnWeb">Focus Web</button>
+      <button id="btnNet">Focus Net</button>
+      <button id="btnMain">Focus Main</button>
+    </div>
+
+    <div class="legend">
+      <span class="chip">Solid edge: compile/runtime dependency</span>
+      <span class="chip">Dashed edge: transport/event flow</span>
+      <span class="chip">Click module or node to highlight paths</span>
+    </div>
+
+    <div class="edge-panel">
+      <svg class="edge-svg" viewBox="0 0 1000 330" aria-label="Architecture graph">
+        <defs>
+          <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="#8aa8c8"></path>
+          </marker>
+        </defs>
+
+        <path class="edge" data-from="main" data-to="gateway_core" d="M 140 80 C 260 120, 310 140, 430 140"></path>
+        <path class="edge" data-from="main" data-to="gateway_net" d="M 140 80 C 260 80, 300 80, 430 80"></path>
+        <path class="edge" data-from="main" data-to="gateway_web" d="M 140 80 C 260 40, 320 30, 430 30"></path>
+
+        <path class="edge" data-from="gateway_web" data-to="gateway_core" d="M 570 30 C 660 60, 700 100, 780 140"></path>
+        <path class="edge" data-from="gateway_web" data-to="gateway_net" d="M 570 30 C 650 30, 710 50, 780 80"></path>
+        <path class="edge soft" data-from="gateway_net" data-to="gateway_core" d="M 780 80 C 710 100, 640 120, 570 140"></path>
+
+        <path class="edge soft" data-from="gateway_core" data-to="gateway_web" d="M 570 140 C 640 180, 710 210, 780 250"></path>
+
+        <g class="node" data-node="main" transform="translate(100,80)">
+          <circle r="40"></circle>
+          <text>main</text>
+        </g>
+        <g class="node" data-node="gateway_web" transform="translate(500,30)">
+          <circle r="64"></circle>
+          <text>gateway_web</text>
+        </g>
+        <g class="node" data-node="gateway_net" transform="translate(840,80)">
+          <circle r="58"></circle>
+          <text>gateway_net</text>
+        </g>
+        <g class="node" data-node="gateway_core" transform="translate(500,140)">
+          <circle r="64"></circle>
+          <text>gateway_core</text>
+        </g>
+        <g class="node" data-node="runtime_flows" transform="translate(840,250)">
+          <circle r="68"></circle>
+          <text>runtime_flows</text>
+        </g>
+      </svg>
+    </div>
+
+    <div class="grid" style="margin-top:10px;">
+      <section class="card main c-main" data-card="main">
+        <h2>main</h2>
+        <div class="tag">Boot / orchestration</div>
+        <ul>
+          <li><code>core/esp_zigbee_gateway.c</code> (non-test mode)</li>
+          <li>Піднімає Zigbee, Wi-Fi, Web, state/event wiring</li>
+          <li>REQUIRES: <code>gateway_core gateway_net gateway_web</code></li>
+          <li>Tests entry: <code>main/tests/*</code></li>
+        </ul>
+      </section>
+
+      <section class="card core c-core" data-card="gateway_core">
+        <h2>gateway_core</h2>
+        <div class="tag">Domain / services</div>
+        <ul>
+          <li><code>zigbee_service</code>, <code>wifi_service</code>, <code>system_service</code></li>
+          <li><code>job_queue</code>, <code>settings_manager</code>, <code>gateway_state</code>, <code>gateway_events</code></li>
+          <li>Найбільш platform-heavy компонент</li>
+          <li>Тест: <code>components/gateway_core/test/gateway_core_self_tests.c</code></li>
+        </ul>
+      </section>
+
+      <section class="card net c-net" data-card="gateway_net">
+        <h2>gateway_net</h2>
+        <div class="tag">Wi-Fi runtime</div>
+        <ul>
+          <li><code>wifi_init</code>, <code>wifi_sta</code>, <code>wifi_ap_fallback</code></li>
+          <li>Оновлює Wi-Fi state в <code>gateway_state</code></li>
+          <li>Залежить від <code>gateway_core</code> (state/services)</li>
+        </ul>
+      </section>
+
+      <section class="card web c-web" data-card="gateway_web">
+        <h2>gateway_web</h2>
+        <div class="tag">Transport / API / WS</div>
+        <ul>
+          <li><code>api_handlers</code> + <code>api_usecases</code> + <code>api_contracts</code></li>
+          <li><code>lqi_json_mapper</code> (винесено з api_handlers)</li>
+          <li><code>ws_manager</code>, <code>http_static</code>, <code>mdns_service</code>, <code>http_error</code></li>
+          <li>Тест: <code>components/gateway_web/test/gateway_web_self_tests.c</code></li>
+        </ul>
+      </section>
+
+      <section class="card c-deps" data-card="deps">
+        <h2>Залежності (CMake REQUIRES)</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Component</th>
+                <th>Direct REQUIRES</th>
+                <th>Коментар</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>main</code></td>
+                <td><code>gateway_core, gateway_net, gateway_web, mdns, esp-zigbee-lib, ...</code></td>
+                <td>Може бути спрощений до app-entry + project components</td>
+              </tr>
+              <tr>
+                <td><code>gateway_web</code></td>
+                <td><code>gateway_core, gateway_net, esp_http_server, mdns, json, ...</code></td>
+                <td>Бажано зменшити залежність від <code>gateway_net</code> через core facade</td>
+              </tr>
+              <tr>
+                <td><code>gateway_net</code></td>
+                <td><code>gateway_core, esp_wifi, esp_netif, esp_event, ...</code></td>
+                <td>Нормально для network runtime</td>
+              </tr>
+              <tr>
+                <td><code>gateway_core</code></td>
+                <td><code>esp-zigbee-lib, esp_wifi, esp_netif, esp_driver_tsens, ...</code></td>
+                <td>Найщільніший компонент, кандидат на подальшу декомпозицію</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card c-left" data-card="remaining">
+        <h2>Що Ще Залишається</h2>
+        <p class="muted">Поточні “залишкові” зв’язки/техборг для наступних фаз:</p>
+        <div class="risk">
+          <h3>Архітектурні залишки</h3>
+          <ul>
+            <li><span class="md">Medium:</span> <code>gateway_web -> gateway_net</code> пряма compile залежність (частину краще тягнути через core/usecase).</li>
+            <li><span class="md">Medium:</span> <code>api_handlers.c</code все ще великий (health/status/jobs); LQI вже винесений, інші builder-и можна винести так само.</li>
+            <li><span class="hi">High:</span> <code>gateway_core</code концентрує багато platform/API залежностей; логічний split на підкомпоненти (zigbee/wifi/system/settings).</li>
+            <li><span class="ok">Done:</span> Health snapshot і LQI mapper винесені з handlers в окремі шари.</li>
+          </ul>
+        </div>
+        <div class="risk">
+          <h3>Тести (ризик регресії)</h3>
+          <ul>
+            <li><span class="ok">Done:</span> додані smoke/unit тести для LQI mapper, health snapshot, WS lqi_update envelope.</li>
+            <li><span class="md">Medium:</span> бракує інтеграційного тесту WS broadcast на реальному httpd socket lifecycle.</li>
+            <li><span class="md">Medium:</span> бракує e2e тесту фронт-контракту для нових LQI/health полів у браузері.</li>
+          </ul>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      const cards = Array.from(document.querySelectorAll('.card[data-card]'));
+      const nodes = Array.from(document.querySelectorAll('.node[data-node]'));
+      const edges = Array.from(document.querySelectorAll('.edge[data-from]'));
+      const btnReset = document.getElementById('btnReset');
+      const btnMap = {
+        btnCore: 'gateway_core',
+        btnWeb: 'gateway_web',
+        btnNet: 'gateway_net',
+        btnMain: 'main'
+      };
+
+      function clearActiveButtons() {
+        document.querySelectorAll('.toolbar button').forEach((b) => b.classList.remove('active'));
+      }
+
+      function resetView() {
+        cards.forEach((c) => c.classList.remove('dimmed', 'highlight'));
+        nodes.forEach((n) => n.classList.remove('dim', 'active'));
+        edges.forEach((e) => e.classList.remove('dim', 'active'));
+        clearActiveButtons();
+        btnReset.classList.add('active');
+      }
+
+      function focus(key) {
+        cards.forEach((c) => {
+          if (c.dataset.card === key) {
+            c.classList.add('highlight');
+            c.classList.remove('dimmed');
+          } else {
+            c.classList.remove('highlight');
+            c.classList.add('dimmed');
+          }
+        });
+
+        nodes.forEach((n) => {
+          const same = n.dataset.node === key;
+          n.classList.toggle('active', same);
+          n.classList.toggle('dim', !same);
+        });
+
+        edges.forEach((e) => {
+          const active = e.dataset.from === key || e.dataset.to === key;
+          e.classList.toggle('active', active);
+          e.classList.toggle('dim', !active);
+        });
+      }
+
+      cards.forEach((c) => {
+        c.addEventListener('click', () => {
+          const key = c.dataset.card;
+          if (!key || key === 'deps' || key === 'remaining') return;
+          clearActiveButtons();
+          focus(key);
+        });
+      });
+
+      nodes.forEach((n) => {
+        n.addEventListener('click', () => {
+          const key = n.dataset.node;
+          clearActiveButtons();
+          focus(key);
+        });
+      });
+
+      Object.entries(btnMap).forEach(([id, key]) => {
+        const btn = document.getElementById(id);
+        if (!btn) return;
+        btn.addEventListener('click', () => {
+          clearActiveButtons();
+          btn.classList.add('active');
+          focus(key);
+        });
+      });
+
+      btnReset.addEventListener('click', resetView);
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') resetView();
+      });
+
+      resetView();
+    })();
+  </script>
+</body>
+</html>

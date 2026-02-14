@@ -1,0 +1,15 @@
+idf_component_register(
+    SRCS
+        "src/job_queue.c"
+    INCLUDE_DIRS
+        "../gateway_core/include"
+    REQUIRES
+        gateway_core_events
+        gateway_core_storage
+        gateway_core_zigbee
+        gateway_core_wifi
+        gateway_core_system
+        esp_event
+        esp_timer
+        json
+)

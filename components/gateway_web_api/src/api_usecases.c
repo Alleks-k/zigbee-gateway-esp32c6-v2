@@ -4,7 +4,6 @@
 #include "system_service.h"
 #include "gateway_state.h"
 #include "settings_manager.h"
-#include "ws_manager.h"
 #include <string.h>
 
 static esp_err_t real_send_on_off(uint16_t short_addr, uint8_t endpoint, uint8_t on_off)
@@ -35,10 +34,16 @@ static const api_service_ops_t s_real_ops = {
 };
 
 static const api_service_ops_t *s_ops = &s_real_ops;
+static api_ws_client_count_provider_t s_ws_client_count_provider = NULL;
 
 void api_usecases_set_service_ops(const api_service_ops_t *ops)
 {
     s_ops = ops ? ops : &s_real_ops;
+}
+
+void api_usecases_set_ws_client_count_provider(api_ws_client_count_provider_t provider)
+{
+    s_ws_client_count_provider = provider;
 }
 
 esp_err_t api_usecase_control(const api_control_request_t *in)
@@ -176,7 +181,7 @@ esp_err_t api_usecase_collect_health_snapshot(api_health_snapshot_t *out)
     out->nvs_ok = (err == ESP_OK);
     out->nvs_schema_version = (err == ESP_OK) ? schema_version : -1;
 
-    out->ws_clients = (uint32_t)ws_manager_get_client_count();
+    out->ws_clients = s_ws_client_count_provider ? s_ws_client_count_provider() : 0;
 
     err = system_service_collect_telemetry(&out->telemetry);
     if (err != ESP_OK) {

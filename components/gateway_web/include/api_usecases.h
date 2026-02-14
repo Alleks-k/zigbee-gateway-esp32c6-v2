@@ -33,7 +33,10 @@ typedef struct {
     system_telemetry_t telemetry;
 } api_health_snapshot_t;
 
+typedef uint32_t (*api_ws_client_count_provider_t)(void);
+
 void api_usecases_set_service_ops(const api_service_ops_t *ops);
+void api_usecases_set_ws_client_count_provider(api_ws_client_count_provider_t provider);
 
 esp_err_t api_usecase_control(const api_control_request_t *in);
 esp_err_t api_usecase_wifi_save(const api_wifi_save_request_t *in);

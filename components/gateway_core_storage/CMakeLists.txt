@@ -1,0 +1,16 @@
+idf_component_register(
+    SRCS
+        "src/device_manager.c"
+        "src/gateway_state.c"
+        "src/settings_manager.c"
+    INCLUDE_DIRS
+        "../gateway_core/include"
+    REQUIRES
+        gateway_core_events
+        nvs_flash
+        json
+        esp-zigbee-lib
+        esp_event
+        esp_timer
+        esp_partition
+)

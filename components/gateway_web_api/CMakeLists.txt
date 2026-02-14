@@ -1,0 +1,20 @@
+idf_component_register(
+    SRCS
+        "src/api_contracts.c"
+        "src/api_handlers.c"
+        "src/api_usecases.c"
+        "src/http_error.c"
+        "src/error_ring.c"
+        "src/lqi_json_mapper.c"
+    INCLUDE_DIRS
+        "../gateway_web/include"
+    REQUIRES
+        gateway_core
+        gateway_net
+        esp_http_server
+        json
+        nvs_flash
+        esp_wifi
+        esp_event
+        esp_timer
+)

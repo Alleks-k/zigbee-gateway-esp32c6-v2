@@ -1,0 +1,12 @@
+idf_component_register(
+    SRCS
+        "src/ws_manager.c"
+    INCLUDE_DIRS
+        "../gateway_web/include"
+    REQUIRES
+        gateway_web_api
+        gateway_core
+        esp_http_server
+        esp_event
+        esp_timer
+)

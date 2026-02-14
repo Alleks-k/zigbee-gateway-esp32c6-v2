@@ -1,0 +1,13 @@
+idf_component_register(
+    SRCS
+        "src/system_service.c"
+        "src/rcp_tool.c"
+    INCLUDE_DIRS
+        "../gateway_core/include"
+    REQUIRES
+        gateway_core_storage
+        esp-zigbee-lib
+        esp_rcp_update
+        spiffs
+        esp_system
+)

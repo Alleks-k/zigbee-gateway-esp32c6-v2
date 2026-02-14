@@ -548,13 +548,13 @@
       </section>
 
       <section class="card core c-core" data-card="gateway_core">
-        <h2>components/gateway_core</h2>
-        <div class="tag">Domain / business logic</div>
+        <h2>components/gateway_core*</h2>
+        <div class="tag">Facade + domain subcomponents</div>
         <ul>
-          <li><code>zigbee_service</code>, <code>wifi_service</code>, <code>system_service</code></li>
-          <li><code>device_manager</code>, <code>gateway_state</code>, <code>job_queue</code></li>
-          <li><code>gateway_events</code> (ESP Event bridge)</li>
-          <li><code>settings_manager</code> (schema + migrations)</li>
+          <li><code>gateway_core</code> - публічні headers + aggregate REQUIRES</li>
+          <li><code>gateway_core_events</code>, <code>gateway_core_storage</code>, <code>gateway_core_zigbee</code></li>
+          <li><code>gateway_core_wifi</code>, <code>gateway_core_system</code>, <code>gateway_core_jobs</code></li>
+          <li>Сервісні API лишилися сумісними для web/net/main шарів</li>
         </ul>
       </section>
 
@@ -569,12 +569,13 @@
       </section>
 
       <section class="card web c-web" data-card="gateway_web">
-        <h2>components/gateway_web</h2>
-        <div class="tag">HTTP / WS / static UI</div>
+        <h2>components/gateway_web*</h2>
+        <div class="tag">HTTP facade / split</div>
         <ul>
-          <li><code>web_server</code>, <code>http_routes</code>, <code>http_static</code></li>
-          <li><code>api_handlers</code> + <code>api_contracts</code> + <code>api_usecases</code></li>
-          <li><code>ws_manager</code>, <code>mdns_service</code>, <code>http_error</code></li>
+          <li><code>gateway_web</code>: <code>web_server</code> + <code>http_routes</code></li>
+          <li><code>gateway_web_api</code>: handlers/contracts/usecases/error/json mapper</li>
+          <li><code>gateway_web_ws</code>: <code>ws_manager</code></li>
+          <li><code>gateway_web_static</code>: <code>http_static</code> + <code>mdns_service</code></li>
           <li>Фронт: <code>main/web/www/*</code> (SPIFFS)</li>
         </ul>
       </section>
@@ -615,20 +616,20 @@
 
         <div class="flow" data-flow-type="jobs" data-critical="startup,error" data-links="gateway_web,gateway_core,gateway_net,events">
           <strong>2) Wi-Fi scan/settings</strong><br />
-          Browser -> /api/v1/jobs -> job_queue -> wifi_service/gateway_net -> state/events -> WS/UI
-          <div class="path">gateway_web <-> gateway_core <-> gateway_net</div>
+          Browser -> /api/v1/jobs -> gateway_core_jobs -> gateway_core_wifi/gateway_net -> state/events -> WS/UI
+          <div class="path">gateway_web <-> gateway_core facade <-> gateway_core_jobs/wifi <-> gateway_net</div>
         </div>
 
         <div class="flow" data-flow-type="events" data-critical="startup" data-links="gateway_core,events,gateway_web,storage">
           <strong>3) Device announce from Zigbee</strong><br />
-          Zigbee callback -> zigbee_service -> device_manager/state -> gateway_events -> ws_manager
-          <div class="path">gateway_core -> gateway_web (event-driven)</div>
+          Zigbee callback -> gateway_core_zigbee -> gateway_core_storage/state -> gateway_core_events -> ws_manager
+          <div class="path">gateway_core_zigbee/storage/events -> gateway_web (event-driven)</div>
         </div>
 
         <div class="flow" data-flow-type="storage" data-critical="error" data-links="gateway_web,gateway_core,storage">
           <strong>4) Factory reset</strong><br />
-          API -> system_service -> settings_manager/device_manager/NVS -> reboot schedule
-          <div class="path">gateway_web -> gateway_core -> nvs_flash</div>
+          API -> gateway_core_system -> gateway_core_storage/NVS -> reboot schedule
+          <div class="path">gateway_web -> gateway_core_system/storage -> nvs_flash</div>
         </div>
 
         <div class="flow" data-flow-type="api" data-critical="boot,startup" data-links="main,gateway_web,storage">
@@ -648,13 +649,13 @@
     <pre class="ascii" id="asciiBlock">[ Browser/UI ]
       |   HTTP/WS
       v
-[ gateway_web ]  --calls-->  [ api_usecases ]  --service iface--> [ gateway_core ]
+[ gateway_web ]  --calls-->  [ api_usecases ]  --service iface--> [ gateway_core facade ]
       |                              |                                   |
-      |                              |                                   +--> [ zigbee_service ] --> Zigbee SDK
-      |                              |                                   +--> [ wifi_service ] ---> [ gateway_net ] --> Wi-Fi stack
-      |                              |                                   +--> [ system_service ] --> reboot/reset
+      |                              |                                   +--> [ gateway_core_zigbee ] --> Zigbee SDK
+      |                              |                                   +--> [ gateway_core_wifi ] ---> [ gateway_net ] --> Wi-Fi stack
+      |                              |                                   +--> [ gateway_core_system ] --> reboot/reset
       |                              |
-      +<---- state/events/ws --------+-------- [ gateway_events + gateway_state ]
+      +<---- state/events/ws --------+-------- [ gateway_core_events + gateway_core_storage ]
                                                   |
                                                   +--> [ settings_manager ] --> NVS
                                                   +--> [ device_manager   ] --> NVS

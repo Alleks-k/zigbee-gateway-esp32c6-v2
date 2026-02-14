@@ -277,7 +277,7 @@
 <body>
   <div class="wrap">
     <h1>Zigbee Gateway - Детальна Архітектурна Схема</h1>
-    <p class="sub">Актуально для структури: <code>main/</code> + <code>components/gateway_core</code> + <code>components/gateway_net</code> + <code>components/gateway_web</code></p>
+    <p class="sub">Актуально для структури: <code>main/</code> + <code>components/gateway_core*</code> + <code>components/gateway_web*</code> + <code>components/gateway_net</code></p>
 
     <div class="toolbar">
       <button id="btnReset" class="active">Reset View</button>
@@ -348,11 +348,11 @@
 
       <section class="card core c-core" data-card="gateway_core">
         <h2>gateway_core</h2>
-        <div class="tag">Domain / services</div>
+        <div class="tag">Facade + domain components</div>
         <ul>
-          <li><code>zigbee_service</code>, <code>wifi_service</code>, <code>system_service</code></li>
-          <li><code>job_queue</code>, <code>settings_manager</code>, <code>gateway_state</code>, <code>gateway_events</code></li>
-          <li>Найбільш platform-heavy компонент</li>
+          <li><code>gateway_core</code> тепер facade-компонент (headers + aggregate deps)</li>
+          <li>Окремі IDF-компоненти: <code>gateway_core_events</code>, <code>gateway_core_storage</code>, <code>gateway_core_zigbee</code>, <code>gateway_core_wifi</code>, <code>gateway_core_system</code>, <code>gateway_core_jobs</code></li>
+          <li>Доменні API лишились сумісними (без лому include-контракту)</li>
           <li>Тест: <code>components/gateway_core/test/gateway_core_self_tests.c</code></li>
         </ul>
       </section>
@@ -368,12 +368,13 @@
       </section>
 
       <section class="card web c-web" data-card="gateway_web">
-        <h2>gateway_web</h2>
-        <div class="tag">Transport / API / WS</div>
+        <h2>gateway_web*</h2>
+        <div class="tag">Facade / transport split</div>
         <ul>
-          <li><code>api_handlers</code> + <code>api_usecases</code> + <code>api_contracts</code></li>
-          <li><code>lqi_json_mapper</code> (винесено з api_handlers)</li>
-          <li><code>ws_manager</code>, <code>http_static</code>, <code>mdns_service</code>, <code>http_error</code></li>
+          <li><code>gateway_web</code> - glue (web_server + http_routes + facade)</li>
+          <li><code>gateway_web_api</code> - API/DTO/usecases/error/json mappers</li>
+          <li><code>gateway_web_ws</code> - WebSocket manager/broadcast</li>
+          <li><code>gateway_web_static</code> - static files + mDNS</li>
           <li>Тест: <code>components/gateway_web/test/gateway_web_self_tests.c</code></li>
         </ul>
       </section>
@@ -397,8 +398,23 @@
               </tr>
               <tr>
                 <td><code>gateway_web</code></td>
-                <td><code>gateway_core, gateway_net, esp_http_server, mdns, json, ...</code></td>
-                <td>Бажано зменшити залежність від <code>gateway_net</code> через core facade</td>
+                <td><code>gateway_web_api/ws/static + gateway_core + gateway_net</code></td>
+                <td>Facade-агрегатор для web-шару</td>
+              </tr>
+              <tr>
+                <td><code>gateway_web_api</code></td>
+                <td><code>gateway_core, gateway_net, esp_http_server, json, ...</code></td>
+                <td>API handlers/usecases/contracts/error ring</td>
+              </tr>
+              <tr>
+                <td><code>gateway_web_ws</code></td>
+                <td><code>gateway_web_api, gateway_core, esp_http_server, esp_event, ...</code></td>
+                <td>WS transport + event-driven broadcast</td>
+              </tr>
+              <tr>
+                <td><code>gateway_web_static</code></td>
+                <td><code>gateway_net, esp_http_server, mdns, spiffs</code></td>
+                <td>HTTP static + mDNS lifecycle</td>
               </tr>
               <tr>
                 <td><code>gateway_net</code></td>
@@ -407,8 +423,8 @@
               </tr>
               <tr>
                 <td><code>gateway_core</code></td>
-                <td><code>esp-zigbee-lib, settings/nvs, events, ...</code></td>
-                <td>Після рефактору більше domain-centric, але ще щільний</td>
+                <td><code>gateway_core_events/storage/zigbee/wifi/system/jobs</code></td>
+                <td>Facade-агрегатор для публічного API</td>
               </tr>
             </tbody>
           </table>

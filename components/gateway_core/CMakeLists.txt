@@ -1,25 +1,16 @@
 set(gateway_core_srcs
-    "src/rcp_tool.c"
-    "src/device_manager.c"
-    "src/gateway_events.c"
-    "src/gateway_state.c"
-    "src/settings_manager.c"
-    "src/job_queue.c"
-    "src/zigbee_service.c"
-    "src/wifi_service.c"
-    "src/system_service.c"
     "gateway_core_placeholder.c")
 
 set(gateway_core_reqs
-    nvs_flash
+    gateway_core_events
+    gateway_core_storage
+    gateway_core_zigbee
+    gateway_core_wifi
+    gateway_core_system
+    gateway_core_jobs
     json
     esp-zigbee-lib
-    esp_rcp_update
-    spiffs
     esp_event
-    esp_timer
-    esp_partition
-    esp_system
 )
 
 if(CONFIG_GATEWAY_SELF_TEST_APP)

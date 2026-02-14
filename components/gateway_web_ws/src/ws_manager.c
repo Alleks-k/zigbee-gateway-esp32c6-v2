@@ -1,5 +1,6 @@
 #include "ws_manager.h"
 #include "api_handlers.h"
+#include "api_usecases.h"
 #include "lqi_json_mapper.h"
 #include "gateway_events.h"
 #include "error_ring.h"
@@ -47,6 +48,12 @@ static size_t s_last_ws_lqi_json_len = 0;
 static int64_t s_last_ws_lqi_send_us = 0;
 static char s_ws_frame_buf[WS_FRAME_BUF_SIZE];
 static uint32_t s_ws_seq = 0;
+
+static uint32_t ws_client_count_provider(void)
+{
+    int count = ws_manager_get_client_count();
+    return (count < 0) ? 0u : (uint32_t)count;
+}
 
 static void ws_debounce_timer_cb(void *arg)
 {
@@ -164,6 +171,7 @@ static void lqi_state_changed_handler(void *arg, esp_event_base_t event_base, in
 void ws_manager_init(httpd_handle_t server)
 {
     s_server = server;
+    api_usecases_set_ws_client_count_provider(ws_client_count_provider);
     for (int i = 0; i < MAX_WS_CLIENTS; i++) {
         ws_fds[i] = -1;
     }

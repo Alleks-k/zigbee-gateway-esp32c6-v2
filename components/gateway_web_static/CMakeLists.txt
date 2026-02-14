@@ -1,0 +1,12 @@
+idf_component_register(
+    SRCS
+        "src/http_static.c"
+        "src/mdns_service.c"
+    INCLUDE_DIRS
+        "../gateway_web/include"
+    REQUIRES
+        gateway_net
+        esp_http_server
+        mdns
+        spiffs
+)

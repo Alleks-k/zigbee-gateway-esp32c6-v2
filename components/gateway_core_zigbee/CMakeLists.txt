@@ -1,0 +1,10 @@
+idf_component_register(
+    SRCS
+        "src/zigbee_service.c"
+    INCLUDE_DIRS
+        "../gateway_core/include"
+    REQUIRES
+        gateway_core_storage
+        esp-zigbee-lib
+        esp_timer
+)

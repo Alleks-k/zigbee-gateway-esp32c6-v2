@@ -1,19 +1,13 @@
 set(gateway_web_srcs
     "src/web_server.c"
-    "src/api_handlers.c"
-    "src/api_contracts.c"
-    "src/api_usecases.c"
-    "src/http_error.c"
     "src/http_routes.c"
-    "src/http_static.c"
-    "src/ws_manager.c"
-    "src/error_ring.c"
-    "src/mdns_service.c"
-    "src/lqi_json_mapper.c"
     "gateway_web_placeholder.c")
 
 set(gateway_web_reqs
     gateway_core
+    gateway_web_api
+    gateway_web_ws
+    gateway_web_static
     gateway_net
     esp_http_server
     mdns

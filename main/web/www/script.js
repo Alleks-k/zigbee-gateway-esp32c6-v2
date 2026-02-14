@@ -411,6 +411,79 @@ function updateLqiAgeCells() {
     });
 }
 
+function qualityStrokeColor(quality) {
+    if (quality === 'good') return '#16a34a';
+    if (quality === 'warn') return '#d97706';
+    if (quality === 'bad') return '#dc2626';
+    return '#94a3b8';
+}
+
+function qualityStrokeWidth(quality, lqiValue) {
+    if (Number.isFinite(Number(lqiValue))) {
+        const lqi = Number(lqiValue);
+        if (lqi >= 200) return 4;
+        if (lqi >= 160) return 3;
+        if (lqi >= 120) return 2.5;
+        return 2;
+    }
+    if (quality === 'good') return 3;
+    if (quality === 'warn') return 2.5;
+    if (quality === 'bad') return 2;
+    return 1.5;
+}
+
+function renderLqiGraph(rows) {
+    const root = document.getElementById('lqiGraph');
+    if (!root) return;
+
+    if (!Array.isArray(rows) || rows.length === 0) {
+        root.innerHTML = '<div class="lqi-graph-empty">No LQI graph data</div>';
+        return;
+    }
+
+    const width = Math.max(root.clientWidth || 640, 360);
+    const height = 280;
+    const cx = width / 2;
+    const cy = height / 2;
+    const radius = Math.min(width, height) * 0.34;
+
+    const gwAddr = document.getElementById('gwAddr');
+    const gwLabel = gwAddr && gwAddr.textContent ? gwAddr.textContent.trim() : 'Gateway';
+
+    const nodes = rows.map((row, idx) => {
+        const angle = (Math.PI * 2 * idx) / Math.max(rows.length, 1) - (Math.PI / 2);
+        return {
+            x: cx + radius * Math.cos(angle),
+            y: cy + radius * Math.sin(angle),
+            name: (row.name || `0x${Number(row.short_addr || 0).toString(16)}`),
+            quality: normalizeLqiQuality(row.quality),
+            lqi: row.lqi
+        };
+    });
+
+    const edgesSvg = nodes.map((n) => {
+        const color = qualityStrokeColor(n.quality);
+        const widthPx = qualityStrokeWidth(n.quality, n.lqi);
+        const dash = n.quality === 'unknown' ? ' stroke-dasharray="5 4"' : '';
+        return `<line x1="${cx}" y1="${cy}" x2="${n.x}" y2="${n.y}" stroke="${color}" stroke-width="${widthPx}"${dash}></line>`;
+    }).join('');
+
+    const nodeSvg = nodes.map((n) => `
+        <circle cx="${n.x}" cy="${n.y}" r="8" fill="#ffffff" stroke="${qualityStrokeColor(n.quality)}" stroke-width="2"></circle>
+        <text x="${n.x + 11}" y="${n.y + 4}" font-size="11" fill="#334155">${n.name}</text>
+    `).join('');
+
+    root.innerHTML = `
+        <svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}" role="img" aria-label="LQI graph">
+            <rect x="0" y="0" width="${width}" height="${height}" fill="transparent"></rect>
+            ${edgesSvg}
+            <circle cx="${cx}" cy="${cy}" r="12" fill="#0d6efd" stroke="#1e3a8a" stroke-width="2"></circle>
+            <text x="${cx + 16}" y="${cy + 4}" font-size="12" font-weight="700" fill="#1e293b">GW ${gwLabel}</text>
+            ${nodeSvg}
+        </svg>
+    `;
+}
+
 function updateLqiMeta(meta) {
     const sourceEl = document.getElementById('lqiSource');
     const updatedEl = document.getElementById('lqiUpdated');
@@ -457,6 +530,7 @@ function renderLqiTable(rows, meta) {
     tbody.innerHTML = '';
     if (!currentLqiRows || currentLqiRows.length === 0) {
         tbody.innerHTML = '<tr><td colspan="8" class="lqi-empty">No LQI data available</td></tr>';
+        renderLqiGraph([]);
         return;
     }
 
@@ -482,6 +556,8 @@ function renderLqiTable(rows, meta) {
         `;
         tbody.appendChild(tr);
     });
+
+    renderLqiGraph(currentLqiRows);
 }
 
 /**

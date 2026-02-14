@@ -323,6 +323,32 @@ input[type="text"], input[type="password"] {
     font-weight: 600;
 }
 
+.lqi-graph-wrap {
+    margin-top: 12px;
+}
+
+.lqi-graph-title {
+    margin: 0 0 8px 0;
+    font-size: 0.95rem;
+    color: #475467;
+}
+
+.lqi-graph {
+    width: 100%;
+    min-height: 260px;
+    border: 1px solid #e4e7ec;
+    border-radius: 8px;
+    background: #fafbfd;
+    position: relative;
+    overflow: hidden;
+}
+
+.lqi-graph-empty {
+    padding: 14px;
+    color: #667085;
+    font-size: 0.9rem;
+}
+
 /* Кнопки керування */
 .btn-on {
     background-color: #28a745; /* Green */

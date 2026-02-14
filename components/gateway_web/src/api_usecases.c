@@ -2,6 +2,10 @@
 #include "zigbee_service.h"
 #include "wifi_service.h"
 #include "system_service.h"
+#include "gateway_state.h"
+#include "settings_manager.h"
+#include "ws_manager.h"
+#include <string.h>
 
 static esp_err_t real_send_on_off(uint16_t short_addr, uint8_t endpoint, uint8_t on_off)
 {
@@ -137,4 +141,47 @@ esp_err_t api_usecase_get_factory_reset_report(system_factory_reset_report_t *ou
 esp_err_t api_usecase_collect_telemetry(system_telemetry_t *out)
 {
     return system_service_collect_telemetry(out);
+}
+
+esp_err_t api_usecase_collect_health_snapshot(api_health_snapshot_t *out)
+{
+    if (!out) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    memset(out, 0, sizeof(*out));
+
+    gateway_network_state_t gw_state = {0};
+    esp_err_t err = gateway_state_get_network(&gw_state);
+    if (err != ESP_OK) {
+        return err;
+    }
+    out->zigbee_started = gw_state.zigbee_started;
+    out->zigbee_factory_new = gw_state.factory_new;
+    out->zigbee_pan_id = gw_state.pan_id;
+    out->zigbee_channel = gw_state.channel;
+    out->zigbee_short_addr = gw_state.short_addr;
+
+    gateway_wifi_state_t wifi_state = {0};
+    err = gateway_state_get_wifi(&wifi_state);
+    if (err != ESP_OK) {
+        return err;
+    }
+    out->wifi_sta_connected = wifi_state.sta_connected;
+    out->wifi_fallback_ap_active = wifi_state.fallback_ap_active;
+    out->wifi_loaded_from_nvs = wifi_state.loaded_from_nvs;
+    strlcpy(out->wifi_active_ssid, wifi_state.active_ssid, sizeof(out->wifi_active_ssid));
+
+    int32_t schema_version = 0;
+    err = settings_manager_get_schema_version(&schema_version);
+    out->nvs_ok = (err == ESP_OK);
+    out->nvs_schema_version = (err == ESP_OK) ? schema_version : -1;
+
+    out->ws_clients = (uint32_t)ws_manager_get_client_count();
+
+    err = system_service_collect_telemetry(&out->telemetry);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    return ESP_OK;
 }

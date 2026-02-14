@@ -14,6 +14,25 @@ typedef struct {
     esp_err_t (*factory_reset_and_reboot)(uint32_t reboot_delay_ms);
 } api_service_ops_t;
 
+typedef struct {
+    bool zigbee_started;
+    bool zigbee_factory_new;
+    uint32_t zigbee_pan_id;
+    uint32_t zigbee_channel;
+    uint32_t zigbee_short_addr;
+
+    bool wifi_sta_connected;
+    bool wifi_fallback_ap_active;
+    bool wifi_loaded_from_nvs;
+    char wifi_active_ssid[33];
+
+    bool nvs_ok;
+    int32_t nvs_schema_version;
+    uint32_t ws_clients;
+
+    system_telemetry_t telemetry;
+} api_health_snapshot_t;
+
 void api_usecases_set_service_ops(const api_service_ops_t *ops);
 
 esp_err_t api_usecase_control(const api_control_request_t *in);
@@ -32,3 +51,4 @@ void api_usecase_wifi_scan_free(wifi_ap_info_t *list);
 esp_err_t api_usecase_schedule_reboot(uint32_t delay_ms);
 esp_err_t api_usecase_get_factory_reset_report(system_factory_reset_report_t *out_report);
 esp_err_t api_usecase_collect_telemetry(system_telemetry_t *out);
+esp_err_t api_usecase_collect_health_snapshot(api_health_snapshot_t *out);

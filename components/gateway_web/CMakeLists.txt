@@ -9,6 +9,7 @@ set(gateway_web_srcs
     "src/ws_manager.c"
     "src/error_ring.c"
     "src/mdns_service.c"
+    "src/lqi_json_mapper.c"
     "gateway_web_placeholder.c")
 
 set(gateway_web_reqs

@@ -3,13 +3,9 @@
 #include "api_usecases.h"
 #include "http_error.h"
 #include "error_ring.h"
-#include "gateway_state.h"
-#include "settings_manager.h"
+#include "lqi_json_mapper.h"
 #include "job_queue.h"
-#include "ws_manager.h"
 #include "esp_log.h"
-#include "esp_system.h"
-#include "esp_timer.h"
 #include "cJSON.h"
 #include <string.h>
 #include <stdio.h>
@@ -24,7 +20,6 @@ static const char *TAG = "API_HANDLERS";
 #define JOB_API_RESULT_JSON_LIMIT_REBOOT        512
 #define JOB_API_RESULT_JSON_LIMIT_UPDATE        768
 #define JOB_API_RESULT_JSON_LIMIT_LQI_REFRESH   1024
-#define LQI_UNKNOWN_VALUE                       (-1)
 
 static const char *wifi_link_quality_label(system_wifi_link_quality_t quality)
 {
@@ -36,44 +31,6 @@ static const char *wifi_link_quality_label(system_wifi_link_quality_t quality)
     case SYSTEM_WIFI_LINK_BAD:
         return "bad";
     case SYSTEM_WIFI_LINK_UNKNOWN:
-    default:
-        return "unknown";
-    }
-}
-
-static bool lqi_value_invalid(int lqi)
-{
-    return (lqi <= 0);
-}
-
-static bool rssi_value_invalid(int rssi)
-{
-    return (rssi == 127 || rssi <= -127);
-}
-
-static const char *lqi_quality_label(int lqi, int rssi)
-{
-    (void)rssi;
-    if (lqi_value_invalid(lqi)) {
-        return "unknown";
-    }
-    if (lqi >= 180) {
-        return "good";
-    }
-    if (lqi >= 120) {
-        return "warn";
-    }
-    return "bad";
-}
-
-static const char *lqi_source_label(zigbee_lqi_source_t source)
-{
-    switch (source) {
-    case ZIGBEE_LQI_SOURCE_MGMT_LQI:
-        return "mgmt_lqi";
-    case ZIGBEE_LQI_SOURCE_NEIGHBOR_TABLE:
-        return "neighbor_table";
-    case ZIGBEE_LQI_SOURCE_UNKNOWN:
     default:
         return "unknown";
     }
@@ -390,115 +347,6 @@ esp_err_t api_status_handler(httpd_req_t *req)
     return ret;
 }
 
-esp_err_t build_lqi_json_compact(char *out, size_t out_size, size_t *out_len)
-{
-    if (!out || out_size < 2) {
-        return ESP_ERR_INVALID_ARG;
-    }
-
-    zb_device_t devices[MAX_DEVICES] = {0};
-    zigbee_neighbor_lqi_t neighbors[MAX_DEVICES] = {0};
-    int dev_count = api_usecase_get_devices_snapshot(devices, MAX_DEVICES);
-    int nbr_count = 0;
-    zigbee_lqi_source_t source = ZIGBEE_LQI_SOURCE_UNKNOWN;
-    uint64_t updated_ms = 0;
-
-    esp_err_t cached_ret = api_usecase_get_cached_lqi_snapshot(
-        neighbors, MAX_DEVICES, &nbr_count, &source, &updated_ms);
-    if (cached_ret != ESP_OK) {
-        return cached_ret;
-    }
-
-    if (updated_ms == 0) {
-        /* Prime cache from neighbor table if cache is empty. */
-        nbr_count = api_usecase_get_neighbor_lqi_snapshot(neighbors, MAX_DEVICES);
-        source = ZIGBEE_LQI_SOURCE_NEIGHBOR_TABLE;
-        updated_ms = (uint64_t)(esp_timer_get_time() / 1000);
-    }
-
-    char *cursor = out;
-    size_t remaining = out_size;
-    if (!append_literal(&cursor, &remaining, "{\"neighbors\":[")) {
-        return ESP_ERR_NO_MEM;
-    }
-
-    for (int i = 0; i < dev_count; i++) {
-        int lqi = LQI_UNKNOWN_VALUE;
-        int rssi = 127;
-        bool direct = false;
-        zigbee_lqi_source_t row_source = ZIGBEE_LQI_SOURCE_UNKNOWN;
-        uint64_t row_updated_ms = 0;
-        for (int j = 0; j < nbr_count; j++) {
-            if (neighbors[j].short_addr == devices[i].short_addr) {
-                lqi = neighbors[j].lqi;
-                rssi = neighbors[j].rssi;
-                direct = true;
-                row_source = neighbors[j].source;
-                row_updated_ms = neighbors[j].updated_ms;
-                break;
-            }
-        }
-
-        if (i > 0 && !append_literal(&cursor, &remaining, ",")) {
-            return ESP_ERR_NO_MEM;
-        }
-        if (!append_literal(&cursor, &remaining, "{\"short_addr\":") ||
-            !append_u32(&cursor, &remaining, devices[i].short_addr) ||
-            !append_literal(&cursor, &remaining, ",\"name\":\"") ||
-            !append_json_escaped(&cursor, &remaining, devices[i].name) ||
-            !append_literal(&cursor, &remaining, "\",\"lqi\":"))
-        {
-            return ESP_ERR_NO_MEM;
-        }
-
-        if (lqi_value_invalid(lqi)) {
-            if (!append_literal(&cursor, &remaining, "null")) {
-                return ESP_ERR_NO_MEM;
-            }
-        } else if (!append_i32(&cursor, &remaining, lqi)) {
-            return ESP_ERR_NO_MEM;
-        }
-
-        if (!append_literal(&cursor, &remaining, ",\"rssi\":")) {
-            return ESP_ERR_NO_MEM;
-        }
-        if (rssi_value_invalid(rssi)) {
-            if (!append_literal(&cursor, &remaining, "null")) {
-                return ESP_ERR_NO_MEM;
-            }
-        } else if (!append_i32(&cursor, &remaining, rssi)) {
-            return ESP_ERR_NO_MEM;
-        }
-
-        if (!append_literal(&cursor, &remaining, ",\"quality\":\"") ||
-            !append_literal(&cursor, &remaining, lqi_quality_label(lqi, rssi)) ||
-            !append_literal(&cursor, &remaining, "\",\"direct\":") ||
-            !append_literal(&cursor, &remaining, direct ? "true" : "false") ||
-            !append_literal(&cursor, &remaining, ",\"source\":\"") ||
-            !append_literal(&cursor, &remaining, lqi_source_label(row_source)) ||
-            !append_literal(&cursor, &remaining, "\",\"updated_ms\":") ||
-            !append_u64(&cursor, &remaining, row_updated_ms) ||
-            !append_literal(&cursor, &remaining, "}"))
-        {
-            return ESP_ERR_NO_MEM;
-        }
-    }
-
-    if (!append_literal(&cursor, &remaining, "],\"updated_ms\":") ||
-        !append_u64(&cursor, &remaining, updated_ms) ||
-        !append_literal(&cursor, &remaining, ",\"source\":\"") ||
-        !append_literal(&cursor, &remaining, lqi_source_label(source)) ||
-        !append_literal(&cursor, &remaining, "\"}"))
-    {
-        return ESP_ERR_NO_MEM;
-    }
-
-    if (out_len) {
-        *out_len = (size_t)(cursor - out);
-    }
-    return ESP_OK;
-}
-
 esp_err_t api_lqi_handler(httpd_req_t *req)
 {
     size_t needed = 1024;
@@ -535,33 +383,12 @@ esp_err_t build_health_json_compact(char *out, size_t out_size, size_t *out_len)
         return ESP_ERR_INVALID_ARG;
     }
 
-    gateway_network_state_t gw_state = {0};
-    esp_err_t gw_ret = gateway_state_get_network(&gw_state);
-    if (gw_ret != ESP_OK) {
-        return gw_ret;
+    api_health_snapshot_t hs = {0};
+    esp_err_t hs_ret = api_usecase_collect_health_snapshot(&hs);
+    if (hs_ret != ESP_OK) {
+        return hs_ret;
     }
-    gateway_wifi_state_t wifi_state = {0};
-    esp_err_t wifi_ret = gateway_state_get_wifi(&wifi_state);
-    if (wifi_ret != ESP_OK) {
-        return wifi_ret;
-    }
-
-    int32_t schema_version = 0;
-    esp_err_t schema_ret = settings_manager_get_schema_version(&schema_version);
-
-    const bool fallback_ap = wifi_state.fallback_ap_active;
-    const bool sta_connected = wifi_state.sta_connected;
-    const bool loaded_from_nvs = wifi_state.loaded_from_nvs;
-    const char *active_ssid = wifi_state.active_ssid;
-    if (!active_ssid) {
-        active_ssid = "";
-    }
-    system_telemetry_t telemetry = {0};
-    esp_err_t tel_ret = api_usecase_collect_telemetry(&telemetry);
-    if (tel_ret != ESP_OK) {
-        return tel_ret;
-    }
-    const uint64_t telemetry_updated_ms = telemetry.uptime_ms;
+    const uint64_t telemetry_updated_ms = hs.telemetry.uptime_ms;
 
     char *cursor = out;
     size_t remaining = out_size;
@@ -570,35 +397,35 @@ esp_err_t build_health_json_compact(char *out, size_t out_size, size_t *out_len)
         return ESP_ERR_NO_MEM;
     }
     if (!append_literal(&cursor, &remaining, "\"sta_connected\":") ||
-        !append_literal(&cursor, &remaining, sta_connected ? "true" : "false") ||
+        !append_literal(&cursor, &remaining, hs.wifi_sta_connected ? "true" : "false") ||
         !append_literal(&cursor, &remaining, ",\"fallback_ap_active\":") ||
-        !append_literal(&cursor, &remaining, fallback_ap ? "true" : "false") ||
+        !append_literal(&cursor, &remaining, hs.wifi_fallback_ap_active ? "true" : "false") ||
         !append_literal(&cursor, &remaining, ",\"loaded_from_nvs\":") ||
-        !append_literal(&cursor, &remaining, loaded_from_nvs ? "true" : "false") ||
+        !append_literal(&cursor, &remaining, hs.wifi_loaded_from_nvs ? "true" : "false") ||
         !append_literal(&cursor, &remaining, ",\"ssid\":\"") ||
-        !append_json_escaped(&cursor, &remaining, active_ssid) ||
+        !append_json_escaped(&cursor, &remaining, hs.wifi_active_ssid) ||
         !append_literal(&cursor, &remaining, "\",\"active_ssid\":\"") ||
-        !append_json_escaped(&cursor, &remaining, active_ssid) ||
+        !append_json_escaped(&cursor, &remaining, hs.wifi_active_ssid) ||
         !append_literal(&cursor, &remaining, "\",\"rssi\":"))
     {
         return ESP_ERR_NO_MEM;
     }
-    if (telemetry.has_wifi_rssi) {
-        if (!append_i32(&cursor, &remaining, telemetry.wifi_rssi)) {
+    if (hs.telemetry.has_wifi_rssi) {
+        if (!append_i32(&cursor, &remaining, hs.telemetry.wifi_rssi)) {
             return ESP_ERR_NO_MEM;
         }
     } else if (!append_literal(&cursor, &remaining, "null")) {
         return ESP_ERR_NO_MEM;
     }
     if (!append_literal(&cursor, &remaining, ",\"link_quality\":\"") ||
-        !append_literal(&cursor, &remaining, wifi_link_quality_label(telemetry.wifi_link_quality)) ||
+        !append_literal(&cursor, &remaining, wifi_link_quality_label(hs.telemetry.wifi_link_quality)) ||
         !append_literal(&cursor, &remaining, "\",\"ip\":"))
     {
         return ESP_ERR_NO_MEM;
     }
-    if (telemetry.has_wifi_ip) {
+    if (hs.telemetry.has_wifi_ip) {
         if (!append_literal(&cursor, &remaining, "\"") ||
-            !append_json_escaped(&cursor, &remaining, telemetry.wifi_ip) ||
+            !append_json_escaped(&cursor, &remaining, hs.telemetry.wifi_ip) ||
             !append_literal(&cursor, &remaining, "\""))
         {
             return ESP_ERR_NO_MEM;
@@ -609,42 +436,42 @@ esp_err_t build_health_json_compact(char *out, size_t out_size, size_t *out_len)
 
     if (!append_literal(&cursor, &remaining, "},\"zigbee\":{") ||
         !append_literal(&cursor, &remaining, "\"started\":") ||
-        !append_literal(&cursor, &remaining, gw_state.zigbee_started ? "true" : "false") ||
+        !append_literal(&cursor, &remaining, hs.zigbee_started ? "true" : "false") ||
         !append_literal(&cursor, &remaining, ",\"factory_new\":") ||
-        !append_literal(&cursor, &remaining, gw_state.factory_new ? "true" : "false") ||
+        !append_literal(&cursor, &remaining, hs.zigbee_factory_new ? "true" : "false") ||
         !append_literal(&cursor, &remaining, ",\"pan_id\":") ||
-        !append_u32(&cursor, &remaining, gw_state.pan_id) ||
+        !append_u32(&cursor, &remaining, hs.zigbee_pan_id) ||
         !append_literal(&cursor, &remaining, ",\"channel\":") ||
-        !append_u32(&cursor, &remaining, gw_state.channel) ||
+        !append_u32(&cursor, &remaining, hs.zigbee_channel) ||
         !append_literal(&cursor, &remaining, ",\"short_addr\":") ||
-        !append_u32(&cursor, &remaining, gw_state.short_addr) ||
+        !append_u32(&cursor, &remaining, hs.zigbee_short_addr) ||
         !append_literal(&cursor, &remaining, "},\"web\":{") ||
         !append_literal(&cursor, &remaining, "\"ws_clients\":") ||
-        !append_u32(&cursor, &remaining, (uint32_t)ws_manager_get_client_count()) ||
+        !append_u32(&cursor, &remaining, hs.ws_clients) ||
         !append_literal(&cursor, &remaining, ",\"ready\":true},\"nvs\":{") ||
         !append_literal(&cursor, &remaining, "\"ok\":") ||
-        !append_literal(&cursor, &remaining, schema_ret == ESP_OK ? "true" : "false") ||
+        !append_literal(&cursor, &remaining, hs.nvs_ok ? "true" : "false") ||
         !append_literal(&cursor, &remaining, ",\"schema_version\":") ||
-        !append_i32(&cursor, &remaining, schema_ret == ESP_OK ? schema_version : -1) ||
+        !append_i32(&cursor, &remaining, hs.nvs_schema_version) ||
         !append_literal(&cursor, &remaining, "},\"system\":{") ||
         !append_literal(&cursor, &remaining, "\"uptime_ms\":") ||
-        !append_u64(&cursor, &remaining, telemetry.uptime_ms) ||
+        !append_u64(&cursor, &remaining, hs.telemetry.uptime_ms) ||
         !append_literal(&cursor, &remaining, ",\"heap_free\":") ||
-        !append_u32(&cursor, &remaining, telemetry.heap_free) ||
+        !append_u32(&cursor, &remaining, hs.telemetry.heap_free) ||
         !append_literal(&cursor, &remaining, ",\"heap_min\":") ||
-        !append_u32(&cursor, &remaining, telemetry.heap_min) ||
+        !append_u32(&cursor, &remaining, hs.telemetry.heap_min) ||
         !append_literal(&cursor, &remaining, ",\"heap_largest_block\":") ||
-        !append_u32(&cursor, &remaining, telemetry.heap_largest_block) ||
+        !append_u32(&cursor, &remaining, hs.telemetry.heap_largest_block) ||
         !append_literal(&cursor, &remaining, ",\"main_stack_hwm_bytes\":") ||
-        !append_i32(&cursor, &remaining, telemetry.main_stack_hwm_bytes) ||
+        !append_i32(&cursor, &remaining, hs.telemetry.main_stack_hwm_bytes) ||
         !append_literal(&cursor, &remaining, ",\"httpd_stack_hwm_bytes\":") ||
-        !append_i32(&cursor, &remaining, telemetry.httpd_stack_hwm_bytes) ||
+        !append_i32(&cursor, &remaining, hs.telemetry.httpd_stack_hwm_bytes) ||
         !append_literal(&cursor, &remaining, ",\"temperature_c\":"))
     {
         return ESP_ERR_NO_MEM;
     }
-    if (telemetry.has_temperature_c) {
-        int written = snprintf(cursor, remaining, "%.2f", (double)telemetry.temperature_c);
+    if (hs.telemetry.has_temperature_c) {
+        int written = snprintf(cursor, remaining, "%.2f", (double)hs.telemetry.temperature_c);
         if (written < 0 || (size_t)written >= remaining) {
             return ESP_ERR_NO_MEM;
         }

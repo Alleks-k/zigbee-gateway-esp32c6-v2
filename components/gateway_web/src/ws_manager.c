@@ -1,5 +1,6 @@
 #include "ws_manager.h"
 #include "api_handlers.h"
+#include "lqi_json_mapper.h"
 #include "gateway_events.h"
 #include "error_ring.h"
 #include "esp_log.h"

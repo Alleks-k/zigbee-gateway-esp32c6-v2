@@ -5,12 +5,7 @@
 #include "esp_err.h"
 #include "device_manager.h"
 
-typedef struct {
-    esp_err_t wifi_err;
-    esp_err_t devices_err;
-    esp_err_t zigbee_storage_err;
-    esp_err_t zigbee_fct_err;
-} settings_manager_factory_reset_report_t;
+typedef gateway_factory_reset_report_t settings_manager_factory_reset_report_t;
 
 #define SETTINGS_SCHEMA_VERSION_CURRENT 1
 

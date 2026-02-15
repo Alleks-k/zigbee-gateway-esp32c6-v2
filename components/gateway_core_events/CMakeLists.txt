@@ -4,5 +4,6 @@ idf_component_register(
     INCLUDE_DIRS
         "../gateway_core/include"
     REQUIRES
+        gateway_shared_config
         esp_event
 )

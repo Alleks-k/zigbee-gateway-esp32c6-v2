@@ -4,6 +4,7 @@ set(gateway_core_srcs
 set(gateway_core_reqs
     gateway_core_events
     gateway_core_storage
+    gateway_shared_config
 )
 
 set(gateway_core_priv_reqs

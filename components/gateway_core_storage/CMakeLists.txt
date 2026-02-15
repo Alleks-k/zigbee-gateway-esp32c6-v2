@@ -7,6 +7,7 @@ idf_component_register(
         "../gateway_core/include"
     REQUIRES
         gateway_core_events
+        gateway_shared_config
     PRIV_REQUIRES
         nvs_flash
         json

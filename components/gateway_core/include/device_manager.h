@@ -3,22 +3,16 @@
 #include <stddef.h>
 #include <stdint.h>
 #include "esp_err.h"
-#include "gateway_types.h"
+#include "gateway_config_types.h"
 
 typedef struct cJSON cJSON;
 
-/* Використовуємо Kconfig для гнучкості */
-#ifdef CONFIG_GATEWAY_MAX_DEVICES
-#define MAX_DEVICES CONFIG_GATEWAY_MAX_DEVICES
-#else
-#define MAX_DEVICES 10
+/* Backward-compatible alias for existing code paths. */
+#ifndef MAX_DEVICES
+#define MAX_DEVICES GATEWAY_MAX_DEVICES
 #endif
 
-typedef struct {
-    uint16_t short_addr;
-    gateway_ieee_addr_t ieee_addr;
-    char name[32]; 
-} zb_device_t;
+typedef gateway_device_record_t zb_device_t;
 
 /**
  * @brief Ініціалізація менеджера пристроїв (завантаження з NVS)

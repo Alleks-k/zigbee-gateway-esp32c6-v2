@@ -1,5 +1,4 @@
 #include "error_ring.h"
-#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/portmacro.h"
 #include <string.h>
@@ -8,11 +7,28 @@ static gateway_error_entry_t s_ring[GATEWAY_ERROR_RING_CAPACITY];
 static size_t s_ring_head = 0;
 static size_t s_ring_count = 0;
 static portMUX_TYPE s_ring_lock = portMUX_INITIALIZER_UNLOCKED;
+static gateway_error_ring_now_ms_provider_t s_now_ms_provider = NULL;
+static uint64_t s_fallback_now_ms = 0;
+
+static uint64_t now_ms(void)
+{
+    if (s_now_ms_provider) {
+        return s_now_ms_provider();
+    }
+    return ++s_fallback_now_ms;
+}
+
+void gateway_error_ring_set_now_ms_provider(gateway_error_ring_now_ms_provider_t provider)
+{
+    portENTER_CRITICAL(&s_ring_lock);
+    s_now_ms_provider = provider;
+    portEXIT_CRITICAL(&s_ring_lock);
+}
 
 void gateway_error_ring_add(const char *source, int32_t code, const char *message)
 {
     gateway_error_entry_t entry = {0};
-    entry.ts_ms = (uint64_t)(esp_timer_get_time() / 1000);
+    entry.ts_ms = now_ms();
     entry.code = code;
     if (source) {
         strlcpy(entry.source, source, sizeof(entry.source));
@@ -53,4 +69,3 @@ size_t gateway_error_ring_snapshot(gateway_error_entry_t *out, size_t max_items)
     portEXIT_CRITICAL(&s_ring_lock);
     return copied;
 }
-

@@ -15,6 +15,4 @@ idf_component_register(
         gateway_core_facade
         esp_http_server
         json
-        nvs_flash
-        esp_timer
 )

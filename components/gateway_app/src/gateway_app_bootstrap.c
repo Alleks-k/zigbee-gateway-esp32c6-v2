@@ -2,10 +2,14 @@
 
 #include "config_service.h"
 #include "device_service.h"
+#include "error_ring.h"
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_netif.h"
 #include "esp_spiffs.h"
+#include "esp_timer.h"
+#include "http_error.h"
+#include "nvs.h"
 #include "state_store.h"
 #include "gateway_zigbee_runtime.h"
 #include "nvs_flash.h"
@@ -14,9 +18,32 @@
 
 static const char *TAG = "GATEWAY_APP";
 
+static uint64_t gateway_app_now_ms_provider(void)
+{
+    return (uint64_t)(esp_timer_get_time() / 1000);
+}
+
+static bool gateway_app_http_error_map_provider(esp_err_t err, int *out_http_status, const char **out_error_code)
+{
+    if (!out_http_status || !out_error_code) {
+        return false;
+    }
+
+    switch (err) {
+    case ESP_ERR_NVS_NOT_FOUND:
+        *out_http_status = 404;
+        *out_error_code = "not_found";
+        return true;
+    default:
+        return false;
+    }
+}
+
 void gateway_app_start(void)
 {
     ESP_ERROR_CHECK(nvs_flash_init());
+    gateway_error_ring_set_now_ms_provider(gateway_app_now_ms_provider);
+    http_error_set_map_provider(gateway_app_http_error_map_provider);
     ESP_ERROR_CHECK(config_service_init_or_migrate());
     ESP_ERROR_CHECK(device_service_init());
     ESP_ERROR_CHECK(gateway_state_init());

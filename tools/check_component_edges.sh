@@ -27,6 +27,8 @@ check_web_api_dependency_rules() {
         gateway_core_system
         gateway_core_wifi
         gateway_core_zigbee
+        nvs_flash
+        esp_timer
     )
 
     for dep in "${forbidden_reqs[@]}"; do

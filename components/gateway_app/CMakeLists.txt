@@ -15,6 +15,7 @@ idf_component_register(
         gateway_core_system
         gateway_core_zigbee
         gateway_net
+        gateway_web_api
         gateway_web
     PRIV_REQUIRES
         esp_wifi

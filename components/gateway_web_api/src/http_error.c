@@ -1,8 +1,9 @@
 #include "http_error.h"
 #include "error_ring.h"
-#include "nvs.h"
 #include <stdio.h>
 #include <string.h>
+
+static http_error_map_provider_t s_error_map_provider = NULL;
 
 static const char *http_status_text(int code)
 {
@@ -16,38 +17,47 @@ static const char *http_status_text(int code)
     }
 }
 
-static int map_http_status(esp_err_t err)
+static bool map_error_default(esp_err_t err, int *out_http_status, const char **out_error_code)
 {
+    if (!out_http_status || !out_error_code) {
+        return false;
+    }
+
     switch (err) {
     case ESP_ERR_INVALID_ARG:
-        return 400;
+        *out_http_status = 400;
+        *out_error_code = "invalid_argument";
+        return true;
     case ESP_ERR_NOT_FOUND:
-    case ESP_ERR_NVS_NOT_FOUND:
-        return 404;
+        *out_http_status = 404;
+        *out_error_code = "not_found";
+        return true;
     case ESP_ERR_INVALID_STATE:
-        return 409;
+        *out_http_status = 409;
+        *out_error_code = "invalid_state";
+        return true;
     case ESP_ERR_NO_MEM:
-        return 503;
+        *out_http_status = 503;
+        *out_error_code = "no_memory";
+        return true;
     default:
-        return 500;
+        *out_http_status = 500;
+        *out_error_code = "internal_error";
+        return true;
     }
 }
 
-static const char *map_error_code(esp_err_t err)
+static bool map_error(esp_err_t err, int *out_http_status, const char **out_error_code)
 {
-    switch (err) {
-    case ESP_ERR_INVALID_ARG:
-        return "invalid_argument";
-    case ESP_ERR_NOT_FOUND:
-    case ESP_ERR_NVS_NOT_FOUND:
-        return "not_found";
-    case ESP_ERR_INVALID_STATE:
-        return "invalid_state";
-    case ESP_ERR_NO_MEM:
-        return "no_memory";
-    default:
-        return "internal_error";
+    if (s_error_map_provider && s_error_map_provider(err, out_http_status, out_error_code)) {
+        return true;
     }
+    return map_error_default(err, out_http_status, out_error_code);
+}
+
+void http_error_set_map_provider(http_error_map_provider_t provider)
+{
+    s_error_map_provider = provider;
 }
 
 esp_err_t http_error_send(httpd_req_t *req, int http_status, const char *code, const char *message)
@@ -77,8 +87,12 @@ esp_err_t http_error_send(httpd_req_t *req, int http_status, const char *code, c
 
 esp_err_t http_error_send_esp(httpd_req_t *req, esp_err_t err, const char *message)
 {
+    int http_status = 500;
+    const char *error_code = "internal_error";
+    (void)map_error(err, &http_status, &error_code);
+
     gateway_error_ring_add("api", (int32_t)err, message ? message : "api error");
-    return http_error_send(req, map_http_status(err), map_error_code(err), message);
+    return http_error_send(req, http_status, error_code, message);
 }
 
 esp_err_t http_success_send(httpd_req_t *req, const char *message)

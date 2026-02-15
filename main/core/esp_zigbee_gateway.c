@@ -104,6 +104,33 @@ static void gateway_state_publish(bool zigbee_started, bool factory_new)
     }
 }
 
+static esp_err_t zigbee_runtime_send_on_off(uint16_t short_addr, uint8_t endpoint, uint8_t on_off)
+{
+    send_on_off_command(short_addr, endpoint, on_off);
+    return ESP_OK;
+}
+
+static esp_err_t zigbee_runtime_delete_device(uint16_t short_addr)
+{
+    delete_device(short_addr);
+    return ESP_OK;
+}
+
+static esp_err_t zigbee_runtime_rename_device(uint16_t short_addr, const char *new_name)
+{
+    if (!new_name) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    update_device_name(short_addr, new_name);
+    return ESP_OK;
+}
+
+static const zigbee_service_runtime_ops_t s_zigbee_runtime_ops = {
+    .send_on_off = zigbee_runtime_send_on_off,
+    .delete_device = zigbee_runtime_delete_device,
+    .rename_device = zigbee_runtime_rename_device,
+};
+
 void send_on_off_command(uint16_t short_addr, uint8_t endpoint, uint8_t on_off) {
     esp_zb_zcl_on_off_cmd_t cmd_req = {
         .zcl_basic_cmd = {
@@ -306,6 +333,7 @@ void app_main(void)
     };
     ESP_ERROR_CHECK(esp_vfs_spiffs_register(&www_conf));
 
+    zigbee_service_set_runtime_ops(&s_zigbee_runtime_ops);
     start_web_server();
 
     gateway_wifi_state_t wifi_state = {0};

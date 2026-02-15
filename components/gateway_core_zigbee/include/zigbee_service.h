@@ -34,6 +34,14 @@ typedef struct {
     zigbee_lqi_source_t source;
 } zigbee_neighbor_lqi_t;
 
+typedef struct {
+    esp_err_t (*send_on_off)(uint16_t short_addr, uint8_t endpoint, uint8_t on_off);
+    esp_err_t (*delete_device)(uint16_t short_addr);
+    esp_err_t (*rename_device)(uint16_t short_addr, const char *name);
+} zigbee_service_runtime_ops_t;
+
+void zigbee_service_set_runtime_ops(const zigbee_service_runtime_ops_t *ops);
+
 esp_err_t zigbee_service_get_network_status(zigbee_network_status_t *out);
 esp_err_t zigbee_service_permit_join(uint16_t seconds);
 esp_err_t zigbee_service_send_on_off(uint16_t short_addr, uint8_t endpoint, uint8_t on_off);

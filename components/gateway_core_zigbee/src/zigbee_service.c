@@ -8,10 +8,39 @@
 #include "esp_timer.h"
 #include <string.h>
 
-/* Implemented in app/main integration layer */
-void send_on_off_command(uint16_t short_addr, uint8_t endpoint, uint8_t on_off);
-void delete_device(uint16_t short_addr);
-void update_device_name(uint16_t short_addr, const char *new_name);
+static esp_err_t runtime_send_on_off_not_supported(uint16_t short_addr, uint8_t endpoint, uint8_t on_off)
+{
+    (void)short_addr;
+    (void)endpoint;
+    (void)on_off;
+    return ESP_ERR_NOT_SUPPORTED;
+}
+
+static esp_err_t runtime_delete_device_not_supported(uint16_t short_addr)
+{
+    (void)short_addr;
+    return ESP_ERR_NOT_SUPPORTED;
+}
+
+static esp_err_t runtime_rename_device_not_supported(uint16_t short_addr, const char *name)
+{
+    (void)short_addr;
+    (void)name;
+    return ESP_ERR_NOT_SUPPORTED;
+}
+
+static const zigbee_service_runtime_ops_t s_default_runtime_ops = {
+    .send_on_off = runtime_send_on_off_not_supported,
+    .delete_device = runtime_delete_device_not_supported,
+    .rename_device = runtime_rename_device_not_supported,
+};
+
+static const zigbee_service_runtime_ops_t *s_runtime_ops = &s_default_runtime_ops;
+
+void zigbee_service_set_runtime_ops(const zigbee_service_runtime_ops_t *ops)
+{
+    s_runtime_ops = ops ? ops : &s_default_runtime_ops;
+}
 
 static gateway_lqi_source_t to_gateway_lqi_source(zigbee_lqi_source_t src)
 {
@@ -78,8 +107,7 @@ esp_err_t zigbee_service_permit_join(uint16_t seconds)
 
 esp_err_t zigbee_service_send_on_off(uint16_t short_addr, uint8_t endpoint, uint8_t on_off)
 {
-    send_on_off_command(short_addr, endpoint, on_off);
-    return ESP_OK;
+    return s_runtime_ops->send_on_off(short_addr, endpoint, on_off);
 }
 
 int zigbee_service_get_devices_snapshot(zb_device_t *out, size_t max_items)
@@ -282,8 +310,7 @@ esp_err_t zigbee_service_refresh_neighbor_lqi_from_table(void)
 
 esp_err_t zigbee_service_delete_device(uint16_t short_addr)
 {
-    delete_device(short_addr);
-    return ESP_OK;
+    return s_runtime_ops->delete_device(short_addr);
 }
 
 esp_err_t zigbee_service_rename_device(uint16_t short_addr, const char *name)
@@ -291,6 +318,5 @@ esp_err_t zigbee_service_rename_device(uint16_t short_addr, const char *name)
     if (!name) {
         return ESP_ERR_INVALID_ARG;
     }
-    update_device_name(short_addr, name);
-    return ESP_OK;
+    return s_runtime_ops->rename_device(short_addr, name);
 }

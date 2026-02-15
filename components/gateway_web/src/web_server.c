@@ -4,7 +4,6 @@
 #include "mdns_service.h"
 #include "esp_log.h"
 #include "esp_err.h"
-#include "device_manager.h"
 
 #if !defined(CONFIG_HTTPD_WS_SUPPORT)
 #error "WebSocket support is not enabled! Please run 'idf.py menuconfig', go to 'Component config' -> 'HTTP Server' and enable 'WebSocket support'."
@@ -15,12 +14,6 @@ static httpd_handle_t server = NULL;
 
 void start_web_server(void)
 {
-    esp_err_t dev_mgr_ret = device_manager_init();
-    if (dev_mgr_ret != ESP_OK) {
-        ESP_LOGE(TAG, "device_manager_init failed: %s", esp_err_to_name(dev_mgr_ret));
-        return;
-    }
-
     server = NULL;
     httpd_config_t httpd_config = HTTPD_DEFAULT_CONFIG();
     httpd_config.server_port = 80;

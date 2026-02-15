@@ -9,7 +9,6 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "gateway_events.h"
-#include "gateway_state.h"
 
 static const char *TAG = "DEV_SERVICE";
 
@@ -17,14 +16,6 @@ static SemaphoreHandle_t s_devices_mutex = NULL;
 static zb_device_t s_devices[MAX_DEVICES];
 static int s_device_count = 0;
 static esp_event_handler_instance_t s_dev_announce_handler = NULL;
-
-static void sync_gateway_state_devices_locked(void)
-{
-    esp_err_t err = gateway_state_set_devices(s_devices, s_device_count);
-    if (err != ESP_OK) {
-        ESP_LOGW(TAG, "Failed to sync device snapshot to gateway_state: %s", esp_err_to_name(err));
-    }
-}
 
 static void save_devices_locked(void)
 {
@@ -94,7 +85,6 @@ esp_err_t device_service_init(void)
         }
         xSemaphoreTake(s_devices_mutex, portMAX_DELAY);
         load_devices_locked();
-        sync_gateway_state_devices_locked();
         xSemaphoreGive(s_devices_mutex);
     }
 
@@ -120,7 +110,6 @@ void device_service_add_with_ieee(uint16_t addr, gateway_ieee_addr_t ieee)
         if (s_devices[i].short_addr == addr) {
             ESP_LOGI(TAG, "Device 0x%04x is already in the list, updating IEEE", addr);
             memcpy(s_devices[i].ieee_addr, ieee, sizeof(gateway_ieee_addr_t));
-            sync_gateway_state_devices_locked();
             if (s_devices_mutex) {
                 xSemaphoreGive(s_devices_mutex);
             }
@@ -134,7 +123,6 @@ void device_service_add_with_ieee(uint16_t addr, gateway_ieee_addr_t ieee)
         snprintf(s_devices[s_device_count].name, sizeof(s_devices[s_device_count].name), "Пристрій 0x%04x", addr);
         s_device_count++;
         ESP_LOGI(TAG, "New device added: 0x%04x. Total: %d", addr, s_device_count);
-        sync_gateway_state_devices_locked();
         save_devices_locked();
     } else {
         ESP_LOGW(TAG, "Maximum device limit reached (%d)", MAX_DEVICES);
@@ -161,7 +149,6 @@ void device_service_update_name(uint16_t addr, const char *new_name)
             strncpy(s_devices[i].name, new_name, sizeof(s_devices[i].name) - 1);
             s_devices[i].name[sizeof(s_devices[i].name) - 1] = '\0';
             ESP_LOGI(TAG, "Device 0x%04x renamed to '%s'", addr, s_devices[i].name);
-            sync_gateway_state_devices_locked();
             save_devices_locked();
             break;
         }
@@ -196,7 +183,6 @@ void device_service_delete(uint16_t addr)
         }
         s_device_count--;
         ESP_LOGI(TAG, "Device 0x%04x removed. Remaining: %d", addr, s_device_count);
-        sync_gateway_state_devices_locked();
         save_devices_locked();
     }
 

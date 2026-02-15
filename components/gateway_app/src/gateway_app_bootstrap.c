@@ -1,6 +1,7 @@
 #include "gateway_app.h"
 
 #include "config_service.h"
+#include "device_manager.h"
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_netif.h"
@@ -17,6 +18,7 @@ void gateway_app_start(void)
 {
     ESP_ERROR_CHECK(nvs_flash_init());
     ESP_ERROR_CHECK(config_service_init_or_migrate());
+    ESP_ERROR_CHECK(device_manager_init());
     ESP_ERROR_CHECK(gateway_state_init());
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());

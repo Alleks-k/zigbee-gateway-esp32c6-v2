@@ -10,7 +10,7 @@ idf_component_register(
         "src/error_ring.c"
         "src/lqi_json_mapper.c"
     INCLUDE_DIRS
-        "../gateway_web/include"
+        "include"
     REQUIRES
         gateway_core
         gateway_core_zigbee

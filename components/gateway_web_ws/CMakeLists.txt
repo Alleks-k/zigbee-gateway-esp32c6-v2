@@ -2,7 +2,7 @@ idf_component_register(
     SRCS
         "src/ws_manager.c"
     INCLUDE_DIRS
-        "../gateway_web/include"
+        "include"
     REQUIRES
         gateway_web_api
         gateway_core_events

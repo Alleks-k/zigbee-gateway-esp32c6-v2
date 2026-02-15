@@ -1,4 +1,4 @@
-
+#pragma once
 
 #include "esp_err.h"
 #include "esp_zigbee_core.h"

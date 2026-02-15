@@ -7,7 +7,6 @@ set(gateway_core_reqs
     gateway_core_events
     gateway_core_storage
     gateway_shared_config
-    unity
 )
 
 set(gateway_core_priv_reqs
@@ -16,7 +15,8 @@ set(gateway_core_priv_reqs
 if(CONFIG_GATEWAY_SELF_TEST_APP)
     list(APPEND gateway_core_srcs "test/gateway_core_self_tests.c")
     list(APPEND gateway_core_priv_reqs
-        gateway_core_zigbee)
+        gateway_core_zigbee
+        unity)
 endif()
 
 idf_component_register(

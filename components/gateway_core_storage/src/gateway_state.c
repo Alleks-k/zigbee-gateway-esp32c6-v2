@@ -10,6 +10,7 @@ static gateway_wifi_state_t s_wifi_state = {0};
 static zb_device_t s_devices[MAX_DEVICES];
 static gateway_device_lqi_state_t s_device_lqi[MAX_DEVICES];
 static int s_device_count = 0;
+static int s_device_lqi_count = 0;
 
 esp_err_t gateway_state_init(void)
 {
@@ -100,24 +101,27 @@ esp_err_t gateway_state_set_devices(const zb_device_t *devices, int count)
     }
 
     xSemaphoreTake(s_state_mutex, portMAX_DELAY);
-    zb_device_t prev_devices[MAX_DEVICES];
     gateway_device_lqi_state_t prev_lqi[MAX_DEVICES];
-    int prev_count = s_device_count;
-    if (prev_count > 0) {
-        memcpy(prev_devices, s_devices, sizeof(zb_device_t) * (size_t)prev_count);
-        memcpy(prev_lqi, s_device_lqi, sizeof(gateway_device_lqi_state_t) * (size_t)prev_count);
+    int prev_lqi_count = s_device_lqi_count;
+    if (prev_lqi_count > 0) {
+        memcpy(prev_lqi, s_device_lqi, sizeof(gateway_device_lqi_state_t) * (size_t)prev_lqi_count);
     }
 
     s_device_count = count;
+    s_device_lqi_count = 0;
     memset(s_devices, 0, sizeof(s_devices));
     memset(s_device_lqi, 0, sizeof(s_device_lqi));
     if (count > 0) {
         memcpy(s_devices, devices, sizeof(zb_device_t) * (size_t)count);
         for (int i = 0; i < count; i++) {
-            for (int j = 0; j < prev_count; j++) {
-                if (prev_devices[j].short_addr == s_devices[i].short_addr) {
-                    s_device_lqi[i] = prev_lqi[j];
-                    s_device_lqi[i].short_addr = s_devices[i].short_addr;
+            for (int j = 0; j < prev_lqi_count; j++) {
+                if (prev_lqi[j].short_addr == s_devices[i].short_addr) {
+                    if (s_device_lqi_count >= MAX_DEVICES) {
+                        break;
+                    }
+                    s_device_lqi[s_device_lqi_count] = prev_lqi[j];
+                    s_device_lqi[s_device_lqi_count].short_addr = s_devices[i].short_addr;
+                    s_device_lqi_count++;
                     break;
                 }
             }
@@ -161,15 +165,19 @@ esp_err_t gateway_state_update_device_lqi(uint16_t short_addr, int lqi, int rssi
 
     xSemaphoreTake(s_state_mutex, portMAX_DELAY);
     int idx = -1;
-    for (int i = 0; i < s_device_count; i++) {
-        if (s_devices[i].short_addr == short_addr) {
+    for (int i = 0; i < s_device_lqi_count; i++) {
+        if (s_device_lqi[i].short_addr == short_addr) {
             idx = i;
             break;
         }
     }
     if (idx < 0) {
-        xSemaphoreGive(s_state_mutex);
-        return ESP_ERR_NOT_FOUND;
+        if (s_device_lqi_count >= MAX_DEVICES) {
+            xSemaphoreGive(s_state_mutex);
+            return ESP_ERR_NO_MEM;
+        }
+        idx = s_device_lqi_count;
+        s_device_lqi_count++;
     }
 
     s_device_lqi[idx].short_addr = short_addr;
@@ -192,7 +200,7 @@ int gateway_state_get_device_lqi_snapshot(gateway_device_lqi_state_t *out, size_
     }
 
     xSemaphoreTake(s_state_mutex, portMAX_DELAY);
-    int count = s_device_count;
+    int count = s_device_lqi_count;
     if ((size_t)count > max_items) {
         count = (int)max_items;
     }

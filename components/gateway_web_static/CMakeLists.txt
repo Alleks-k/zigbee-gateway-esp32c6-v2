@@ -3,7 +3,7 @@ idf_component_register(
         "src/http_static.c"
         "src/mdns_service.c"
     INCLUDE_DIRS
-        "../gateway_web/include"
+        "include"
     REQUIRES
         gateway_shared_config
         esp_http_server

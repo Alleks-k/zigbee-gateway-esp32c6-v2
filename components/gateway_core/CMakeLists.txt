@@ -1,6 +1,7 @@
 set(gateway_core_srcs
     "gateway_core_placeholder.c"
-    "src/config_service.c")
+    "src/config_service.c"
+    "src/device_service.c")
 
 set(gateway_core_reqs
     gateway_core_events

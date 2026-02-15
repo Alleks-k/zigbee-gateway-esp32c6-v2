@@ -1,6 +1,6 @@
 idf_component_register(
     SRCS
-        "src/device_manager.c"
+        "src/device_repository_nvs.c"
         "src/gateway_state.c"
         "src/storage_kv_nvs.c"
         "src/settings_manager.c"

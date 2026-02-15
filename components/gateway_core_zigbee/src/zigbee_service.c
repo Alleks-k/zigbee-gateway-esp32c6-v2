@@ -10,8 +10,6 @@
 
 /* Implemented in app/main integration layer */
 void send_on_off_command(uint16_t short_addr, uint8_t endpoint, uint8_t on_off);
-void delete_device(uint16_t short_addr);
-void update_device_name(uint16_t short_addr, const char *new_name);
 
 static gateway_lqi_source_t to_gateway_lqi_source(zigbee_lqi_source_t src)
 {

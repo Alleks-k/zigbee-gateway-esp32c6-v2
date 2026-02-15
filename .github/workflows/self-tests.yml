@@ -8,7 +8,16 @@ on:
       - master
 
 jobs:
+  arch-rules:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check architecture guardrails
+        run: ./tools/check_arch_rules.sh
+
   host-core-tests:
+    needs: arch-rules
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -17,6 +26,7 @@ jobs:
         run: ./tools/run_host_tests.sh
 
   target-selftest-build:
+    needs: arch-rules
     runs-on: ubuntu-latest
     container:
       image: espressif/idf:release-v5.5

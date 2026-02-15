@@ -7,7 +7,6 @@
 #include "esp_event.h"
 #include "gateway_events.h"
 #include "gateway_state.h"
-#include "cJSON.h"
 
 static const char *TAG = "DEV_MANAGER";
 static SemaphoreHandle_t devices_mutex = NULL;
@@ -181,19 +180,6 @@ void delete_device(uint16_t addr) {
         post_device_delete_request_event(req_evt.short_addr, req_evt.ieee_addr);
     }
     post_device_list_changed_event();
-}
-
-cJSON* device_manager_get_json_list(void) {
-    if (devices_mutex != NULL) xSemaphoreTake(devices_mutex, portMAX_DELAY);
-    cJSON *dev_list = cJSON_CreateArray();
-    for (int i = 0; i < device_count; i++) {
-        cJSON *item = cJSON_CreateObject();
-        cJSON_AddStringToObject(item, "name", devices[i].name);
-        cJSON_AddNumberToObject(item, "short_addr", devices[i].short_addr);
-        cJSON_AddItemToArray(dev_list, item);
-    }
-    if (devices_mutex != NULL) xSemaphoreGive(devices_mutex);
-    return dev_list;
 }
 
 int device_manager_get_snapshot(zb_device_t *out, size_t max_items)

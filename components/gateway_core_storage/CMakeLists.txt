@@ -12,7 +12,6 @@ idf_component_register(
         gateway_shared_config
     PRIV_REQUIRES
         nvs_flash
-        json
         esp_event
         esp_timer
         esp_partition

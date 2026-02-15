@@ -5,8 +5,6 @@
 #include "esp_err.h"
 #include "gateway_config_types.h"
 
-typedef struct cJSON cJSON;
-
 /* Backward-compatible alias for existing code paths. */
 #ifndef MAX_DEVICES
 #define MAX_DEVICES GATEWAY_MAX_DEVICES
@@ -34,12 +32,6 @@ void update_device_name(uint16_t addr, const char *new_name);
  * @brief Видалення пристрою
  */
 void delete_device(uint16_t addr);
-
-/**
- * @brief Отримання списку пристроїв у форматі cJSON Array
- * @note Викликаючий код повинен звільнити пам'ять (cJSON_Delete) для батьківського об'єкта
- */
-cJSON* device_manager_get_json_list(void);
 
 /**
  * @brief Copy current devices to caller-provided buffer.

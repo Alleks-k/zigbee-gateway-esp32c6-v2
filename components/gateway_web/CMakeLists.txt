@@ -10,9 +10,12 @@ set(gateway_web_reqs
     gateway_web_static
     esp_http_server)
 
+set(gateway_web_priv_reqs
+)
+
 if(CONFIG_GATEWAY_SELF_TEST_APP)
     list(APPEND gateway_web_srcs "test/gateway_web_self_tests.c")
-    list(APPEND gateway_web_reqs unity)
+    list(APPEND gateway_web_priv_reqs unity)
 endif()
 
 idf_component_register(
@@ -22,4 +25,6 @@ idf_component_register(
         "include"
     REQUIRES
         ${gateway_web_reqs}
+    PRIV_REQUIRES
+        ${gateway_web_priv_reqs}
 )

@@ -139,8 +139,8 @@ static void test_lqi_json_mapper_uses_cached_snapshot_contract(void)
         {.short_addr = 0x1002, .name = "Dev B"},
     };
     test_seed_devices(devices, 2, true);
-    TEST_ASSERT_EQUAL(ESP_OK, gateway_state_update_device_lqi(0x1001, 150, 127, GATEWAY_LQI_SOURCE_MGMT_LQI, 1000));
-    TEST_ASSERT_EQUAL(ESP_OK, gateway_state_update_device_lqi(0x1002, 70, -80, GATEWAY_LQI_SOURCE_NEIGHBOR_TABLE, 900));
+    TEST_ASSERT_EQUAL(ESP_OK, gateway_state_update_lqi(0x1001, 150, 127, GATEWAY_LQI_SOURCE_MGMT_LQI, 1000));
+    TEST_ASSERT_EQUAL(ESP_OK, gateway_state_update_lqi(0x1002, 70, -80, GATEWAY_LQI_SOURCE_NEIGHBOR_TABLE, 900));
 
     char buf[2048];
     size_t out_len = 0;

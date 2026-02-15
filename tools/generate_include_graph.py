@@ -20,8 +20,14 @@ def collect_files():
     files = []
     for p in ROOT.rglob("*"):
         if p.suffix in {".c", ".h"} and p.is_file():
-            # ignore build and managed folders
-            if any(part in ("build", "managed_components", ".git") for part in p.parts):
+            # ignore generated/build and dependency folders
+            if any(
+                part == "managed_components"
+                or part == ".git"
+                or part == "build"
+                or part.startswith("build-")
+                for part in p.parts
+            ):
                 continue
             files.append(p)
     return files

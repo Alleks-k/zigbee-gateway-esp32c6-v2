@@ -79,7 +79,7 @@ static void update_gateway_lqi_from_snapshot(const zigbee_neighbor_lqi_t *items,
     gateway_lqi_source_t gw_src = to_gateway_lqi_source(source);
     for (int i = 0; i < count; i++) {
         uint64_t ts = items[i].updated_ms > 0 ? items[i].updated_ms : now_ms;
-        (void)gateway_state_update_device_lqi(items[i].short_addr, items[i].lqi, items[i].rssi, gw_src, ts);
+        (void)gateway_state_update_lqi(items[i].short_addr, items[i].lqi, items[i].rssi, gw_src, ts);
     }
 }
 
@@ -266,8 +266,8 @@ esp_err_t zigbee_service_get_cached_lqi_snapshot(zigbee_neighbor_lqi_t *out, siz
         return ESP_ERR_INVALID_ARG;
     }
 
-    gateway_device_lqi_state_t snapshot[MAX_DEVICES];
-    int count = gateway_state_get_device_lqi_snapshot(snapshot, MAX_DEVICES);
+    gateway_lqi_cache_entry_t snapshot[MAX_DEVICES];
+    int count = gateway_state_get_lqi_snapshot(snapshot, MAX_DEVICES);
     if (count < 0) {
         count = 0;
     }

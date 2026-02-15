@@ -7,11 +7,9 @@
 #include "esp_err.h"
 #include "gateway_config_types.h"
 
-#ifndef MAX_DEVICES
-#define MAX_DEVICES GATEWAY_MAX_DEVICES
+#ifndef GATEWAY_STATE_LQI_CACHE_CAPACITY
+#define GATEWAY_STATE_LQI_CACHE_CAPACITY GATEWAY_MAX_DEVICES
 #endif
-
-typedef gateway_device_record_t zb_device_t;
 
 typedef struct {
     bool zigbee_started;
@@ -40,12 +38,12 @@ typedef struct {
     int rssi;
     uint64_t updated_ms;
     gateway_lqi_source_t source;
-} gateway_device_lqi_state_t;
+} gateway_lqi_cache_entry_t;
 
 esp_err_t gateway_state_init(void);
 esp_err_t gateway_state_set_network(const gateway_network_state_t *state);
 esp_err_t gateway_state_get_network(gateway_network_state_t *out_state);
 esp_err_t gateway_state_set_wifi(const gateway_wifi_state_t *state);
 esp_err_t gateway_state_get_wifi(gateway_wifi_state_t *out_state);
-esp_err_t gateway_state_update_device_lqi(uint16_t short_addr, int lqi, int rssi, gateway_lqi_source_t source, uint64_t updated_ms);
-int gateway_state_get_device_lqi_snapshot(gateway_device_lqi_state_t *out, size_t max_items);
+esp_err_t gateway_state_update_lqi(uint16_t short_addr, int lqi, int rssi, gateway_lqi_source_t source, uint64_t updated_ms);
+int gateway_state_get_lqi_snapshot(gateway_lqi_cache_entry_t *out, size_t max_items);

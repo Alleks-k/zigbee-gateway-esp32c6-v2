@@ -1,0 +1,27 @@
+name: self-tests
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+
+jobs:
+  host-core-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run host tests
+        run: ./tools/run_host_tests.sh
+
+  target-selftest-build:
+    runs-on: ubuntu-latest
+    container:
+      image: espressif/idf:release-v5.5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run target self-test build
+        run: ./tools/run_target_self_tests.sh

@@ -1,118 +1,43 @@
 #include "ws_manager.h"
-#include "api_handlers.h"
+
 #include "api_usecases.h"
-#include "lqi_json_mapper.h"
-#include "gateway_events.h"
 #include "error_ring.h"
-#include "esp_log.h"
+#include "gateway_events.h"
+#include "ws_manager_internal.h"
+#include "ws_manager_state.h"
+#include "ws_manager_transport.h"
+
 #include "esp_event.h"
-#include "esp_heap_caps.h"
+#include "esp_log.h"
 #include "esp_timer.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/semphr.h"
-#include <stdbool.h>
-#include <inttypes.h>
-#include <stdlib.h>
+
 #include <string.h>
-#include <unistd.h>
 
 static const char *TAG = "WS_MANAGER";
 
-#define MAX_WS_CLIENTS 8
-#define WS_JSON_BUF_SIZE 2048
-#define WS_FRAME_BUF_SIZE 2200
-#define WS_PROTOCOL_VERSION 1
-#define WS_MIN_DUP_BROADCAST_INTERVAL_US (250 * 1000)
-#define WS_MIN_BROADCAST_INTERVAL_US (120 * 1000)
-#define WS_MIN_HEALTH_BROADCAST_INTERVAL_US (800 * 1000)
-#define WS_MIN_LQI_BROADCAST_INTERVAL_US (800 * 1000)
-#define WS_BROADCAST_RETRY_US (20 * 1000)
-
-static int ws_fds[MAX_WS_CLIENTS];
-static httpd_handle_t s_server = NULL;
-static SemaphoreHandle_t s_ws_mutex = NULL;
-static SemaphoreHandle_t s_ws_broadcast_mutex = NULL;
-static esp_event_handler_instance_t s_list_changed_handler = NULL;
-static esp_event_handler_instance_t s_lqi_changed_handler = NULL;
-static esp_timer_handle_t s_ws_debounce_timer = NULL;
-static esp_timer_handle_t s_ws_periodic_timer = NULL;
-static char s_ws_devices_json_buf[WS_JSON_BUF_SIZE];
-static char s_last_ws_devices_json[WS_JSON_BUF_SIZE];
-static size_t s_last_ws_devices_json_len = 0;
-static int64_t s_last_ws_devices_send_us = 0;
-static char s_ws_health_json_buf[WS_JSON_BUF_SIZE];
-static char s_last_ws_health_json[WS_JSON_BUF_SIZE];
-static size_t s_last_ws_health_json_len = 0;
-static int64_t s_last_ws_health_send_us = 0;
-static char s_ws_lqi_json_buf[WS_JSON_BUF_SIZE];
-static char s_last_ws_lqi_json[WS_JSON_BUF_SIZE];
-static size_t s_last_ws_lqi_json_len = 0;
-static int64_t s_last_ws_lqi_send_us = 0;
-static char s_ws_frame_buf[WS_FRAME_BUF_SIZE];
-static uint32_t s_ws_seq = 0;
-static api_ws_runtime_metrics_t s_ws_metrics = {0};
-
-static bool ws_metrics_provider(api_ws_runtime_metrics_t *out_metrics)
-{
-    if (!out_metrics) {
-        return false;
-    }
-    if (s_ws_mutex) {
-        xSemaphoreTake(s_ws_mutex, portMAX_DELAY);
-    }
-    *out_metrics = s_ws_metrics;
-    if (s_ws_mutex) {
-        xSemaphoreGive(s_ws_mutex);
-    }
-    return true;
-}
-
-#if CONFIG_GATEWAY_SELF_TEST_APP
-static esp_err_t ws_default_send_frame_async(httpd_handle_t hd, int fd, httpd_ws_frame_t *frame)
-{
-    return httpd_ws_send_frame_async(hd, fd, frame);
-}
-
-static int ws_default_req_to_sockfd(httpd_req_t *req)
-{
-    return httpd_req_to_sockfd(req);
-}
-
-static esp_err_t ws_default_recv_frame(httpd_req_t *req, httpd_ws_frame_t *pkt, size_t max_len)
-{
-    return httpd_ws_recv_frame(req, pkt, max_len);
-}
-
-static esp_err_t ws_default_resp_set_status(httpd_req_t *req, const char *status)
-{
-    return httpd_resp_set_status(req, status);
-}
-
-static esp_err_t ws_default_resp_send(httpd_req_t *req, const char *buf, ssize_t buf_len)
-{
-    return httpd_resp_send(req, buf, buf_len);
-}
-
-static int ws_default_close_socket(int fd)
-{
-    return close(fd);
-}
-
-static ws_manager_transport_ops_t s_ws_transport_ops = {
-    .send_frame_async = ws_default_send_frame_async,
-    .req_to_sockfd = ws_default_req_to_sockfd,
-    .ws_recv_frame = ws_default_recv_frame,
-    .resp_set_status = ws_default_resp_set_status,
-    .resp_send = ws_default_resp_send,
-    .close_socket = ws_default_close_socket,
-};
-#endif
-
-static uint32_t ws_client_count_provider(void)
-{
-    int count = ws_manager_get_client_count();
-    return (count < 0) ? 0u : (uint32_t)count;
-}
+int ws_fds[MAX_WS_CLIENTS];
+httpd_handle_t s_server = NULL;
+SemaphoreHandle_t s_ws_mutex = NULL;
+SemaphoreHandle_t s_ws_broadcast_mutex = NULL;
+esp_event_handler_instance_t s_list_changed_handler = NULL;
+esp_event_handler_instance_t s_lqi_changed_handler = NULL;
+esp_timer_handle_t s_ws_debounce_timer = NULL;
+esp_timer_handle_t s_ws_periodic_timer = NULL;
+char s_ws_devices_json_buf[WS_JSON_BUF_SIZE];
+char s_last_ws_devices_json[WS_JSON_BUF_SIZE];
+size_t s_last_ws_devices_json_len = 0;
+int64_t s_last_ws_devices_send_us = 0;
+char s_ws_health_json_buf[WS_JSON_BUF_SIZE];
+char s_last_ws_health_json[WS_JSON_BUF_SIZE];
+size_t s_last_ws_health_json_len = 0;
+int64_t s_last_ws_health_send_us = 0;
+char s_ws_lqi_json_buf[WS_JSON_BUF_SIZE];
+char s_last_ws_lqi_json[WS_JSON_BUF_SIZE];
+size_t s_last_ws_lqi_json_len = 0;
+int64_t s_last_ws_lqi_send_us = 0;
+char s_ws_frame_buf[WS_FRAME_BUF_SIZE];
+uint32_t s_ws_seq = 0;
+api_ws_runtime_metrics_t s_ws_metrics = {0};
 
 static void ws_debounce_timer_cb(void *arg)
 {
@@ -124,97 +49,6 @@ static void ws_periodic_timer_cb(void *arg)
 {
     (void)arg;
     ws_broadcast_status();
-}
-
-static esp_err_t ws_send_frame_to_clients(const char *json, size_t json_len)
-{
-    if (!json || json_len == 0 || !s_server) {
-        return ESP_ERR_INVALID_ARG;
-    }
-
-    httpd_ws_frame_t ws_pkt;
-    memset(&ws_pkt, 0, sizeof(httpd_ws_frame_t));
-    ws_pkt.payload = (uint8_t *)json;
-    ws_pkt.len = json_len;
-    ws_pkt.type = HTTPD_WS_TYPE_TEXT;
-
-    if (s_ws_mutex) {
-        xSemaphoreTake(s_ws_mutex, portMAX_DELAY);
-    }
-    for (int i = 0; i < MAX_WS_CLIENTS; i++) {
-        if (ws_fds[i] != -1) {
-            esp_err_t ret = ESP_ERR_INVALID_STATE;
-#if CONFIG_GATEWAY_SELF_TEST_APP
-            if (s_ws_transport_ops.send_frame_async) {
-                ret = s_ws_transport_ops.send_frame_async(s_server, ws_fds[i], &ws_pkt);
-            }
-#else
-            ret = httpd_ws_send_frame_async(s_server, ws_fds[i], &ws_pkt);
-#endif
-            if (ret != ESP_OK) {
-                ESP_LOGW(TAG, "WS send failed (%s), removing client %d", esp_err_to_name(ret), ws_fds[i]);
-                gateway_error_ring_add("ws", (int32_t)ret, "send_frame_async failed");
-                s_ws_metrics.dropped_frames_total++;
-                ws_fds[i] = -1;
-            }
-        }
-    }
-    if (s_ws_mutex) {
-        xSemaphoreGive(s_ws_mutex);
-    }
-    return ESP_OK;
-}
-
-static uint32_t ws_next_seq(void)
-{
-    uint32_t seq = 0;
-    if (s_ws_mutex) {
-        xSemaphoreTake(s_ws_mutex, portMAX_DELAY);
-    }
-    s_ws_seq++;
-    seq = s_ws_seq;
-    if (s_ws_mutex) {
-        xSemaphoreGive(s_ws_mutex);
-    }
-    return seq;
-}
-
-static esp_err_t ws_wrap_event_payload(const char *type, const char *data_json, size_t data_len, size_t *out_len)
-{
-    if (!type || !data_json || !out_len) {
-        return ESP_ERR_INVALID_ARG;
-    }
-
-    uint32_t seq = ws_next_seq();
-    uint64_t ts_ms = (uint64_t)(esp_timer_get_time() / 1000);
-    int written = snprintf(s_ws_frame_buf, sizeof(s_ws_frame_buf),
-                           "{\"version\":%d,\"seq\":%" PRIu32 ",\"ts\":%" PRIu64 ",\"type\":\"%s\",\"data\":%.*s}",
-                           WS_PROTOCOL_VERSION, seq, ts_ms, type, (int)data_len, data_json);
-    if (written < 0 || (size_t)written >= sizeof(s_ws_frame_buf)) {
-        return ESP_ERR_NO_MEM;
-    }
-    *out_len = (size_t)written;
-    return ESP_OK;
-}
-
-static void ws_remove_fd(int fd)
-{
-    if (s_ws_mutex) {
-        xSemaphoreTake(s_ws_mutex, portMAX_DELAY);
-    }
-    for (int i = 0; i < MAX_WS_CLIENTS; i++) {
-        if (ws_fds[i] == fd) {
-            ws_fds[i] = -1;
-            break;
-        }
-    }
-    if (s_ws_mutex) {
-        xSemaphoreGive(s_ws_mutex);
-    }
-
-    if (ws_manager_get_client_count() == 0 && s_ws_periodic_timer) {
-        (void)esp_timer_stop(s_ws_periodic_timer);
-    }
 }
 
 static void device_list_changed_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data)
@@ -238,8 +72,8 @@ static void lqi_state_changed_handler(void *arg, esp_event_base_t event_base, in
 void ws_manager_init(httpd_handle_t server)
 {
     s_server = server;
-    api_usecases_set_ws_client_count_provider(ws_client_count_provider);
-    api_usecases_set_ws_metrics_provider(ws_metrics_provider);
+    api_usecases_set_ws_client_count_provider(ws_manager_client_count_provider);
+    api_usecases_set_ws_metrics_provider(ws_manager_metrics_provider);
     for (int i = 0; i < MAX_WS_CLIENTS; i++) {
         ws_fds[i] = -1;
     }
@@ -309,74 +143,25 @@ void ws_manager_init(httpd_handle_t server)
 void ws_httpd_close_fn(httpd_handle_t hd, int sockfd)
 {
     (void)hd;
-    ws_remove_fd(sockfd);
-#if CONFIG_GATEWAY_SELF_TEST_APP
-    if (s_ws_transport_ops.close_socket) {
-        (void)s_ws_transport_ops.close_socket(sockfd);
-    }
-#else
-    close(sockfd);
-#endif
+    ws_manager_remove_fd_internal(sockfd);
+    ws_manager_transport_close_socket(sockfd);
 }
 
 esp_err_t ws_handler(httpd_req_t *req)
 {
     if (req->method == HTTP_GET) {
         ESP_LOGI(TAG, "Handshake done, new WS connection");
-        int fd = -1;
-#if CONFIG_GATEWAY_SELF_TEST_APP
-        if (s_ws_transport_ops.req_to_sockfd) {
-            fd = s_ws_transport_ops.req_to_sockfd(req);
-        }
-#else
-        fd = httpd_req_to_sockfd(req);
-#endif
-        bool added = false;
-        if (s_ws_mutex) {
-            xSemaphoreTake(s_ws_mutex, portMAX_DELAY);
-        }
-        for (int i = 0; i < MAX_WS_CLIENTS; i++) {
-            if (ws_fds[i] == fd) {
-                added = true;
-                break;
-            }
-        }
-        for (int i = 0; i < MAX_WS_CLIENTS && !added; i++) {
-            if (ws_fds[i] == -1) {
-                ws_fds[i] = fd;
-                added = true;
-                break;
-            }
-        }
-        if (s_ws_mutex) {
-            xSemaphoreGive(s_ws_mutex);
-        }
+        int fd = ws_manager_transport_req_to_sockfd(req);
+        bool added = ws_manager_add_fd(fd);
         if (!added) {
             ESP_LOGW(TAG, "WS client rejected: max clients reached (%d)", MAX_WS_CLIENTS);
             gateway_error_ring_add("ws", (int32_t)ESP_ERR_NO_MEM, "client rejected: max clients");
-#if CONFIG_GATEWAY_SELF_TEST_APP
-            if (s_ws_transport_ops.resp_set_status) {
-                (void)s_ws_transport_ops.resp_set_status(req, "503 Service Unavailable");
-            }
-            if (s_ws_transport_ops.resp_send) {
-                (void)s_ws_transport_ops.resp_send(req, "WS clients limit reached", HTTPD_RESP_USE_STRLEN);
-            }
-#else
-            httpd_resp_set_status(req, "503 Service Unavailable");
-            httpd_resp_send(req, "WS clients limit reached", HTTPD_RESP_USE_STRLEN);
-#endif
+            (void)ws_manager_transport_resp_set_status(req, "503 Service Unavailable");
+            (void)ws_manager_transport_resp_send(req, "WS clients limit reached", HTTPD_RESP_USE_STRLEN);
             return ESP_FAIL;
         }
-        if (s_ws_mutex) {
-            xSemaphoreTake(s_ws_mutex, portMAX_DELAY);
-        }
-        s_ws_metrics.connections_total++;
-        if (s_ws_metrics.connections_total > 1) {
-            s_ws_metrics.reconnect_count++;
-        }
-        if (s_ws_mutex) {
-            xSemaphoreGive(s_ws_mutex);
-        }
+
+        ws_manager_note_connection();
         if (s_ws_periodic_timer) {
             (void)esp_timer_stop(s_ws_periodic_timer);
             (void)esp_timer_start_periodic(s_ws_periodic_timer, 1000 * 1000);
@@ -389,193 +174,15 @@ esp_err_t ws_handler(httpd_req_t *req)
     memset(&ws_pkt, 0, sizeof(httpd_ws_frame_t));
     ws_pkt.type = HTTPD_WS_TYPE_TEXT;
 
-    esp_err_t ret = ESP_ERR_INVALID_STATE;
-#if CONFIG_GATEWAY_SELF_TEST_APP
-    if (s_ws_transport_ops.ws_recv_frame) {
-        ret = s_ws_transport_ops.ws_recv_frame(req, &ws_pkt, 0);
-    }
-#else
-    ret = httpd_ws_recv_frame(req, &ws_pkt, 0);
-#endif
+    esp_err_t ret = ws_manager_transport_recv_frame(req, &ws_pkt, 0);
     if (ret != ESP_OK) {
         gateway_error_ring_add("ws", (int32_t)ret, "recv_frame failed");
         return ret;
     }
 
     if (ws_pkt.type == HTTPD_WS_TYPE_CLOSE) {
-        int fd = -1;
-#if CONFIG_GATEWAY_SELF_TEST_APP
-        if (s_ws_transport_ops.req_to_sockfd) {
-            fd = s_ws_transport_ops.req_to_sockfd(req);
-        }
-#else
-        fd = httpd_req_to_sockfd(req);
-#endif
-        ws_remove_fd(fd);
+        int fd = ws_manager_transport_req_to_sockfd(req);
+        ws_manager_remove_fd_internal(fd);
     }
     return ESP_OK;
 }
-
-void ws_broadcast_status(void)
-{
-    if (!s_server) {
-        return;
-    }
-    if (s_ws_broadcast_mutex && xSemaphoreTake(s_ws_broadcast_mutex, 0) != pdTRUE) {
-        if (s_ws_mutex) {
-            xSemaphoreTake(s_ws_mutex, portMAX_DELAY);
-        }
-        s_ws_metrics.broadcast_lock_skips_total++;
-        if (s_ws_mutex) {
-            xSemaphoreGive(s_ws_mutex);
-        }
-        if (s_ws_debounce_timer) {
-            (void)esp_timer_stop(s_ws_debounce_timer);
-            (void)esp_timer_start_once(s_ws_debounce_timer, WS_BROADCAST_RETRY_US);
-        }
-        return;
-    }
-
-    bool release_broadcast_lock = (s_ws_broadcast_mutex != NULL);
-    size_t json_len = 0;
-    esp_err_t build_ret = build_devices_json_compact(s_ws_devices_json_buf, sizeof(s_ws_devices_json_buf), &json_len);
-    if (build_ret != ESP_OK) {
-        ESP_LOGW(TAG, "Failed to build WS delta JSON payload: %s", esp_err_to_name(build_ret));
-        goto out;
-    }
-
-    int64_t now_us = esp_timer_get_time();
-    bool same_payload = (json_len == s_last_ws_devices_json_len) &&
-                        (json_len > 0) &&
-                        (memcmp(s_ws_devices_json_buf, s_last_ws_devices_json, json_len) == 0);
-    if (same_payload && (now_us - s_last_ws_devices_send_us) < WS_MIN_DUP_BROADCAST_INTERVAL_US) {
-        goto out;
-    }
-
-    int64_t elapsed_us = now_us - s_last_ws_devices_send_us;
-    if (s_last_ws_devices_send_us > 0 && elapsed_us < WS_MIN_BROADCAST_INTERVAL_US) {
-        if (s_ws_debounce_timer) {
-            int64_t delay_us = WS_MIN_BROADCAST_INTERVAL_US - elapsed_us;
-            if (delay_us < 1000) {
-                delay_us = 1000;
-            }
-            (void)esp_timer_stop(s_ws_debounce_timer);
-            (void)esp_timer_start_once(s_ws_debounce_timer, (uint64_t)delay_us);
-        }
-        goto out;
-    }
-
-    size_t heap_before = heap_caps_get_free_size(MALLOC_CAP_8BIT);
-    size_t frame_len = 0;
-    esp_err_t wrap_ret = ws_wrap_event_payload("devices_delta", s_ws_devices_json_buf, json_len, &frame_len);
-    if (wrap_ret == ESP_OK) {
-        (void)ws_send_frame_to_clients(s_ws_frame_buf, frame_len);
-    } else {
-        ESP_LOGW(TAG, "Failed to wrap WS devices frame: %s", esp_err_to_name(wrap_ret));
-    }
-
-    if (json_len < sizeof(s_last_ws_devices_json)) {
-        memcpy(s_last_ws_devices_json, s_ws_devices_json_buf, json_len);
-        s_last_ws_devices_json[json_len] = '\0';
-        s_last_ws_devices_json_len = json_len;
-    } else {
-        s_last_ws_devices_json_len = 0;
-    }
-    s_last_ws_devices_send_us = now_us;
-
-    // Health/state event is throttled separately and sent even when device list doesn't change.
-    if ((now_us - s_last_ws_health_send_us) >= WS_MIN_HEALTH_BROADCAST_INTERVAL_US) {
-        size_t health_len = 0;
-        esp_err_t health_ret = build_health_json_compact(s_ws_health_json_buf, sizeof(s_ws_health_json_buf), &health_len);
-        if (health_ret == ESP_OK) {
-            bool same_health = (health_len == s_last_ws_health_json_len) &&
-                               (health_len > 0) &&
-                               (memcmp(s_ws_health_json_buf, s_last_ws_health_json, health_len) == 0);
-            if (!same_health || (now_us - s_last_ws_health_send_us) >= WS_MIN_DUP_BROADCAST_INTERVAL_US) {
-                wrap_ret = ws_wrap_event_payload("health_state", s_ws_health_json_buf, health_len, &frame_len);
-                if (wrap_ret == ESP_OK) {
-                    (void)ws_send_frame_to_clients(s_ws_frame_buf, frame_len);
-                    if (health_len < sizeof(s_last_ws_health_json)) {
-                        memcpy(s_last_ws_health_json, s_ws_health_json_buf, health_len);
-                        s_last_ws_health_json[health_len] = '\0';
-                        s_last_ws_health_json_len = health_len;
-                    } else {
-                        s_last_ws_health_json_len = 0;
-                    }
-                    s_last_ws_health_send_us = now_us;
-                }
-            }
-        }
-    }
-
-    // LQI state event is throttled and deduplicated separately.
-    if ((now_us - s_last_ws_lqi_send_us) >= WS_MIN_LQI_BROADCAST_INTERVAL_US) {
-        size_t lqi_len = 0;
-        esp_err_t lqi_ret = build_lqi_json_compact(s_ws_lqi_json_buf, sizeof(s_ws_lqi_json_buf), &lqi_len);
-        if (lqi_ret == ESP_OK) {
-            bool same_lqi = (lqi_len == s_last_ws_lqi_json_len) &&
-                            (lqi_len > 0) &&
-                            (memcmp(s_ws_lqi_json_buf, s_last_ws_lqi_json, lqi_len) == 0);
-            if (!same_lqi || (now_us - s_last_ws_lqi_send_us) >= WS_MIN_DUP_BROADCAST_INTERVAL_US) {
-                // Canonical WS event name for LQI updates.
-                wrap_ret = ws_wrap_event_payload("lqi_update", s_ws_lqi_json_buf, lqi_len, &frame_len);
-                if (wrap_ret == ESP_OK) {
-                    (void)ws_send_frame_to_clients(s_ws_frame_buf, frame_len);
-                    if (lqi_len < sizeof(s_last_ws_lqi_json)) {
-                        memcpy(s_last_ws_lqi_json, s_ws_lqi_json_buf, lqi_len);
-                        s_last_ws_lqi_json[lqi_len] = '\0';
-                        s_last_ws_lqi_json_len = lqi_len;
-                    } else {
-                        s_last_ws_lqi_json_len = 0;
-                    }
-                    s_last_ws_lqi_send_us = now_us;
-                }
-            }
-        }
-    }
-
-    size_t heap_after = heap_caps_get_free_size(MALLOC_CAP_8BIT);
-    ESP_LOGD(TAG, "WS broadcast heap: before=%u after=%u delta=%d",
-             (unsigned)heap_before, (unsigned)heap_after, (int)(heap_after - heap_before));
-out:
-    if (release_broadcast_lock) {
-        xSemaphoreGive(s_ws_broadcast_mutex);
-    }
-}
-
-int ws_manager_get_client_count(void)
-{
-    int count = 0;
-    if (s_ws_mutex) {
-        xSemaphoreTake(s_ws_mutex, portMAX_DELAY);
-    }
-    for (int i = 0; i < MAX_WS_CLIENTS; i++) {
-        if (ws_fds[i] != -1) {
-            count++;
-        }
-    }
-    if (s_ws_mutex) {
-        xSemaphoreGive(s_ws_mutex);
-    }
-    return count;
-}
-
-#if CONFIG_GATEWAY_SELF_TEST_APP
-void ws_manager_set_transport_ops_for_test(const ws_manager_transport_ops_t *ops)
-{
-    if (!ops) {
-        return;
-    }
-    s_ws_transport_ops = *ops;
-}
-
-void ws_manager_reset_transport_ops_for_test(void)
-{
-    s_ws_transport_ops.send_frame_async = ws_default_send_frame_async;
-    s_ws_transport_ops.req_to_sockfd = ws_default_req_to_sockfd;
-    s_ws_transport_ops.ws_recv_frame = ws_default_recv_frame;
-    s_ws_transport_ops.resp_set_status = ws_default_resp_set_status;
-    s_ws_transport_ops.resp_send = ws_default_resp_send;
-    s_ws_transport_ops.close_socket = ws_default_close_socket;
-}
-#endif

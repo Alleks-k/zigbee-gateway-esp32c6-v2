@@ -1,6 +1,10 @@
 idf_component_register(
     SRCS
         "src/ws_manager.c"
+        "src/ws_manager_state.c"
+        "src/ws_manager_transport.c"
+        "src/ws_manager_json.c"
+        "src/ws_manager_policy.c"
     INCLUDE_DIRS
         "include"
     REQUIRES

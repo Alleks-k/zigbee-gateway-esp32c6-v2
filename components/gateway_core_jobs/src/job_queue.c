@@ -1,39 +1,22 @@
 #include "job_queue.h"
-#include "wifi_service.h"
-#include "system_service.h"
-#include "config_service.h"
-#include "rcp_tool.h"
-#include "zigbee_service.h"
+
 #include "gateway_events.h"
-#include "esp_timer.h"
-#include "esp_log.h"
+#include "job_queue_policy.h"
+#include "job_queue_state.h"
+
 #include "esp_event.h"
+#include "esp_log.h"
+
 #include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
-#include "cJSON.h"
+#include "freertos/task.h"
+
 #include <inttypes.h>
-#include <string.h>
 #include <stdio.h>
+#include <string.h>
 
 static const char *TAG = "JOB_QUEUE";
-
-#define ZGW_JOB_MAX 12
-#define ZGW_JOB_COMPLETED_TTL_MS (30 * 1000ULL)
-
-typedef struct {
-    bool used;
-    uint32_t id;
-    zgw_job_type_t type;
-    zgw_job_state_t state;
-    esp_err_t err;
-    uint64_t created_ms;
-    uint64_t updated_ms;
-    uint32_t reboot_delay_ms;
-    bool has_result;
-    char result_json[ZGW_JOB_RESULT_MAX_LEN];
-} zgw_job_slot_t;
 
 static SemaphoreHandle_t s_mutex = NULL;
 static QueueHandle_t s_job_q = NULL;
@@ -44,11 +27,6 @@ static zgw_job_metrics_t s_metrics = {0};
 static uint32_t s_latency_samples_ms[64];
 static size_t s_latency_samples_count = 0;
 static size_t s_latency_samples_next = 0;
-
-static uint64_t now_ms(void)
-{
-    return (uint64_t)(esp_timer_get_time() / 1000);
-}
 
 const char *job_queue_type_to_string(zgw_job_type_t type)
 {
@@ -73,378 +51,49 @@ const char *job_queue_state_to_string(zgw_job_state_t state)
     }
 }
 
-static int find_slot_index_by_id(uint32_t id)
-{
-    for (int i = 0; i < ZGW_JOB_MAX; i++) {
-        if (s_jobs[i].used && s_jobs[i].id == id) {
-            return i;
-        }
-    }
-    return -1;
-}
-
-static int alloc_slot_index(void)
-{
-    int reclaim_idx = -1;
-    uint64_t reclaim_updated_ms = UINT64_MAX;
-    for (int i = 0; i < ZGW_JOB_MAX; i++) {
-        if (!s_jobs[i].used) {
-            return i;
-        }
-        if (s_jobs[i].state == ZGW_JOB_STATE_SUCCEEDED || s_jobs[i].state == ZGW_JOB_STATE_FAILED) {
-            if (s_jobs[i].updated_ms <= reclaim_updated_ms) {
-                reclaim_updated_ms = s_jobs[i].updated_ms;
-                reclaim_idx = i;
-            }
-        }
-    }
-    if (reclaim_idx >= 0) {
-        ESP_LOGW(TAG, "Job slots full, evicting completed job id=%" PRIu32, s_jobs[reclaim_idx].id);
-        memset(&s_jobs[reclaim_idx], 0, sizeof(s_jobs[reclaim_idx]));
-        return reclaim_idx;
-    }
-    return -1;
-}
-
-static int find_inflight_slot_index(zgw_job_type_t type, uint32_t reboot_delay_ms)
-{
-    for (int i = 0; i < ZGW_JOB_MAX; i++) {
-        if (!s_jobs[i].used) {
-            continue;
-        }
-        if (s_jobs[i].type != type) {
-            continue;
-        }
-        if (s_jobs[i].state != ZGW_JOB_STATE_QUEUED && s_jobs[i].state != ZGW_JOB_STATE_RUNNING) {
-            continue;
-        }
-        if (type == ZGW_JOB_TYPE_REBOOT && s_jobs[i].reboot_delay_ms != reboot_delay_ms) {
-            continue;
-        }
-        return i;
-    }
-    return -1;
-}
-
-static void prune_completed_jobs_locked(uint64_t now)
-{
-    for (int i = 0; i < ZGW_JOB_MAX; i++) {
-        if (!s_jobs[i].used) {
-            continue;
-        }
-        if (s_jobs[i].state != ZGW_JOB_STATE_SUCCEEDED && s_jobs[i].state != ZGW_JOB_STATE_FAILED) {
-            continue;
-        }
-        if (now < s_jobs[i].updated_ms) {
-            continue;
-        }
-        if ((now - s_jobs[i].updated_ms) >= ZGW_JOB_COMPLETED_TTL_MS) {
-            memset(&s_jobs[i], 0, sizeof(s_jobs[i]));
-        }
-    }
-}
-
-static uint32_t inflight_depth_locked(void)
-{
-    uint32_t depth = 0;
-    for (int i = 0; i < ZGW_JOB_MAX; i++) {
-        if (!s_jobs[i].used) {
-            continue;
-        }
-        if (s_jobs[i].state == ZGW_JOB_STATE_QUEUED || s_jobs[i].state == ZGW_JOB_STATE_RUNNING) {
-            depth++;
-        }
-    }
-    return depth;
-}
-
-static void push_latency_sample_ms(uint32_t latency_ms)
-{
-    s_latency_samples_ms[s_latency_samples_next] = latency_ms;
-    s_latency_samples_next = (s_latency_samples_next + 1U) % (sizeof(s_latency_samples_ms) / sizeof(s_latency_samples_ms[0]));
-    if (s_latency_samples_count < (sizeof(s_latency_samples_ms) / sizeof(s_latency_samples_ms[0]))) {
-        s_latency_samples_count++;
-    }
-}
-
-static uint32_t latency_p95_ms(void)
-{
-    if (s_latency_samples_count == 0) {
-        return 0;
-    }
-    uint32_t sorted[64];
-    size_t n = s_latency_samples_count;
-    for (size_t i = 0; i < n; i++) {
-        sorted[i] = s_latency_samples_ms[i];
-    }
-    for (size_t i = 1; i < n; i++) {
-        uint32_t key = sorted[i];
-        size_t j = i;
-        while (j > 0 && sorted[j - 1] > key) {
-            sorted[j] = sorted[j - 1];
-            j--;
-        }
-        sorted[j] = key;
-    }
-    size_t idx = (n == 1) ? 0 : ((n * 95 + 99) / 100) - 1;
-    if (idx >= n) {
-        idx = n - 1;
-    }
-    return sorted[idx];
-}
-
-static void set_job_result(zgw_job_slot_t *job, const char *json_data)
-{
-    if (!job || !json_data) {
-        return;
-    }
-    size_t len = strnlen(json_data, ZGW_JOB_RESULT_MAX_LEN);
-    if (len >= ZGW_JOB_RESULT_MAX_LEN) {
-        len = ZGW_JOB_RESULT_MAX_LEN - 1;
-    }
-    memcpy(job->result_json, json_data, len);
-    job->result_json[len] = '\0';
-    job->has_result = true;
-}
-
-static esp_err_t build_scan_result_json(char *out, size_t out_size)
-{
-    wifi_ap_info_t *list = NULL;
-    size_t count = 0;
-    esp_err_t err = wifi_service_scan(&list, &count);
-    if (err != ESP_OK) {
-        return err;
-    }
-
-    cJSON *root = cJSON_CreateObject();
-    cJSON *arr = cJSON_CreateArray();
-    if (!root || !arr) {
-        cJSON_Delete(root);
-        cJSON_Delete(arr);
-        wifi_service_scan_free(list);
-        return ESP_ERR_NO_MEM;
-    }
-    cJSON_AddNumberToObject(root, "count", (double)count);
-    cJSON_AddItemToObject(root, "networks", arr);
-
-    for (size_t i = 0; i < count; i++) {
-        cJSON *item = cJSON_CreateObject();
-        if (!item) {
-            cJSON_Delete(root);
-            wifi_service_scan_free(list);
-            return ESP_ERR_NO_MEM;
-        }
-        cJSON_AddStringToObject(item, "ssid", list[i].ssid);
-        cJSON_AddNumberToObject(item, "rssi", list[i].rssi);
-        cJSON_AddNumberToObject(item, "auth", list[i].auth);
-        cJSON_AddItemToArray(arr, item);
-    }
-
-    char *json = cJSON_PrintUnformatted(root);
-    cJSON_Delete(root);
-    wifi_service_scan_free(list);
-    if (!json) {
-        return ESP_ERR_NO_MEM;
-    }
-
-    int written = snprintf(out, out_size, "%s", json);
-    free(json);
-    if (written < 0 || (size_t)written >= out_size) {
-        return ESP_ERR_NO_MEM;
-    }
-    return ESP_OK;
-}
-
-static esp_err_t build_factory_reset_result_json(char *out, size_t out_size)
-{
-    esp_err_t err = config_service_factory_reset();
-    if (err != ESP_OK) {
-        return err;
-    }
-
-    config_service_factory_reset_report_t report = {0};
-    err = config_service_get_last_factory_reset_report(&report);
-    if (err != ESP_OK) {
-        return err;
-    }
-
-    int written = snprintf(
-        out, out_size,
-        "{\"message\":\"Factory reset completed\",\"details\":{\"wifi\":\"%s\",\"devices\":\"%s\","
-        "\"zigbee_storage\":\"%s\",\"zigbee_fct\":\"%s\"}}",
-        esp_err_to_name(report.wifi_err),
-        esp_err_to_name(report.devices_err),
-        esp_err_to_name(report.zigbee_storage_err),
-        esp_err_to_name(report.zigbee_fct_err));
-    if (written < 0 || (size_t)written >= out_size) {
-        return ESP_ERR_NO_MEM;
-    }
-    return ESP_OK;
-}
-
-static esp_err_t build_reboot_result_json(uint32_t delay_ms, char *out, size_t out_size)
-{
-    esp_err_t err = system_service_schedule_reboot(delay_ms);
-    if (err != ESP_OK) {
-        return err;
-    }
-    int written = snprintf(out, out_size, "{\"message\":\"Reboot scheduled\",\"delay_ms\":%" PRIu32 "}", delay_ms);
-    if (written < 0 || (size_t)written >= out_size) {
-        return ESP_ERR_NO_MEM;
-    }
-    return ESP_OK;
-}
-
-static esp_err_t build_update_result_json(char *out, size_t out_size)
-{
-#if CONFIG_OPENTHREAD_SPINEL_ONLY
-    esp_err_t err = check_ot_rcp_version();
-    if (err != ESP_OK) {
-        return err;
-    }
-    int written = snprintf(out, out_size, "{\"message\":\"Update check completed\"}");
-    if (written < 0 || (size_t)written >= out_size) {
-        return ESP_ERR_NO_MEM;
-    }
-    return ESP_OK;
-#else
-    (void)out;
-    (void)out_size;
-    return ESP_ERR_NOT_SUPPORTED;
-#endif
-}
-
-static const char *lqi_quality_label_from_value(int lqi, int rssi)
-{
-    (void)rssi;
-    if (lqi <= 0) {
-        return "unknown";
-    }
-    if (lqi >= 180) {
-        return "good";
-    }
-    if (lqi >= 120) {
-        return "warn";
-    }
-    return "bad";
-}
-
-static esp_err_t build_lqi_refresh_result_json(char *out, size_t out_size)
-{
-    zigbee_neighbor_lqi_t neighbors[MAX_DEVICES] = {0};
-    int count = 0;
-    esp_err_t err = zigbee_service_refresh_neighbor_lqi_snapshot(neighbors, MAX_DEVICES, &count);
-    if (err != ESP_OK) {
-        return err;
-    }
-
-    cJSON *root = cJSON_CreateObject();
-    cJSON *arr = cJSON_CreateArray();
-    if (!root || !arr) {
-        cJSON_Delete(root);
-        cJSON_Delete(arr);
-        return ESP_ERR_NO_MEM;
-    }
-    cJSON_AddNumberToObject(root, "count", count);
-    cJSON_AddItemToObject(root, "neighbors", arr);
-
-    for (int i = 0; i < count; i++) {
-        cJSON *item = cJSON_CreateObject();
-        if (!item) {
-            cJSON_Delete(root);
-            return ESP_ERR_NO_MEM;
-        }
-        cJSON_AddNumberToObject(item, "short_addr", neighbors[i].short_addr);
-        if (neighbors[i].lqi <= 0) {
-            cJSON_AddNullToObject(item, "lqi");
-        } else {
-            cJSON_AddNumberToObject(item, "lqi", neighbors[i].lqi);
-        }
-
-        if (neighbors[i].rssi == 127 || neighbors[i].rssi <= -127) {
-            cJSON_AddNullToObject(item, "rssi");
-        } else {
-            cJSON_AddNumberToObject(item, "rssi", neighbors[i].rssi);
-        }
-        cJSON_AddStringToObject(item, "quality", lqi_quality_label_from_value(neighbors[i].lqi, neighbors[i].rssi));
-        cJSON_AddItemToArray(arr, item);
-    }
-
-    char *json = cJSON_PrintUnformatted(root);
-    cJSON_Delete(root);
-    if (!json) {
-        return ESP_ERR_NO_MEM;
-    }
-    int written = snprintf(out, out_size, "%s", json);
-    free(json);
-    if (written < 0 || (size_t)written >= out_size) {
-        return ESP_ERR_NO_MEM;
-    }
-    return ESP_OK;
-}
-
 static void execute_job(uint32_t job_id)
 {
     zgw_job_type_t type = ZGW_JOB_TYPE_WIFI_SCAN;
     uint32_t reboot_delay_ms = 1000;
 
     xSemaphoreTake(s_mutex, portMAX_DELAY);
-    int idx = find_slot_index_by_id(job_id);
+    int idx = job_queue_find_slot_index_by_id(s_jobs, job_id);
     if (idx < 0 || !s_jobs[idx].used) {
         xSemaphoreGive(s_mutex);
         return;
     }
     s_jobs[idx].state = ZGW_JOB_STATE_RUNNING;
-    s_jobs[idx].updated_ms = now_ms();
+    s_jobs[idx].updated_ms = job_queue_now_ms();
     type = s_jobs[idx].type;
     reboot_delay_ms = s_jobs[idx].reboot_delay_ms;
     xSemaphoreGive(s_mutex);
 
     char result[ZGW_JOB_RESULT_MAX_LEN] = {0};
-    esp_err_t exec_err = ESP_ERR_NOT_SUPPORTED;
-    switch (type) {
-    case ZGW_JOB_TYPE_WIFI_SCAN:
-        exec_err = build_scan_result_json(result, sizeof(result));
-        break;
-    case ZGW_JOB_TYPE_FACTORY_RESET:
-        exec_err = build_factory_reset_result_json(result, sizeof(result));
-        break;
-    case ZGW_JOB_TYPE_REBOOT:
-        exec_err = build_reboot_result_json(reboot_delay_ms, result, sizeof(result));
-        break;
-    case ZGW_JOB_TYPE_UPDATE:
-        exec_err = build_update_result_json(result, sizeof(result));
-        break;
-    case ZGW_JOB_TYPE_LQI_REFRESH:
-        exec_err = build_lqi_refresh_result_json(result, sizeof(result));
-        break;
-    default:
-        exec_err = ESP_ERR_INVALID_ARG;
-        break;
-    }
+    esp_err_t exec_err = job_queue_policy_execute(type, reboot_delay_ms, result, sizeof(result));
 
     xSemaphoreTake(s_mutex, portMAX_DELAY);
-    idx = find_slot_index_by_id(job_id);
+    idx = job_queue_find_slot_index_by_id(s_jobs, job_id);
     if (idx >= 0 && s_jobs[idx].used) {
-        uint64_t finished_ms = now_ms();
+        uint64_t finished_ms = job_queue_now_ms();
         s_jobs[idx].err = exec_err;
         s_jobs[idx].state = (exec_err == ESP_OK) ? ZGW_JOB_STATE_SUCCEEDED : ZGW_JOB_STATE_FAILED;
         s_jobs[idx].updated_ms = finished_ms;
         uint64_t latency_ms = (finished_ms >= s_jobs[idx].created_ms) ? (finished_ms - s_jobs[idx].created_ms) : 0;
-        push_latency_sample_ms((latency_ms > UINT32_MAX) ? UINT32_MAX : (uint32_t)latency_ms);
+        job_queue_push_latency_sample(
+            s_latency_samples_ms, &s_latency_samples_count, &s_latency_samples_next,
+            (latency_ms > UINT32_MAX) ? UINT32_MAX : (uint32_t)latency_ms);
         if (exec_err == ESP_OK) {
             s_metrics.completed_total++;
         } else {
             s_metrics.failed_total++;
         }
         if (exec_err == ESP_OK) {
-            set_job_result(&s_jobs[idx], result);
+            job_queue_set_result(&s_jobs[idx], result);
         } else {
             char fail_json[128];
-            int written = snprintf(fail_json, sizeof(fail_json),
-                                   "{\"error\":\"%s\"}", esp_err_to_name(exec_err));
+            int written = snprintf(fail_json, sizeof(fail_json), "{\"error\":\"%s\"}", esp_err_to_name(exec_err));
             if (written > 0 && (size_t)written < sizeof(fail_json)) {
-                set_job_result(&s_jobs[idx], fail_json);
+                job_queue_set_result(&s_jobs[idx], fail_json);
             }
         }
     }
@@ -510,8 +159,8 @@ esp_err_t job_queue_submit(zgw_job_type_t type, uint32_t reboot_delay_ms, uint32
     }
 
     xSemaphoreTake(s_mutex, portMAX_DELAY);
-    prune_completed_jobs_locked(now_ms());
-    int inflight_idx = find_inflight_slot_index(type, reboot_delay_ms);
+    job_queue_prune_completed_jobs(s_jobs, job_queue_now_ms());
+    int inflight_idx = job_queue_find_inflight_slot_index(s_jobs, type, reboot_delay_ms);
     if (inflight_idx >= 0) {
         uint32_t inflight_id = s_jobs[inflight_idx].id;
         zgw_job_state_t inflight_state = s_jobs[inflight_idx].state;
@@ -524,7 +173,7 @@ esp_err_t job_queue_submit(zgw_job_type_t type, uint32_t reboot_delay_ms, uint32
                  job_queue_state_to_string(inflight_state));
         return ESP_OK;
     }
-    int idx = alloc_slot_index();
+    int idx = job_queue_alloc_slot_index(s_jobs, TAG);
     if (idx < 0) {
         xSemaphoreGive(s_mutex);
         return ESP_ERR_NO_MEM;
@@ -541,11 +190,11 @@ esp_err_t job_queue_submit(zgw_job_type_t type, uint32_t reboot_delay_ms, uint32
     s_jobs[idx].type = type;
     s_jobs[idx].state = ZGW_JOB_STATE_QUEUED;
     s_jobs[idx].err = ESP_OK;
-    s_jobs[idx].created_ms = now_ms();
+    s_jobs[idx].created_ms = job_queue_now_ms();
     s_jobs[idx].updated_ms = s_jobs[idx].created_ms;
     s_jobs[idx].reboot_delay_ms = reboot_delay_ms;
     s_metrics.submitted_total++;
-    s_metrics.queue_depth_current = inflight_depth_locked();
+    s_metrics.queue_depth_current = job_queue_inflight_depth(s_jobs);
     if (s_metrics.queue_depth_current > s_metrics.queue_depth_peak) {
         s_metrics.queue_depth_peak = s_metrics.queue_depth_current;
     }
@@ -574,7 +223,7 @@ esp_err_t job_queue_get(uint32_t job_id, zgw_job_info_t *out_info)
     }
 
     xSemaphoreTake(s_mutex, portMAX_DELAY);
-    int idx = find_slot_index_by_id(job_id);
+    int idx = job_queue_find_slot_index_by_id(s_jobs, job_id);
     if (idx < 0 || !s_jobs[idx].used) {
         xSemaphoreGive(s_mutex);
         return ESP_ERR_NOT_FOUND;
@@ -602,8 +251,8 @@ esp_err_t job_queue_get_metrics(zgw_job_metrics_t *out_metrics)
         return err;
     }
     xSemaphoreTake(s_mutex, portMAX_DELAY);
-    s_metrics.queue_depth_current = inflight_depth_locked();
-    s_metrics.latency_p95_ms = latency_p95_ms();
+    s_metrics.queue_depth_current = job_queue_inflight_depth(s_jobs);
+    s_metrics.latency_p95_ms = job_queue_latency_p95(s_latency_samples_ms, s_latency_samples_count);
     *out_metrics = s_metrics;
     xSemaphoreGive(s_mutex);
     return ESP_OK;

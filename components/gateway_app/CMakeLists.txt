@@ -1,6 +1,7 @@
 idf_component_register(
     SRCS
-        "src/gateway_app.c"
+        "src/gateway_app_bootstrap.c"
+        "src/gateway_zigbee_runtime.c"
     INCLUDE_DIRS
         "include"
     REQUIRES

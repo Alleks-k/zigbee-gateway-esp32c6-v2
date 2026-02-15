@@ -7,6 +7,7 @@ set(gateway_core_storage_srcs
 set(gateway_core_storage_reqs
     gateway_core_events
     gateway_shared_config)
+list(APPEND gateway_core_storage_reqs unity)
 
 set(gateway_core_storage_priv_reqs
     nvs_flash
@@ -16,7 +17,6 @@ set(gateway_core_storage_priv_reqs
 
 if(CONFIG_GATEWAY_SELF_TEST_APP)
     list(APPEND gateway_core_storage_srcs "test/gateway_core_storage_self_tests.c")
-    list(APPEND gateway_core_storage_reqs unity)
 endif()
 
 idf_component_register(

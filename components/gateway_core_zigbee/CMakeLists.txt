@@ -1,6 +1,7 @@
 idf_component_register(
     SRCS
         "src/zigbee_service.c"
+        "src/zigbee_selftest_shims.c"
     INCLUDE_DIRS
         "include"
     REQUIRES

@@ -52,3 +52,4 @@ CONFIG_PIN_TO_RCP_TX=17
 CONFIG_PIN_TO_RCP_RX=18
 
 # end of ESP Zigbee gateway rcp update
+CONFIG_HTTPD_WS_SUPPORT=y

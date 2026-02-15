@@ -1,0 +1,7 @@
+CONFIG_GATEWAY_SELF_TEST_APP=y
+
+# The partition table allocates > 4 MB total flash.
+# Self-test build should always use 16 MB flash layout.
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+# CONFIG_ESPTOOLPY_FLASHSIZE_4MB is not set
+CONFIG_ESPTOOLPY_FLASHSIZE="16MB"

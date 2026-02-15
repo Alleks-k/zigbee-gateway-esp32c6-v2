@@ -21,3 +21,13 @@ Location:
 
 Execution model:
 - Built and executed only in self-test firmware mode (`CONFIG_GATEWAY_SELF_TEST_APP=y`).
+
+Run firmware build gate:
+
+```bash
+./tools/run_target_self_tests.sh
+```
+
+Notes:
+- Script always uses a fresh temporary `SDKCONFIG` to avoid stale config drift.
+- Self-test defaults are defined in `tests/selftest.sdkconfig.defaults`.

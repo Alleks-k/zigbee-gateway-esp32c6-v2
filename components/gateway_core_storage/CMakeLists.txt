@@ -2,6 +2,7 @@ set(gateway_core_storage_srcs
     "src/device_repository_nvs.c"
     "src/gateway_state.c"
     "src/storage_kv_nvs.c"
+    "src/storage_schema_nvs.c"
     "src/settings_manager.c")
 
 set(gateway_core_storage_reqs

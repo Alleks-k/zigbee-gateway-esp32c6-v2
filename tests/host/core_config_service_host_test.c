@@ -4,12 +4,16 @@
 #include <string.h>
 
 #include "config_service.h"
+#include "storage_schema.h"
 #include "storage_settings.h"
 
 typedef struct {
-    esp_err_t init_ret;
-    esp_err_t schema_ret;
+    esp_err_t schema_init_ret;
+    esp_err_t schema_get_ret;
+    esp_err_t schema_set_ret;
     int32_t schema_version;
+    bool schema_found;
+    int schema_set_calls;
 
     esp_err_t save_ret;
     int save_calls;
@@ -32,9 +36,11 @@ static settings_stub_t g_stub;
 static void reset_stub(void)
 {
     memset(&g_stub, 0, sizeof(g_stub));
-    g_stub.init_ret = ESP_OK;
-    g_stub.schema_ret = ESP_OK;
+    g_stub.schema_init_ret = ESP_OK;
+    g_stub.schema_get_ret = ESP_OK;
+    g_stub.schema_set_ret = ESP_OK;
     g_stub.schema_version = CONFIG_SERVICE_SCHEMA_VERSION_CURRENT;
+    g_stub.schema_found = true;
     g_stub.save_ret = ESP_OK;
     g_stub.load_ret = ESP_OK;
     g_stub.load_found = false;
@@ -44,20 +50,32 @@ static void reset_stub(void)
     g_stub.erase_zb_fct_ret = ESP_OK;
 }
 
-esp_err_t settings_manager_init_or_migrate(void)
+esp_err_t storage_schema_init(void)
 {
-    return g_stub.init_ret;
+    return g_stub.schema_init_ret;
 }
 
-esp_err_t settings_manager_get_schema_version(int32_t *out_version)
+esp_err_t storage_schema_get_version(int32_t *out_version, bool *out_found)
 {
-    if (!out_version) {
+    if (!out_version || !out_found) {
         return ESP_ERR_INVALID_ARG;
     }
-    if (g_stub.schema_ret != ESP_OK) {
-        return g_stub.schema_ret;
+    if (g_stub.schema_get_ret != ESP_OK) {
+        return g_stub.schema_get_ret;
     }
     *out_version = g_stub.schema_version;
+    *out_found = g_stub.schema_found;
+    return ESP_OK;
+}
+
+esp_err_t storage_schema_set_version(int32_t version)
+{
+    g_stub.schema_set_calls++;
+    g_stub.schema_version = version;
+    g_stub.schema_found = true;
+    if (g_stub.schema_set_ret != ESP_OK) {
+        return g_stub.schema_set_ret;
+    }
     return ESP_OK;
 }
 
@@ -201,6 +219,11 @@ static void test_load_wifi_credentials_passthrough_and_args(void)
 static void test_schema_and_factory_report(void)
 {
     reset_stub();
+    g_stub.schema_found = false;
+    g_stub.schema_version = 0;
+    assert(config_service_init_or_migrate() == ESP_OK);
+    assert(g_stub.schema_set_calls == 1);
+
     int32_t version = 0;
     assert(config_service_get_schema_version(&version) == ESP_OK);
     assert(version == CONFIG_SERVICE_SCHEMA_VERSION_CURRENT);

@@ -8,3 +8,4 @@
 
 esp_err_t device_repository_load(gateway_device_record_t *devices, size_t max_devices, int *device_count, bool *loaded);
 esp_err_t device_repository_save(const gateway_device_record_t *devices, size_t max_devices, int device_count);
+esp_err_t device_repository_clear(void);

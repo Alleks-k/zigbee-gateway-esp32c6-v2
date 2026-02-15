@@ -1,3 +1,5 @@
 #pragma once
 
-#include "storage_settings.h"
+#include "config_repository.h"
+#include "device_repository.h"
+#include "storage_partitions.h"

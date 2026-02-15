@@ -1,6 +1,8 @@
 #include "config_service.h"
+#include "config_repository.h"
+#include "device_repository.h"
 #include "storage_schema.h"
-#include "storage_settings.h"
+#include "storage_partitions.h"
 #include "gateway_config_types.h"
 #include "esp_log.h"
 #include <string.h>
@@ -119,7 +121,7 @@ esp_err_t config_service_save_wifi_credentials(const char *ssid, const char *pas
         return err;
     }
 
-    return settings_manager_save_wifi_credentials(ssid, password);
+    return config_repository_save_wifi_credentials(ssid, password);
 }
 
 esp_err_t config_service_load_wifi_credentials(char *ssid, size_t ssid_size,
@@ -134,7 +136,7 @@ esp_err_t config_service_load_wifi_credentials(char *ssid, size_t ssid_size,
     ssid[0] = '\0';
     password[0] = '\0';
 
-    esp_err_t err = settings_manager_load_wifi_credentials(
+    esp_err_t err = config_repository_load_wifi_credentials(
         ssid, ssid_size, password, password_size, loaded_from_storage);
     if (err != ESP_OK || !(*loaded_from_storage)) {
         return err;
@@ -154,10 +156,10 @@ esp_err_t config_service_load_wifi_credentials(char *ssid, size_t ssid_size,
 
 esp_err_t config_service_factory_reset(void)
 {
-    esp_err_t wifi_err = settings_manager_clear_wifi_credentials();
-    esp_err_t devices_err = settings_manager_clear_devices();
-    esp_err_t zb_storage_err = settings_manager_erase_zigbee_storage_partition();
-    esp_err_t zb_fct_err = settings_manager_erase_zigbee_factory_partition();
+    esp_err_t wifi_err = config_repository_clear_wifi_credentials();
+    esp_err_t devices_err = device_repository_clear();
+    esp_err_t zb_storage_err = storage_partitions_erase_zigbee_storage();
+    esp_err_t zb_fct_err = storage_partitions_erase_zigbee_factory();
 
     ESP_LOGI(TAG, "Factory reset result: wifi=%s, devices=%s, zigbee_storage=%s, zigbee_fct=%s",
              esp_err_to_name(wifi_err),

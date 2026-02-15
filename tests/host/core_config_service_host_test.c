@@ -4,8 +4,10 @@
 #include <string.h>
 
 #include "config_service.h"
+#include "config_repository.h"
+#include "device_repository.h"
 #include "storage_schema.h"
-#include "storage_settings.h"
+#include "storage_partitions.h"
 
 typedef struct {
     esp_err_t schema_init_ret;
@@ -79,9 +81,9 @@ esp_err_t storage_schema_set_version(int32_t version)
     return ESP_OK;
 }
 
-esp_err_t settings_manager_load_wifi_credentials(char *ssid, size_t ssid_size,
-                                                 char *password, size_t password_size,
-                                                 bool *loaded)
+esp_err_t config_repository_load_wifi_credentials(char *ssid, size_t ssid_size,
+                                                  char *password, size_t password_size,
+                                                  bool *loaded)
 {
     if (!ssid || !password || !loaded || ssid_size < 2 || password_size < 2) {
         return ESP_ERR_INVALID_ARG;
@@ -102,7 +104,7 @@ esp_err_t settings_manager_load_wifi_credentials(char *ssid, size_t ssid_size,
     return ESP_OK;
 }
 
-esp_err_t settings_manager_save_wifi_credentials(const char *ssid, const char *password)
+esp_err_t config_repository_save_wifi_credentials(const char *ssid, const char *password)
 {
     g_stub.save_calls++;
     if (ssid) {
@@ -116,8 +118,8 @@ esp_err_t settings_manager_save_wifi_credentials(const char *ssid, const char *p
     return g_stub.save_ret;
 }
 
-esp_err_t settings_manager_load_devices(zb_device_t *devices, size_t max_devices,
-                                        int *device_count, bool *loaded)
+esp_err_t device_repository_load(gateway_device_record_t *devices, size_t max_devices,
+                                 int *device_count, bool *loaded)
 {
     (void)devices;
     (void)max_devices;
@@ -126,8 +128,8 @@ esp_err_t settings_manager_load_devices(zb_device_t *devices, size_t max_devices
     return ESP_ERR_NOT_FOUND;
 }
 
-esp_err_t settings_manager_save_devices(const zb_device_t *devices, size_t max_devices,
-                                        int device_count)
+esp_err_t device_repository_save(const gateway_device_record_t *devices, size_t max_devices,
+                                 int device_count)
 {
     (void)devices;
     (void)max_devices;
@@ -135,22 +137,22 @@ esp_err_t settings_manager_save_devices(const zb_device_t *devices, size_t max_d
     return ESP_ERR_NOT_FOUND;
 }
 
-esp_err_t settings_manager_clear_wifi_credentials(void)
+esp_err_t config_repository_clear_wifi_credentials(void)
 {
     return g_stub.clear_wifi_ret;
 }
 
-esp_err_t settings_manager_clear_devices(void)
+esp_err_t device_repository_clear(void)
 {
     return g_stub.clear_devices_ret;
 }
 
-esp_err_t settings_manager_erase_zigbee_storage_partition(void)
+esp_err_t storage_partitions_erase_zigbee_storage(void)
 {
     return g_stub.erase_zb_storage_ret;
 }
 
-esp_err_t settings_manager_erase_zigbee_factory_partition(void)
+esp_err_t storage_partitions_erase_zigbee_factory(void)
 {
     return g_stub.erase_zb_fct_ret;
 }

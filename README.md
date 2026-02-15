@@ -56,6 +56,27 @@ cp components/gateway_net/include/wifi_settings.h.example components/gateway_net
 ./idfw flash monitor
 ```
 
+## CI parity локально
+
+Щоб локально проганяти ті самі основні перевірки, що і в CI (`self-tests`), встановіть інструменти:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y build-essential cppcheck
+```
+
+Далі запустіть:
+
+```bash
+./tools/check_arch_rules.sh
+./tools/check_component_edges.sh
+./tools/run_host_tests.sh
+./tools/run_static_analysis.sh
+./tools/run_target_self_tests.sh
+```
+
+`run_target_self_tests.sh` потребує доступного `idf.py` (через `IDF_PY`, `IDF_PATH` або після source ESP-IDF environment).
+
 ## Використання
 
 1. Після прошивки пристрій намагається підключитися до STA Wi-Fi.

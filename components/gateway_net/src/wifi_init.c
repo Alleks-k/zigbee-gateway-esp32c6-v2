@@ -4,7 +4,7 @@
 #include "wifi_sta.h"
 #include "wifi_ap_fallback.h"
 #include "net_platform_services.h"
-#include "gateway_state.h"
+#include "state_store.h"
 #include <string.h>
 
 static const char *TAG = "wifi_init";

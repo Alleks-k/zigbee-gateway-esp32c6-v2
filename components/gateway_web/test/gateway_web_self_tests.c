@@ -5,7 +5,7 @@
 #include "lqi_json_mapper.h"
 #include "error_ring.h"
 #include "device_manager.h"
-#include "gateway_state.h"
+#include "state_store.h"
 #include "ws_manager.h"
 #include "web_server.h"
 #include "cJSON.h"

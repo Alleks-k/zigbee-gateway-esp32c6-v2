@@ -3,7 +3,7 @@
 #include "api_usecases.h"
 #include "wifi_service.h"
 #include "wifi_init.h"
-#include "gateway_state.h"
+#include "state_store.h"
 #include "job_queue.h"
 #include "system_service.h"
 #include "esp_timer.h"

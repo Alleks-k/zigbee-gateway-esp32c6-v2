@@ -6,7 +6,7 @@
 #include "esp_log.h"
 #include "esp_netif.h"
 #include "esp_spiffs.h"
-#include "gateway_state.h"
+#include "state_store.h"
 #include "gateway_zigbee_runtime.h"
 #include "nvs_flash.h"
 #include "web_server.h"

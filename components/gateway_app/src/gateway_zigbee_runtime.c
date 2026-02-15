@@ -14,7 +14,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "gateway_events.h"
-#include "gateway_state.h"
+#include "state_store.h"
 #include "gateway_zigbee_runtime.h"
 #include "rcp_tool.h"
 #include "zigbee_service.h"

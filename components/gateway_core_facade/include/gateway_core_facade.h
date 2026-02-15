@@ -5,7 +5,7 @@
 #include <stdint.h>
 
 #include "esp_err.h"
-#include "gateway_state.h"
+#include "state_store.h"
 #include "wifi_service.h"
 #include "zigbee_service.h"
 

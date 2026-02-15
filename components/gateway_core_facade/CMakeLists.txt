@@ -1,0 +1,12 @@
+idf_component_register(
+    SRCS
+        "src/gateway_core_facade.c"
+    INCLUDE_DIRS
+        "include"
+    REQUIRES
+        gateway_core
+        gateway_core_jobs
+        gateway_core_system
+        gateway_core_wifi
+        gateway_core_zigbee
+)

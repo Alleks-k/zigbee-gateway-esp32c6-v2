@@ -1,7 +1,7 @@
 #include "api_handlers.h"
 #include "api_contracts.h"
+#include "gateway_core_facade.h"
 #include "http_error.h"
-#include "job_queue.h"
 
 #include <inttypes.h>
 #include <stdint.h>
@@ -16,44 +16,44 @@
 #define JOB_API_RESULT_JSON_LIMIT_UPDATE        768
 #define JOB_API_RESULT_JSON_LIMIT_LQI_REFRESH   1024
 
-static size_t job_result_json_limit_for_type(zgw_job_type_t type)
+static size_t job_result_json_limit_for_type(gateway_core_job_type_t type)
 {
     switch (type) {
-    case ZGW_JOB_TYPE_WIFI_SCAN:
+    case GATEWAY_CORE_JOB_TYPE_WIFI_SCAN:
         return JOB_API_RESULT_JSON_LIMIT_SCAN;
-    case ZGW_JOB_TYPE_FACTORY_RESET:
+    case GATEWAY_CORE_JOB_TYPE_FACTORY_RESET:
         return JOB_API_RESULT_JSON_LIMIT_FACTORY_RESET;
-    case ZGW_JOB_TYPE_REBOOT:
+    case GATEWAY_CORE_JOB_TYPE_REBOOT:
         return JOB_API_RESULT_JSON_LIMIT_REBOOT;
-    case ZGW_JOB_TYPE_LQI_REFRESH:
+    case GATEWAY_CORE_JOB_TYPE_LQI_REFRESH:
         return JOB_API_RESULT_JSON_LIMIT_LQI_REFRESH;
-    case ZGW_JOB_TYPE_UPDATE:
+    case GATEWAY_CORE_JOB_TYPE_UPDATE:
     default:
         return JOB_API_RESULT_JSON_LIMIT_UPDATE;
     }
 }
 
-static zgw_job_type_t parse_job_type(const char *type)
+static gateway_core_job_type_t parse_job_type(const char *type)
 {
     if (!type) {
-        return ZGW_JOB_TYPE_WIFI_SCAN;
+        return GATEWAY_CORE_JOB_TYPE_WIFI_SCAN;
     }
     if (strcmp(type, "scan") == 0) {
-        return ZGW_JOB_TYPE_WIFI_SCAN;
+        return GATEWAY_CORE_JOB_TYPE_WIFI_SCAN;
     }
     if (strcmp(type, "factory_reset") == 0) {
-        return ZGW_JOB_TYPE_FACTORY_RESET;
+        return GATEWAY_CORE_JOB_TYPE_FACTORY_RESET;
     }
     if (strcmp(type, "reboot") == 0) {
-        return ZGW_JOB_TYPE_REBOOT;
+        return GATEWAY_CORE_JOB_TYPE_REBOOT;
     }
     if (strcmp(type, "update") == 0) {
-        return ZGW_JOB_TYPE_UPDATE;
+        return GATEWAY_CORE_JOB_TYPE_UPDATE;
     }
     if (strcmp(type, "lqi_refresh") == 0) {
-        return ZGW_JOB_TYPE_LQI_REFRESH;
+        return GATEWAY_CORE_JOB_TYPE_LQI_REFRESH;
     }
-    return ZGW_JOB_TYPE_WIFI_SCAN;
+    return GATEWAY_CORE_JOB_TYPE_WIFI_SCAN;
 }
 
 static esp_err_t parse_job_id_from_uri(const char *uri, uint32_t *out_id)
@@ -82,24 +82,24 @@ esp_err_t api_jobs_submit_handler(httpd_req_t *req)
         return http_error_send_esp(req, err, "Invalid job payload");
     }
 
-    zgw_job_type_t type = parse_job_type(in.type);
+    gateway_core_job_type_t type = parse_job_type(in.type);
     uint32_t job_id = 0;
-    err = job_queue_submit(type, in.reboot_delay_ms, &job_id);
+    err = gateway_core_facade_job_submit(type, in.reboot_delay_ms, &job_id);
     if (err != ESP_OK) {
         return http_error_send_esp(req, err, "Failed to queue job");
     }
 
-    zgw_job_info_t info = {0};
+    gateway_core_job_info_t info = {0};
     const char *state = "queued";
-    err = job_queue_get(job_id, &info);
+    err = gateway_core_facade_job_get(job_id, &info);
     if (err == ESP_OK) {
-        state = job_queue_state_to_string(info.state);
+        state = gateway_core_facade_job_state_to_string(info.state);
     }
 
     char data_json[160];
     int written = snprintf(data_json, sizeof(data_json),
                            "{\"job_id\":%" PRIu32 ",\"type\":\"%s\",\"state\":\"%s\"}",
-                           job_id, job_queue_type_to_string(type), state);
+                           job_id, gateway_core_facade_job_type_to_string(type), state);
     if (written < 0 || (size_t)written >= sizeof(data_json)) {
         return http_error_send_esp(req, ESP_ERR_NO_MEM, "Failed to build job response");
     }
@@ -114,12 +114,12 @@ esp_err_t api_jobs_get_handler(httpd_req_t *req)
         return http_error_send_esp(req, err, "Invalid job id");
     }
 
-    zgw_job_info_t *info = (zgw_job_info_t *)calloc(1, sizeof(zgw_job_info_t));
+    gateway_core_job_info_t *info = (gateway_core_job_info_t *)calloc(1, sizeof(gateway_core_job_info_t));
     if (!info) {
         return http_error_send_esp(req, ESP_ERR_NO_MEM, "Out of memory");
     }
 
-    err = job_queue_get(job_id, info);
+    err = gateway_core_facade_job_get(job_id, info);
     if (err != ESP_OK) {
         free(info);
         return http_error_send_esp(req, err, "Job not found");
@@ -129,7 +129,7 @@ esp_err_t api_jobs_get_handler(httpd_req_t *req)
     char truncated_result_json[96];
     size_t result_limit = job_result_json_limit_for_type(info->type);
     if (info->has_result) {
-        size_t result_len = strnlen(info->result_json, ZGW_JOB_RESULT_MAX_LEN);
+        size_t result_len = strnlen(info->result_json, sizeof(info->result_json));
         if (result_len > result_limit) {
             int t_written = snprintf(
                 truncated_result_json, sizeof(truncated_result_json),
@@ -149,9 +149,9 @@ esp_err_t api_jobs_get_handler(httpd_req_t *req)
         "{\"job_id\":%" PRIu32 ",\"type\":\"%s\",\"state\":\"%s\",\"done\":%s,"
         "\"created_ms\":%" PRIu64 ",\"updated_ms\":%" PRIu64 ",\"error\":\"%s\",\"result\":%s}",
         info->id,
-        job_queue_type_to_string(info->type),
-        job_queue_state_to_string(info->state),
-        (info->state == ZGW_JOB_STATE_SUCCEEDED || info->state == ZGW_JOB_STATE_FAILED) ? "true" : "false",
+        gateway_core_facade_job_type_to_string(info->type),
+        gateway_core_facade_job_state_to_string(info->state),
+        (info->state == GATEWAY_CORE_JOB_STATE_SUCCEEDED || info->state == GATEWAY_CORE_JOB_STATE_FAILED) ? "true" : "false",
         info->created_ms,
         info->updated_ms,
         esp_err_to_name(info->err),
@@ -173,9 +173,9 @@ esp_err_t api_jobs_get_handler(httpd_req_t *req)
         "{\"job_id\":%" PRIu32 ",\"type\":\"%s\",\"state\":\"%s\",\"done\":%s,"
         "\"created_ms\":%" PRIu64 ",\"updated_ms\":%" PRIu64 ",\"error\":\"%s\",\"result\":%s}",
         info->id,
-        job_queue_type_to_string(info->type),
-        job_queue_state_to_string(info->state),
-        (info->state == ZGW_JOB_STATE_SUCCEEDED || info->state == ZGW_JOB_STATE_FAILED) ? "true" : "false",
+        gateway_core_facade_job_type_to_string(info->type),
+        gateway_core_facade_job_state_to_string(info->state),
+        (info->state == GATEWAY_CORE_JOB_STATE_SUCCEEDED || info->state == GATEWAY_CORE_JOB_STATE_FAILED) ? "true" : "false",
         info->created_ms,
         info->updated_ms,
         esp_err_to_name(info->err),

@@ -17,4 +17,15 @@ cc -std=c11 -Wall -Wextra -Werror \
 
 "${BUILD_DIR}/core_config_service_host_test"
 
+cc -std=c11 -Wall -Wextra -Werror \
+    -I"${ROOT_DIR}/tests/host/include" \
+    -I"${ROOT_DIR}/components/gateway_core/include" \
+    -I"${ROOT_DIR}/components/gateway_core_storage/include" \
+    -I"${ROOT_DIR}/components/gateway_shared_config/include" \
+    "${ROOT_DIR}/tests/host/device_service_rules_host_test.c" \
+    "${ROOT_DIR}/components/gateway_core/src/device_service_rules.c" \
+    -o "${BUILD_DIR}/device_service_rules_host_test"
+
+"${BUILD_DIR}/device_service_rules_host_test"
+
 echo "All host tests passed."

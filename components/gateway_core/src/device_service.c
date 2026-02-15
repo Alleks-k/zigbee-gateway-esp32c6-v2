@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "device_repository.h"
+#include "device_service_rules.h"
 #include "esp_event.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
@@ -16,6 +17,7 @@ static SemaphoreHandle_t s_devices_mutex = NULL;
 static zb_device_t s_devices[MAX_DEVICES];
 static int s_device_count = 0;
 static esp_event_handler_instance_t s_dev_announce_handler = NULL;
+static const char *s_default_device_name_prefix = "Пристрій";
 
 static void save_devices_locked(void)
 {
@@ -102,30 +104,29 @@ esp_err_t device_service_init(void)
 
 void device_service_add_with_ieee(uint16_t addr, gateway_ieee_addr_t ieee)
 {
+    device_service_rules_result_t upsert_result = DEVICE_SERVICE_RULES_RESULT_INVALID_ARG;
+
     if (s_devices_mutex) {
         xSemaphoreTake(s_devices_mutex, portMAX_DELAY);
     }
 
-    for (int i = 0; i < s_device_count; i++) {
-        if (s_devices[i].short_addr == addr) {
-            ESP_LOGI(TAG, "Device 0x%04x is already in the list, updating IEEE", addr);
-            memcpy(s_devices[i].ieee_addr, ieee, sizeof(gateway_ieee_addr_t));
-            if (s_devices_mutex) {
-                xSemaphoreGive(s_devices_mutex);
-            }
-            return;
+    upsert_result = device_service_rules_upsert(
+        s_devices, &s_device_count, MAX_DEVICES, addr, ieee, s_default_device_name_prefix);
+    if (upsert_result == DEVICE_SERVICE_RULES_RESULT_UPDATED) {
+        ESP_LOGI(TAG, "Device 0x%04x is already in the list, updating IEEE", addr);
+        if (s_devices_mutex) {
+            xSemaphoreGive(s_devices_mutex);
         }
+        return;
     }
 
-    if (s_device_count < MAX_DEVICES) {
-        s_devices[s_device_count].short_addr = addr;
-        memcpy(s_devices[s_device_count].ieee_addr, ieee, sizeof(gateway_ieee_addr_t));
-        snprintf(s_devices[s_device_count].name, sizeof(s_devices[s_device_count].name), "Пристрій 0x%04x", addr);
-        s_device_count++;
+    if (upsert_result == DEVICE_SERVICE_RULES_RESULT_ADDED) {
         ESP_LOGI(TAG, "New device added: 0x%04x. Total: %d", addr, s_device_count);
         save_devices_locked();
-    } else {
+    } else if (upsert_result == DEVICE_SERVICE_RULES_RESULT_LIMIT_REACHED) {
         ESP_LOGW(TAG, "Maximum device limit reached (%d)", MAX_DEVICES);
+    } else if (upsert_result == DEVICE_SERVICE_RULES_RESULT_INVALID_ARG) {
+        ESP_LOGW(TAG, "Invalid input for add/update operation");
     }
 
     if (s_devices_mutex) {
@@ -139,19 +140,19 @@ void device_service_update_name(uint16_t addr, const char *new_name)
     if (!new_name) {
         return;
     }
+    bool renamed = false;
 
     if (s_devices_mutex) {
         xSemaphoreTake(s_devices_mutex, portMAX_DELAY);
     }
 
-    for (int i = 0; i < s_device_count; i++) {
-        if (s_devices[i].short_addr == addr) {
-            strncpy(s_devices[i].name, new_name, sizeof(s_devices[i].name) - 1);
-            s_devices[i].name[sizeof(s_devices[i].name) - 1] = '\0';
-            ESP_LOGI(TAG, "Device 0x%04x renamed to '%s'", addr, s_devices[i].name);
-            save_devices_locked();
-            break;
+    renamed = device_service_rules_rename(s_devices, s_device_count, addr, new_name);
+    if (renamed) {
+        int idx = device_service_rules_find_index_by_short_addr(s_devices, s_device_count, addr);
+        if (idx >= 0) {
+            ESP_LOGI(TAG, "Device 0x%04x renamed to '%s'", addr, s_devices[idx].name);
         }
+        save_devices_locked();
     }
 
     if (s_devices_mutex) {
@@ -162,26 +163,18 @@ void device_service_update_name(uint16_t addr, const char *new_name)
 
 void device_service_delete(uint16_t addr)
 {
+    bool deleted = false;
+    gateway_device_delete_request_event_t req_evt = {0};
+
     if (s_devices_mutex) {
         xSemaphoreTake(s_devices_mutex, portMAX_DELAY);
     }
 
-    int found_idx = -1;
-    gateway_device_delete_request_event_t req_evt = {0};
-    for (int i = 0; i < s_device_count; i++) {
-        if (s_devices[i].short_addr == addr) {
-            found_idx = i;
-            req_evt.short_addr = s_devices[i].short_addr;
-            memcpy(req_evt.ieee_addr, s_devices[i].ieee_addr, sizeof(req_evt.ieee_addr));
-            break;
-        }
-    }
-
-    if (found_idx != -1) {
-        for (int i = found_idx; i < s_device_count - 1; i++) {
-            s_devices[i] = s_devices[i + 1];
-        }
-        s_device_count--;
+    zb_device_t deleted_device = {0};
+    deleted = device_service_rules_delete_by_short_addr(s_devices, &s_device_count, addr, &deleted_device);
+    if (deleted) {
+        req_evt.short_addr = deleted_device.short_addr;
+        memcpy(req_evt.ieee_addr, deleted_device.ieee_addr, sizeof(req_evt.ieee_addr));
         ESP_LOGI(TAG, "Device 0x%04x removed. Remaining: %d", addr, s_device_count);
         save_devices_locked();
     }
@@ -189,7 +182,7 @@ void device_service_delete(uint16_t addr)
     if (s_devices_mutex) {
         xSemaphoreGive(s_devices_mutex);
     }
-    if (found_idx != -1) {
+    if (deleted) {
         post_device_delete_request_event(req_evt.short_addr, req_evt.ieee_addr);
     }
     post_device_list_changed_event();

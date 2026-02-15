@@ -19,7 +19,7 @@
 #include "device_manager.h"
 #include "gateway_events.h"
 #include "gateway_state.h"
-#include "settings_manager.h"
+#include "config_service.h"
 #include "zigbee_service.h"
 #include "esp_event.h"
 #include "esp_timer.h"
@@ -282,7 +282,7 @@ static void esp_zb_task(void *pvParameters)
 void app_main(void)
 {
     ESP_ERROR_CHECK(nvs_flash_init());
-    ESP_ERROR_CHECK(settings_manager_init_or_migrate());
+    ESP_ERROR_CHECK(config_service_init_or_migrate());
     ESP_ERROR_CHECK(gateway_state_init());
     gateway_state_publish(false, false);
     ESP_ERROR_CHECK(esp_netif_init());

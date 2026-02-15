@@ -224,12 +224,6 @@ esp_err_t settings_manager_save_wifi_credentials(const char *ssid, const char *p
         return ESP_ERR_INVALID_ARG;
     }
 
-    size_t ssid_len = strlen(ssid);
-    size_t pass_len = strlen(password);
-    if (ssid_len == 0 || ssid_len > 32 || pass_len < 8 || pass_len > 64) {
-        return ESP_ERR_INVALID_ARG;
-    }
-
     esp_err_t err = settings_lock();
     if (err != ESP_OK) {
         return err;

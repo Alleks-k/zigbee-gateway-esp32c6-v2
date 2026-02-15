@@ -632,6 +632,12 @@ CONFIG_PARTITION_TABLE_MD5=y
 # end of Partition Table
 
 #
+# ESP Zigbee gateway core
+#
+CONFIG_GATEWAY_MAX_DEVICES=10
+# end of ESP Zigbee gateway core
+
+#
 # ESP Zigbee gateway tests
 #
 # CONFIG_GATEWAY_SELF_TEST_APP is not set

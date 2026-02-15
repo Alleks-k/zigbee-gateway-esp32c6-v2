@@ -2,7 +2,7 @@
 #include "device_manager.h"
 #include "zigbee_service.h"
 #include "wifi_service.h"
-#include "settings_manager.h"
+#include "config_service.h"
 
 static void test_device_snapshot_null_buffer(void)
 {
@@ -25,14 +25,14 @@ static void test_service_wifi_save_rejects_invalid_input(void)
 
 static void test_settings_schema_migration_smoke(void)
 {
-    TEST_ASSERT_EQUAL(ESP_OK, settings_manager_init_or_migrate());
+    TEST_ASSERT_EQUAL(ESP_OK, config_service_init_or_migrate());
     int32_t ver = 0;
-    TEST_ASSERT_EQUAL(ESP_OK, settings_manager_get_schema_version(&ver));
-    TEST_ASSERT_EQUAL_INT(SETTINGS_SCHEMA_VERSION_CURRENT, ver);
+    TEST_ASSERT_EQUAL(ESP_OK, config_service_get_schema_version(&ver));
+    TEST_ASSERT_EQUAL_INT(CONFIG_SERVICE_SCHEMA_VERSION_CURRENT, ver);
 
-    TEST_ASSERT_EQUAL(ESP_OK, settings_manager_init_or_migrate());
-    TEST_ASSERT_EQUAL(ESP_OK, settings_manager_get_schema_version(&ver));
-    TEST_ASSERT_EQUAL_INT(SETTINGS_SCHEMA_VERSION_CURRENT, ver);
+    TEST_ASSERT_EQUAL(ESP_OK, config_service_init_or_migrate());
+    TEST_ASSERT_EQUAL(ESP_OK, config_service_get_schema_version(&ver));
+    TEST_ASSERT_EQUAL_INT(CONFIG_SERVICE_SCHEMA_VERSION_CURRENT, ver);
 }
 
 void gateway_core_register_self_tests(void)

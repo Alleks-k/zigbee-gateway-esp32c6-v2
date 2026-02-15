@@ -3,7 +3,7 @@
 #include "wifi_service.h"
 #include "system_service.h"
 #include "gateway_state.h"
-#include "settings_manager.h"
+#include "config_service.h"
 #include "job_queue.h"
 #include <string.h>
 
@@ -233,7 +233,7 @@ esp_err_t api_usecase_collect_health_snapshot(api_health_snapshot_t *out)
     strlcpy(out->wifi_active_ssid, wifi_state.active_ssid, sizeof(out->wifi_active_ssid));
 
     int32_t schema_version = 0;
-    err = settings_manager_get_schema_version(&schema_version);
+    err = config_service_get_schema_version(&schema_version);
     out->nvs_ok = (err == ESP_OK);
     out->nvs_schema_version = (err == ESP_OK) ? schema_version : -1;
 

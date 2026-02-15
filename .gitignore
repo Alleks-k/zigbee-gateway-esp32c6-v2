@@ -1,4 +1,5 @@
 # ESP-IDF Build Artifacts
+an/
 build/
 sdkconfig.old
 sdkconfig.temp

@@ -1,6 +1,5 @@
 #include "settings_manager.h"
-#include "nvs.h"
-#include "esp_partition.h"
+#include "storage_kv.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
@@ -36,7 +35,7 @@ static void settings_unlock(void)
     }
 }
 
-typedef esp_err_t (*settings_migration_fn_t)(nvs_handle_t handle);
+typedef esp_err_t (*settings_migration_fn_t)(storage_kv_handle_t handle);
 
 typedef struct {
     int32_t from_version;
@@ -44,7 +43,7 @@ typedef struct {
     settings_migration_fn_t migrate;
 } settings_migration_step_t;
 
-static esp_err_t migrate_v0_to_v1(nvs_handle_t handle)
+static esp_err_t migrate_v0_to_v1(storage_kv_handle_t handle)
 {
     (void)handle;
     // v0 schema had no explicit version key; data keys are compatible with v1.
@@ -55,14 +54,17 @@ static const settings_migration_step_t s_migration_steps[] = {
     {0, 1, migrate_v0_to_v1},
 };
 
-static esp_err_t settings_get_schema_version_locked(nvs_handle_t handle, int32_t *out_version)
+static esp_err_t settings_get_schema_version_locked(storage_kv_handle_t handle, int32_t *out_version)
 {
-    esp_err_t err = nvs_get_i32(handle, KEY_SCHEMA_VER, out_version);
-    if (err == ESP_ERR_NVS_NOT_FOUND) {
-        *out_version = 0; // Legacy schema: keys exist without explicit version.
-        return ESP_OK;
+    bool found = false;
+    esp_err_t err = storage_kv_get_i32(handle, KEY_SCHEMA_VER, out_version, &found);
+    if (err != ESP_OK) {
+        return err;
     }
-    return err;
+    if (!found) {
+        *out_version = 0; // Legacy schema: keys exist without explicit version.
+    }
+    return ESP_OK;
 }
 
 static const settings_migration_step_t *settings_find_migration_step(int32_t from_version)
@@ -86,12 +88,12 @@ esp_err_t settings_manager_get_schema_version(int32_t *out_version)
         return err;
     }
 
-    nvs_handle_t handle;
-    err = nvs_open(NVS_NAMESPACE, NVS_READONLY, &handle);
+    storage_kv_handle_t handle = NULL;
+    err = storage_kv_open_readonly(NVS_NAMESPACE, &handle);
     if (err == ESP_OK) {
         err = settings_get_schema_version_locked(handle, out_version);
-        nvs_close(handle);
-    } else if (err == ESP_ERR_NVS_NOT_FOUND) {
+        storage_kv_close(handle);
+    } else if (err == ESP_ERR_NOT_FOUND) {
         *out_version = 0;
         err = ESP_OK;
     }
@@ -102,13 +104,18 @@ esp_err_t settings_manager_get_schema_version(int32_t *out_version)
 
 esp_err_t settings_manager_init_or_migrate(void)
 {
-    esp_err_t err = settings_lock();
+    esp_err_t err = storage_kv_init();
     if (err != ESP_OK) {
         return err;
     }
 
-    nvs_handle_t handle;
-    err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle);
+    err = settings_lock();
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    storage_kv_handle_t handle = NULL;
+    err = storage_kv_open_readwrite(NVS_NAMESPACE, &handle);
     if (err != ESP_OK) {
         settings_unlock();
         return err;
@@ -117,7 +124,7 @@ esp_err_t settings_manager_init_or_migrate(void)
     int32_t version = 0;
     err = settings_get_schema_version_locked(handle, &version);
     if (err != ESP_OK) {
-        nvs_close(handle);
+        storage_kv_close(handle);
         settings_unlock();
         return err;
     }
@@ -125,7 +132,7 @@ esp_err_t settings_manager_init_or_migrate(void)
     if (version > SETTINGS_SCHEMA_VERSION_CURRENT) {
         ESP_LOGE(TAG, "Unsupported settings schema version: %ld > %d",
                  (long)version, SETTINGS_SCHEMA_VERSION_CURRENT);
-        nvs_close(handle);
+        storage_kv_close(handle);
         settings_unlock();
         return ESP_ERR_INVALID_VERSION;
     }
@@ -136,7 +143,7 @@ esp_err_t settings_manager_init_or_migrate(void)
         while (version < SETTINGS_SCHEMA_VERSION_CURRENT) {
             const settings_migration_step_t *step = settings_find_migration_step(version);
             if (!step || !step->migrate || step->to_version <= step->from_version) {
-                nvs_close(handle);
+                storage_kv_close(handle);
                 settings_unlock();
                 ESP_LOGE(TAG, "Missing migration step from v%ld", (long)version);
                 return ESP_ERR_NOT_SUPPORTED;
@@ -144,19 +151,19 @@ esp_err_t settings_manager_init_or_migrate(void)
 
             err = step->migrate(handle);
             if (err != ESP_OK) {
-                nvs_close(handle);
+                storage_kv_close(handle);
                 settings_unlock();
                 ESP_LOGE(TAG, "Migration function failed: v%ld -> v%ld (%s)",
                          (long)step->from_version, (long)step->to_version, esp_err_to_name(err));
                 return err;
             }
 
-            err = nvs_set_i32(handle, KEY_SCHEMA_VER, step->to_version);
+            err = storage_kv_set_i32(handle, KEY_SCHEMA_VER, step->to_version);
             if (err == ESP_OK) {
-                err = nvs_commit(handle);
+                err = storage_kv_commit(handle);
             }
             if (err != ESP_OK) {
-                nvs_close(handle);
+                storage_kv_close(handle);
                 settings_unlock();
                 ESP_LOGE(TAG, "Failed to persist schema version v%ld: %s",
                          (long)step->to_version, esp_err_to_name(err));
@@ -169,7 +176,7 @@ esp_err_t settings_manager_init_or_migrate(void)
         }
     }
 
-    nvs_close(handle);
+    storage_kv_close(handle);
     settings_unlock();
     return ESP_OK;
 }
@@ -191,18 +198,19 @@ esp_err_t settings_manager_load_wifi_credentials(char *ssid, size_t ssid_size,
         return err;
     }
 
-    nvs_handle_t handle;
-    err = nvs_open(NVS_NAMESPACE, NVS_READONLY, &handle);
+    storage_kv_handle_t handle = NULL;
+    err = storage_kv_open_readonly(NVS_NAMESPACE, &handle);
     if (err == ESP_OK) {
-        size_t ssid_len = ssid_size;
-        size_t pass_len = password_size;
-        if (nvs_get_str(handle, "wifi_ssid", ssid, &ssid_len) == ESP_OK &&
-            nvs_get_str(handle, "wifi_pass", password, &pass_len) == ESP_OK) {
+        bool ssid_found = false;
+        bool pass_found = false;
+        esp_err_t ssid_err = storage_kv_get_str(handle, "wifi_ssid", ssid, ssid_size, &ssid_found);
+        esp_err_t pass_err = storage_kv_get_str(handle, "wifi_pass", password, password_size, &pass_found);
+        if (ssid_err == ESP_OK && pass_err == ESP_OK && ssid_found && pass_found) {
             *loaded = true;
         }
-        nvs_close(handle);
+        storage_kv_close(handle);
         err = ESP_OK;
-    } else if (err == ESP_ERR_NVS_NOT_FOUND) {
+    } else if (err == ESP_ERR_NOT_FOUND) {
         err = ESP_OK;
     }
 
@@ -227,17 +235,17 @@ esp_err_t settings_manager_save_wifi_credentials(const char *ssid, const char *p
         return err;
     }
 
-    nvs_handle_t handle;
-    err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle);
+    storage_kv_handle_t handle = NULL;
+    err = storage_kv_open_readwrite(NVS_NAMESPACE, &handle);
     if (err == ESP_OK) {
-        err = nvs_set_str(handle, "wifi_ssid", ssid);
+        err = storage_kv_set_str(handle, "wifi_ssid", ssid);
         if (err == ESP_OK) {
-            err = nvs_set_str(handle, "wifi_pass", password);
+            err = storage_kv_set_str(handle, "wifi_pass", password);
         }
         if (err == ESP_OK) {
-            err = nvs_commit(handle);
+            err = storage_kv_commit(handle);
         }
-        nvs_close(handle);
+        storage_kv_close(handle);
     }
 
     settings_unlock();
@@ -260,26 +268,30 @@ esp_err_t settings_manager_load_devices(zb_device_t *devices, size_t max_devices
         return err;
     }
 
-    nvs_handle_t handle;
-    err = nvs_open(NVS_NAMESPACE, NVS_READONLY, &handle);
+    storage_kv_handle_t handle = NULL;
+    err = storage_kv_open_readonly(NVS_NAMESPACE, &handle);
     if (err == ESP_OK) {
         int32_t count = 0;
-        if (nvs_get_i32(handle, "dev_count", &count) == ESP_OK) {
+        bool count_found = false;
+        if (storage_kv_get_i32(handle, "dev_count", &count, &count_found) == ESP_OK && count_found) {
             if (count < 0) {
                 count = 0;
             }
             if ((size_t)count > max_devices) {
                 count = (int32_t)max_devices;
             }
-            size_t size = sizeof(zb_device_t) * max_devices;
-            if (nvs_get_blob(handle, "dev_list", devices, &size) == ESP_OK) {
+            size_t out_len = 0;
+            bool blob_found = false;
+            if (storage_kv_get_blob(handle, "dev_list", devices, sizeof(zb_device_t) * max_devices, &out_len,
+                                    &blob_found) == ESP_OK &&
+                blob_found) {
                 *device_count = (int)count;
                 *loaded = true;
             }
         }
-        nvs_close(handle);
+        storage_kv_close(handle);
         err = ESP_OK;
-    } else if (err == ESP_ERR_NVS_NOT_FOUND) {
+    } else if (err == ESP_ERR_NOT_FOUND) {
         err = ESP_OK;
     }
 
@@ -299,17 +311,17 @@ esp_err_t settings_manager_save_devices(const zb_device_t *devices, size_t max_d
         return err;
     }
 
-    nvs_handle_t handle;
-    err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle);
+    storage_kv_handle_t handle = NULL;
+    err = storage_kv_open_readwrite(NVS_NAMESPACE, &handle);
     if (err == ESP_OK) {
-        err = nvs_set_i32(handle, "dev_count", device_count);
+        err = storage_kv_set_i32(handle, "dev_count", device_count);
         if (err == ESP_OK) {
-            err = nvs_set_blob(handle, "dev_list", devices, sizeof(zb_device_t) * max_devices);
+            err = storage_kv_set_blob(handle, "dev_list", devices, sizeof(zb_device_t) * max_devices);
         }
         if (err == ESP_OK) {
-            err = nvs_commit(handle);
+            err = storage_kv_commit(handle);
         }
-        nvs_close(handle);
+        storage_kv_close(handle);
     }
 
     settings_unlock();
@@ -328,40 +340,40 @@ esp_err_t settings_manager_factory_reset(void)
         return err;
     }
 
-    nvs_handle_t handle;
-    err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle);
+    storage_kv_handle_t handle = NULL;
+    err = storage_kv_open_readwrite(NVS_NAMESPACE, &handle);
     if (err == ESP_OK) {
-        esp_err_t key_err = nvs_erase_key(handle, "wifi_ssid");
-        if (key_err != ESP_OK && key_err != ESP_ERR_NVS_NOT_FOUND) {
+        esp_err_t key_err = storage_kv_erase_key(handle, "wifi_ssid", NULL);
+        if (key_err != ESP_OK) {
             wifi_err = key_err;
         }
-        key_err = nvs_erase_key(handle, "wifi_pass");
-        if (wifi_err == ESP_OK && key_err != ESP_OK && key_err != ESP_ERR_NVS_NOT_FOUND) {
+        key_err = storage_kv_erase_key(handle, "wifi_pass", NULL);
+        if (wifi_err == ESP_OK && key_err != ESP_OK) {
             wifi_err = key_err;
         }
         if (wifi_err == ESP_OK) {
-            esp_err_t commit_err = nvs_commit(handle);
+            esp_err_t commit_err = storage_kv_commit(handle);
             if (commit_err != ESP_OK) {
                 wifi_err = commit_err;
             }
         }
 
-        key_err = nvs_erase_key(handle, "dev_count");
-        if (key_err != ESP_OK && key_err != ESP_ERR_NVS_NOT_FOUND) {
+        key_err = storage_kv_erase_key(handle, "dev_count", NULL);
+        if (key_err != ESP_OK) {
             devices_err = key_err;
         }
-        key_err = nvs_erase_key(handle, "dev_list");
-        if (devices_err == ESP_OK && key_err != ESP_OK && key_err != ESP_ERR_NVS_NOT_FOUND) {
+        key_err = storage_kv_erase_key(handle, "dev_list", NULL);
+        if (devices_err == ESP_OK && key_err != ESP_OK) {
             devices_err = key_err;
         }
         if (devices_err == ESP_OK) {
-            esp_err_t commit_err = nvs_commit(handle);
+            esp_err_t commit_err = storage_kv_commit(handle);
             if (commit_err != ESP_OK) {
                 devices_err = commit_err;
             }
         }
 
-        nvs_close(handle);
+        storage_kv_close(handle);
     } else {
         wifi_err = err;
         devices_err = err;
@@ -369,21 +381,8 @@ esp_err_t settings_manager_factory_reset(void)
 
     settings_unlock();
 
-    const esp_partition_t *zb_storage_part =
-        esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_ANY, "zb_storage");
-    if (!zb_storage_part) {
-        zb_storage_err = ESP_ERR_NOT_FOUND;
-    } else {
-        zb_storage_err = esp_partition_erase_range(zb_storage_part, 0, zb_storage_part->size);
-    }
-
-    const esp_partition_t *zb_fct_part =
-        esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_ANY, "zb_fct");
-    if (!zb_fct_part) {
-        zb_fct_err = ESP_ERR_NOT_FOUND;
-    } else {
-        zb_fct_err = esp_partition_erase_range(zb_fct_part, 0, zb_fct_part->size);
-    }
+    zb_storage_err = storage_kv_erase_partition("zb_storage", NULL);
+    zb_fct_err = storage_kv_erase_partition("zb_fct", NULL);
 
     ESP_LOGI(TAG, "Factory reset group result: wifi=%s, devices=%s, zigbee_storage=%s, zigbee_fct=%s",
              esp_err_to_name(wifi_err),

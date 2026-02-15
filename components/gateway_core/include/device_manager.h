@@ -6,7 +6,10 @@
 
 typedef struct cJSON cJSON;
 
+/* Використовуємо Kconfig для гнучкості */
+#ifndef CONFIG_GATEWAY_MAX_DEVICES
 #define MAX_DEVICES 10
+#endif
 
 typedef struct {
     uint16_t short_addr;
@@ -16,8 +19,9 @@ typedef struct {
 
 /**
  * @brief Ініціалізація менеджера пристроїв (завантаження з NVS)
+ * @return esp_err_t ESP_OK on success
  */
-void device_manager_init(void);
+esp_err_t device_manager_init(void);
 
 /**
  * @brief Додавання або оновлення пристрою
@@ -48,3 +52,10 @@ cJSON* device_manager_get_json_list(void);
  * @return int Number of copied items.
  */
 int device_manager_get_snapshot(zb_device_t *out, size_t max_items);
+
+/**
+ * @brief Thread-safe lock for device manager operations
+ * Корисно, якщо ви плануєте складні операції читання/запису з різних задач
+ */
+void device_manager_lock(void);
+void device_manager_unlock(void);

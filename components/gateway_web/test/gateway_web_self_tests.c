@@ -4,6 +4,7 @@
 #include "api_usecases.h"
 #include "lqi_json_mapper.h"
 #include "error_ring.h"
+#include "device_manager.h"
 #include "gateway_state.h"
 #include "ws_manager.h"
 #include "web_server.h"
@@ -14,6 +15,36 @@
 #include <unistd.h>
 #include "lwip/sockets.h"
 #include "lwip/inet.h"
+
+static void test_reset_devices(void)
+{
+    TEST_ASSERT_EQUAL(ESP_OK, device_manager_init());
+
+    zb_device_t snapshot[MAX_DEVICES] = {0};
+    int count = device_manager_get_snapshot(snapshot, MAX_DEVICES);
+    for (int i = 0; i < count; i++) {
+        delete_device(snapshot[i].short_addr);
+    }
+}
+
+static void test_seed_devices(const zb_device_t *devices, int count, bool reset_first)
+{
+    TEST_ASSERT_NOT_NULL(devices);
+    TEST_ASSERT_TRUE(count >= 0);
+    TEST_ASSERT_TRUE(count <= MAX_DEVICES);
+    TEST_ASSERT_EQUAL(ESP_OK, device_manager_init());
+    if (reset_first) {
+        test_reset_devices();
+    }
+
+    for (int i = 0; i < count; i++) {
+        gateway_ieee_addr_t ieee = {0};
+        ieee[0] = (uint8_t)(devices[i].short_addr & 0xFF);
+        ieee[1] = (uint8_t)((devices[i].short_addr >> 8) & 0xFF);
+        add_device_with_ieee(devices[i].short_addr, ieee);
+        update_device_name(devices[i].short_addr, devices[i].name);
+    }
+}
 
 static void test_devices_json_builder_small_buffer_fails(void)
 {
@@ -107,7 +138,7 @@ static void test_lqi_json_mapper_uses_cached_snapshot_contract(void)
         {.short_addr = 0x1001, .name = "Dev A"},
         {.short_addr = 0x1002, .name = "Dev B"},
     };
-    TEST_ASSERT_EQUAL(ESP_OK, gateway_state_set_devices(devices, 2));
+    test_seed_devices(devices, 2, true);
     TEST_ASSERT_EQUAL(ESP_OK, gateway_state_update_device_lqi(0x1001, 150, 127, GATEWAY_LQI_SOURCE_MGMT_LQI, 1000));
     TEST_ASSERT_EQUAL(ESP_OK, gateway_state_update_device_lqi(0x1002, 70, -80, GATEWAY_LQI_SOURCE_NEIGHBOR_TABLE, 900));
 
@@ -345,7 +376,7 @@ static void ws_seed_large_device_snapshot(uint32_t iter)
         devices[i].short_addr = (uint16_t)(0x2000 + i);
         snprintf(devices[i].name, sizeof(devices[i].name), "BackpressureNode-%02d-%04" PRIu32, i, iter);
     }
-    TEST_ASSERT_EQUAL(ESP_OK, gateway_state_set_devices(devices, count));
+    test_seed_devices(devices, count, true);
 }
 
 static esp_err_t ws_test_send_frame_async(httpd_handle_t hd, int fd, httpd_ws_frame_t *frame)

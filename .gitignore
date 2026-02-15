@@ -1,6 +1,8 @@
 # ESP-IDF Build Artifacts
 an/
 build/
+build-host/
+build-selftest/
 sdkconfig.old
 sdkconfig.temp
 managed_components/

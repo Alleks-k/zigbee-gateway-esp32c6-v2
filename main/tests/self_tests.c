@@ -7,6 +7,7 @@ static const char *TAG = "SELF_TESTS";
 
 /* Component test suites (defined in gateway_core/test and gateway_web/test). */
 extern void gateway_core_register_self_tests(void);
+extern void gateway_core_storage_register_self_tests(void);
 extern void gateway_web_register_self_tests(void);
 
 /* E2E/integration tests kept in main/tests. */
@@ -17,6 +18,7 @@ int zgw_run_self_tests(void)
     ESP_LOGW(TAG, "Running gateway self-tests");
     UNITY_BEGIN();
     gateway_core_register_self_tests();
+    gateway_core_storage_register_self_tests();
     gateway_web_register_self_tests();
     zgw_register_e2e_self_tests();
     int failures = UNITY_END();

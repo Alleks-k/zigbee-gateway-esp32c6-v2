@@ -1,7 +1,7 @@
 #include "job_queue.h"
 #include "wifi_service.h"
 #include "system_service.h"
-#include "settings_manager.h"
+#include "config_service.h"
 #include "rcp_tool.h"
 #include "zigbee_service.h"
 #include "gateway_events.h"
@@ -257,13 +257,13 @@ static esp_err_t build_scan_result_json(char *out, size_t out_size)
 
 static esp_err_t build_factory_reset_result_json(char *out, size_t out_size)
 {
-    esp_err_t err = settings_manager_factory_reset();
+    esp_err_t err = config_service_factory_reset();
     if (err != ESP_OK) {
         return err;
     }
 
-    settings_manager_factory_reset_report_t report = {0};
-    err = settings_manager_get_last_factory_reset_report(&report);
+    config_service_factory_reset_report_t report = {0};
+    err = config_service_get_last_factory_reset_report(&report);
     if (err != ESP_OK) {
         return err;
     }

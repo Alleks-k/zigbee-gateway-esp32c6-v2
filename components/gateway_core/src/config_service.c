@@ -73,3 +73,17 @@ esp_err_t config_service_load_wifi_credentials(char *ssid, size_t ssid_size,
 
     return ESP_OK;
 }
+
+esp_err_t config_service_factory_reset(void)
+{
+    return settings_manager_factory_reset();
+}
+
+esp_err_t config_service_get_last_factory_reset_report(config_service_factory_reset_report_t *out_report)
+{
+    if (!out_report) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    return settings_manager_get_last_factory_reset_report(out_report);
+}

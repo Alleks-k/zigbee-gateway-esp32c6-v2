@@ -17,6 +17,7 @@ if(CONFIG_GATEWAY_SELF_TEST_APP)
         "tests/e2e_self_tests.c"
         "tests/self_tests_app_main.c")
     list(APPEND main_reqs
+        gateway_core_state
         gateway_core_wifi
         gateway_core_jobs
         unity)

@@ -5,6 +5,7 @@ idf_component_register(
         "include"
     REQUIRES
         gateway_core
+        gateway_core_state
         gateway_core_jobs
         gateway_core_system
         gateway_core_wifi

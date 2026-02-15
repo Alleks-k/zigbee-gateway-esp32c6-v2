@@ -15,7 +15,9 @@ set(gateway_web_priv_reqs
 
 if(CONFIG_GATEWAY_SELF_TEST_APP)
     list(APPEND gateway_web_srcs "test/gateway_web_self_tests.c")
-    list(APPEND gateway_web_priv_reqs unity)
+    list(APPEND gateway_web_priv_reqs
+        gateway_core_state
+        unity)
 endif()
 
 idf_component_register(

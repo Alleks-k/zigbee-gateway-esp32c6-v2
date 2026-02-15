@@ -1,14 +1,10 @@
 idf_component_register(
     SRCS
-        "src/zigbee_service.c"
-        "src/zigbee_selftest_shims.c"
+        "src/gateway_state.c"
     INCLUDE_DIRS
         "include"
     REQUIRES
-        gateway_core
-        gateway_core_state
         gateway_shared_config
     PRIV_REQUIRES
-        esp-zigbee-lib
         esp_timer
 )

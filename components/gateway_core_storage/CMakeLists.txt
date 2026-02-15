@@ -1,7 +1,6 @@
 set(gateway_core_storage_srcs
     "src/config_repository_nvs.c"
     "src/device_repository_nvs.c"
-    "src/gateway_state.c"
     "src/storage_kv_nvs.c"
     "src/storage_partitions_nvs.c"
     "src/storage_schema_nvs.c"

@@ -11,6 +11,7 @@ idf_component_register(
         spiffs
         gateway_core
         gateway_core_events
+        gateway_core_state
         gateway_core_system
         gateway_core_zigbee
         gateway_net

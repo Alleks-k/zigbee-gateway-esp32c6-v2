@@ -9,7 +9,7 @@ idf_component_register(
         "include"
     REQUIRES
         gateway_core
-        gateway_core_storage
+        gateway_core_state
         gateway_core_wifi
         gateway_core_system
         esp_wifi

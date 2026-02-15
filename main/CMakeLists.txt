@@ -2,10 +2,7 @@ set(main_srcs
 )
 
 set(main_reqs
-    esp-zigbee-lib
-    nvs_flash
-    esp_http_server
-    spiffs
+    gateway_app
     gateway_core
     gateway_core_events
     gateway_core_system
@@ -24,12 +21,12 @@ if(CONFIG_GATEWAY_SELF_TEST_APP)
         gateway_core_jobs
         unity)
 else()
-    list(APPEND main_srcs "core/esp_zigbee_gateway.c")
+    list(APPEND main_srcs "main.c")
 endif()
 
 # Реєстрація компонентів вашого проєкту
 idf_component_register(SRCS ${main_srcs}
-                       INCLUDE_DIRS "." "core" "tests"
+                       INCLUDE_DIRS "." "tests"
                        REQUIRES ${main_reqs}
                        PRIV_REQUIRES esp_wifi esp_timer)
 

@@ -73,7 +73,8 @@ cp components/gateway_net/include/wifi_settings.h.example components/gateway_net
 - `components/gateway_core/` — service layer, settings manager, event loop, zigbee domain/state.
 - `components/gateway_net/` — Wi-Fi STA/AP fallback та мережеві налаштування.
 - `components/gateway_web/` — HTTP routes, API handlers, WebSocket manager, static serving.
-- `main/core/esp_zigbee_gateway.*` — application entrypoint/bootstrap.
+- `components/gateway_app/` — runtime/bootstrap orchestration (startup flow).
+- `main/main.c` — thin app entrypoint that delegates to bootstrap component.
 - `main/web/www/` — фронтенд (index.html, style.css, script.js).
 - `partitions.csv` — таблиця розділів.
 

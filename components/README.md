@@ -10,6 +10,7 @@ This folder contains local IDF components split from `main/`:
 - `gateway_core_system`
 - `gateway_core_jobs`
 - `gateway_net`
+- `gateway_app` (runtime/bootstrap orchestration)
 - `gateway_web` (facade/glue)
 - `gateway_web_api`
 - `gateway_web_ws`
@@ -19,7 +20,7 @@ Current state:
 
 - Production sources are moved into these components.
 - Build ownership is in components (`gateway_core*`, `gateway_web*`, `gateway_net`).
-- `main/` keeps entrypoint sources and web static assets (`main/web/www`).
+- `main/` keeps thin entrypoint and web static assets (`main/web/www`).
 
 Migration order used:
 

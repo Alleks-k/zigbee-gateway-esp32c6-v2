@@ -13,6 +13,7 @@
 #include "wifi_init.h"
 #include "rcp_tool.h"
 #include "esp_coexist.h"
+#include "gateway_app.h"
 #include "esp_zigbee_gateway.h"
 #include "esp_http_server.h"
 #include "web_server.h" 
@@ -306,7 +307,7 @@ static void esp_zb_task(void *pvParameters)
     vTaskDelete(NULL);
 }
 
-void app_main(void)
+void gateway_app_start(void)
 {
     ESP_ERROR_CHECK(nvs_flash_init());
     ESP_ERROR_CHECK(config_service_init_or_migrate());

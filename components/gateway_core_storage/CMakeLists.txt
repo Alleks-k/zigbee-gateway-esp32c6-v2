@@ -7,13 +7,10 @@ set(gateway_core_storage_srcs
 )
 
 set(gateway_core_storage_reqs
-    gateway_core_events
     gateway_shared_config)
 
 set(gateway_core_storage_priv_reqs
     nvs_flash
-    esp_event
-    esp_timer
     esp_partition)
 
 if(CONFIG_GATEWAY_SELF_TEST_APP)

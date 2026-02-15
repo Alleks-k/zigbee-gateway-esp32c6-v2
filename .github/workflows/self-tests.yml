@@ -16,6 +16,9 @@ jobs:
       - name: Check architecture guardrails
         run: ./tools/check_arch_rules.sh
 
+      - name: Check component dependency/include edges
+        run: ./tools/check_component_edges.sh
+
   host-core-tests:
     needs: arch-rules
     runs-on: ubuntu-latest

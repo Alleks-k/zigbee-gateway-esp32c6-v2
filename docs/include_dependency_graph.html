@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Include Dependency Graph</title>
+<style>
+  body { font-family: Arial, sans-serif; margin: 0; background:#f6f8fb; }
+  #graph { width: 100vw; height: 100vh; }
+  .controls { position: fixed; top: 10px; left: 10px; z-index: 10; background:#fff;
+    border:1px solid #ddd; padding:8px; border-radius:8px; }
+  input { padding:4px 6px; }
+</style>
+</head>
+<body>
+<div class="controls">
+  <input id="search" placeholder="filter by file..." />
+</div>
+<div id="graph"></div>
+<script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+<script>
+const data = {"nodes": [{"id": 0, "label": "main/core/esp_zigbee_gateway.c"}, {"id": 1, "label": "main/core/esp_zigbee_gateway.h"}, {"id": 2, "label": "main/tests/self_tests.h"}, {"id": 3, "label": "main/tests/self_tests.c"}, {"id": 4, "label": "main/tests/self_tests_app_main.c"}, {"id": 5, "label": "main/tests/e2e_self_tests.c"}, {"id": 6, "label": "components/gateway_core/gateway_core_placeholder.c"}, {"id": 7, "label": "components/gateway_web/gateway_web_placeholder.c"}, {"id": 8, "label": "components/gateway_net/gateway_net_placeholder.c"}, {"id": 9, "label": "components/gateway_shared_config/gateway_shared_config_placeholder.c"}, {"id": 10, "label": "components/gateway_web_static/src/http_static.c"}, {"id": 11, "label": "components/gateway_web_static/src/mdns_service.c"}, {"id": 12, "label": "components/gateway_core/test/gateway_core_self_tests.c"}, {"id": 13, "label": "components/gateway_core/include/gateway_types.h"}, {"id": 14, "label": "components/gateway_core/include/device_manager.h"}, {"id": 15, "label": "components/gateway_core/include/settings_manager.h"}, {"id": 16, "label": "components/gateway_core/include/job_queue.h"}, {"id": 17, "label": "components/gateway_core/include/system_service.h"}, {"id": 18, "label": "components/gateway_core/include/rcp_tool.h"}, {"id": 19, "label": "components/gateway_core/include/gateway_core_component.h"}, {"id": 20, "label": "components/gateway_core/include/zigbee_service.h"}, {"id": 21, "label": "components/gateway_core/include/gateway_events.h"}, {"id": 22, "label": "components/gateway_core/include/gateway_state.h"}, {"id": 23, "label": "components/gateway_core/include/wifi_service.h"}, {"id": 24, "label": "components/gateway_web_ws/src/ws_manager.c"}, {"id": 25, "label": "components/gateway_core_events/src/gateway_events.c"}, {"id": 26, "label": "components/gateway_core_wifi/src/wifi_service.c"}, {"id": 27, "label": "components/gateway_web/test/gateway_web_self_tests.c"}, {"id": 28, "label": "components/gateway_web/src/web_server.c"}, {"id": 29, "label": "components/gateway_web/src/http_routes.c"}, {"id": 30, "label": "components/gateway_web/include/http_error.h"}, {"id": 31, "label": "components/gateway_web/include/http_static.h"}, {"id": 32, "label": "components/gateway_web/include/mdns_service.h"}, {"id": 33, "label": "components/gateway_web/include/http_routes.h"}, {"id": 34, "label": "components/gateway_web/include/web_server.h"}, {"id": 35, "label": "components/gateway_web/include/api_contracts.h"}, {"id": 36, "label": "components/gateway_web/include/api_handlers.h"}, {"id": 37, "label": "components/gateway_web/include/api_usecases.h"}, {"id": 38, "label": "components/gateway_web/include/ws_manager.h"}, {"id": 39, "label": "components/gateway_web/include/error_ring.h"}, {"id": 40, "label": "components/gateway_web/include/lqi_json_mapper.h"}, {"id": 41, "label": "components/gateway_web/include/gateway_web_component.h"}, {"id": 42, "label": "components/gateway_core_system/src/system_service.c"}, {"id": 43, "label": "components/gateway_core_system/src/rcp_tool.c"}, {"id": 44, "label": "components/gateway_net/src/wifi_init.c"}, {"id": 45, "label": "components/gateway_net/src/wifi_ap_fallback.c"}, {"id": 46, "label": "components/gateway_net/src/net_platform_services.c"}, {"id": 47, "label": "components/gateway_net/src/wifi_sta.c"}, {"id": 48, "label": "components/gateway_net/include/wifi_ap_fallback.h"}, {"id": 49, "label": "components/gateway_net/include/wifi_credentials.h"}, {"id": 50, "label": "components/gateway_net/include/hostname_settings.h"}, {"id": 51, "label": "components/gateway_net/include/wifi_sta.h"}, {"id": 52, "label": "components/gateway_net/include/wifi_credentials_local.h"}, {"id": 53, "label": "components/gateway_net/include/wifi_init.h"}, {"id": 54, "label": "components/gateway_net/include/net_platform_services.h"}, {"id": 55, "label": "components/gateway_net/include/wifi_settings.h"}, {"id": 56, "label": "components/gateway_net/include/gateway_net_component.h"}, {"id": 57, "label": "components/gateway_net/include/wifi_context.h"}, {"id": 58, "label": "components/gateway_core_zigbee/src/zigbee_service.c"}, {"id": 59, "label": "components/gateway_web_api/src/api_contracts.c"}, {"id": 60, "label": "components/gateway_web_api/src/lqi_json_mapper.c"}, {"id": 61, "label": "components/gateway_web_api/src/api_handlers.c"}, {"id": 62, "label": "components/gateway_web_api/src/api_health_handlers.c"}, {"id": 63, "label": "components/gateway_web_api/src/error_ring.c"}, {"id": 64, "label": "components/gateway_web_api/src/api_usecases.c"}, {"id": 65, "label": "components/gateway_web_api/src/http_error.c"}, {"id": 66, "label": "components/gateway_web_api/src/api_status_handlers.c"}, {"id": 67, "label": "components/gateway_web_api/src/api_jobs_handlers.c"}, {"id": 68, "label": "components/gateway_core_jobs/src/job_queue.c"}, {"id": 69, "label": "components/gateway_core_storage/src/device_manager.c"}, {"id": 70, "label": "components/gateway_core_storage/src/settings_manager.c"}, {"id": 71, "label": "components/gateway_core_storage/src/gateway_state.c"}, {"id": 72, "label": "components/gateway_shared_config/include/gateway_shared_config.h"}, {"id": 73, "label": "components/gateway_shared_config/include/hostname_settings.h"}], "edges": [{"from": 0, "to": 1}, {"from": 3, "to": 2}, {"from": 4, "to": 2}, {"from": 14, "to": 13}, {"from": 15, "to": 14}, {"from": 20, "to": 14}, {"from": 21, "to": 13}, {"from": 22, "to": 14}, {"from": 37, "to": 35}, {"from": 48, "to": 57}, {"from": 49, "to": 52}, {"from": 51, "to": 57}, {"from": 53, "to": 57}]};
+const container = document.getElementById('graph');
+
+let nodes = new vis.DataSet(data.nodes.map(n => ({
+  id: n.id, label: n.label, title: n.label
+})));
+let edges = new vis.DataSet(data.edges.map(e => ({
+  from: e.from, to: e.to, arrows: 'to'
+})));
+
+let network = new vis.Network(container, { nodes, edges }, {
+  physics: { stabilization: false },
+  layout: { improvedLayout: true }
+});
+
+document.getElementById('search').addEventListener('input', (e) => {
+  const q = e.target.value.trim().toLowerCase();
+  nodes.forEach(n => {
+    const visible = !q || n.label.toLowerCase().includes(q);
+    nodes.update({ id: n.id, hidden: !visible });
+  });
+});
+</script>
+</body>
+</html>

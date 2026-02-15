@@ -2,12 +2,15 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include "esp_err.h"
 #include "gateway_types.h"
 
 typedef struct cJSON cJSON;
 
 /* Використовуємо Kconfig для гнучкості */
-#ifndef CONFIG_GATEWAY_MAX_DEVICES
+#ifdef CONFIG_GATEWAY_MAX_DEVICES
+#define MAX_DEVICES CONFIG_GATEWAY_MAX_DEVICES
+#else
 #define MAX_DEVICES 10
 #endif
 

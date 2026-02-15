@@ -28,6 +28,16 @@ menu "ESP Zigbee gateway rcp update"
 
 endmenu
 
+menu "ESP Zigbee gateway core"
+    config GATEWAY_MAX_DEVICES
+        int "Maximum Zigbee devices"
+        range 1 64
+        default 10
+        help
+            Maximum number of Zigbee devices kept in memory snapshots
+            (device manager, state cache, LQI cache).
+endmenu
+
 menu "ESP Zigbee gateway tests"
     config GATEWAY_SELF_TEST_APP
         bool "Build self-test app instead of gateway app"

@@ -100,25 +100,27 @@ void update_device_name(uint16_t addr, const char *new_name) {
     post_device_list_changed_event();
 }
 
-void device_manager_init(void) {
+esp_err_t device_manager_init(void) {
     if (devices_mutex == NULL) {
         devices_mutex = xSemaphoreCreateMutex();
-        if (devices_mutex != NULL) {
-            xSemaphoreTake(devices_mutex, portMAX_DELAY);
-            load_devices_from_nvs_locked();
-            sync_gateway_state_devices_locked();
-            xSemaphoreGive(devices_mutex);
-        } else {
+        if (devices_mutex == NULL) {
             ESP_LOGE(TAG, "Failed to create devices mutex");
+            return ESP_ERR_NO_MEM;
         }
+        xSemaphoreTake(devices_mutex, portMAX_DELAY);
+        load_devices_from_nvs_locked();
+        sync_gateway_state_devices_locked();
+        xSemaphoreGive(devices_mutex);
     }
     if (s_dev_announce_handler == NULL) {
         esp_err_t ret = esp_event_handler_instance_register(
             GATEWAY_EVENT, GATEWAY_EVENT_DEVICE_ANNOUNCE, device_announce_event_handler, NULL, &s_dev_announce_handler);
         if (ret != ESP_OK) {
             ESP_LOGE(TAG, "Failed to register DEVICE_ANNOUNCE handler: %s", esp_err_to_name(ret));
+            return ret;
         }
     }
+    return ESP_OK;
 }
 
 void add_device_with_ieee(uint16_t addr, gateway_ieee_addr_t ieee) {

@@ -8,7 +8,6 @@
 #include "gateway_config_types.h"
 
 typedef gateway_device_record_t zb_device_t;
-typedef gateway_factory_reset_report_t settings_manager_factory_reset_report_t;
 
 #define SETTINGS_SCHEMA_VERSION_CURRENT 1
 
@@ -27,5 +26,7 @@ esp_err_t settings_manager_load_devices(zb_device_t *devices, size_t max_devices
 esp_err_t settings_manager_save_devices(const zb_device_t *devices, size_t max_devices,
                                         int device_count);
 
-esp_err_t settings_manager_factory_reset(void);
-esp_err_t settings_manager_get_last_factory_reset_report(settings_manager_factory_reset_report_t *out_report);
+esp_err_t settings_manager_clear_wifi_credentials(void);
+esp_err_t settings_manager_clear_devices(void);
+esp_err_t settings_manager_erase_zigbee_storage_partition(void);
+esp_err_t settings_manager_erase_zigbee_factory_partition(void);

@@ -5,6 +5,12 @@
 #include <string.h>
 
 static const char *TAG = "CONFIG_SERVICE";
+static config_service_factory_reset_report_t s_last_factory_reset_report = {
+    .wifi_err = ESP_FAIL,
+    .devices_err = ESP_FAIL,
+    .zigbee_storage_err = ESP_FAIL,
+    .zigbee_fct_err = ESP_FAIL,
+};
 
 esp_err_t config_service_init_or_migrate(void)
 {
@@ -76,7 +82,35 @@ esp_err_t config_service_load_wifi_credentials(char *ssid, size_t ssid_size,
 
 esp_err_t config_service_factory_reset(void)
 {
-    return settings_manager_factory_reset();
+    esp_err_t wifi_err = settings_manager_clear_wifi_credentials();
+    esp_err_t devices_err = settings_manager_clear_devices();
+    esp_err_t zb_storage_err = settings_manager_erase_zigbee_storage_partition();
+    esp_err_t zb_fct_err = settings_manager_erase_zigbee_factory_partition();
+
+    ESP_LOGI(TAG, "Factory reset result: wifi=%s, devices=%s, zigbee_storage=%s, zigbee_fct=%s",
+             esp_err_to_name(wifi_err),
+             esp_err_to_name(devices_err),
+             esp_err_to_name(zb_storage_err),
+             esp_err_to_name(zb_fct_err));
+
+    s_last_factory_reset_report.wifi_err = wifi_err;
+    s_last_factory_reset_report.devices_err = devices_err;
+    s_last_factory_reset_report.zigbee_storage_err = zb_storage_err;
+    s_last_factory_reset_report.zigbee_fct_err = zb_fct_err;
+
+    if (wifi_err != ESP_OK) {
+        return wifi_err;
+    }
+    if (devices_err != ESP_OK) {
+        return devices_err;
+    }
+    if (zb_storage_err != ESP_OK && zb_storage_err != ESP_ERR_NOT_FOUND) {
+        return zb_storage_err;
+    }
+    if (zb_fct_err != ESP_OK && zb_fct_err != ESP_ERR_NOT_FOUND) {
+        return zb_fct_err;
+    }
+    return ESP_OK;
 }
 
 esp_err_t config_service_get_last_factory_reset_report(config_service_factory_reset_report_t *out_report)
@@ -85,5 +119,6 @@ esp_err_t config_service_get_last_factory_reset_report(config_service_factory_re
         return ESP_ERR_INVALID_ARG;
     }
 
-    return settings_manager_get_last_factory_reset_report(out_report);
+    *out_report = s_last_factory_reset_report;
+    return ESP_OK;
 }

@@ -21,9 +21,10 @@ typedef struct {
     char load_ssid[GATEWAY_WIFI_SSID_MAX_LEN + 1];
     char load_password[GATEWAY_WIFI_PASSWORD_MAX_LEN + 1];
 
-    esp_err_t factory_reset_ret;
-    esp_err_t report_ret;
-    config_service_factory_reset_report_t report;
+    esp_err_t clear_wifi_ret;
+    esp_err_t clear_devices_ret;
+    esp_err_t erase_zb_storage_ret;
+    esp_err_t erase_zb_fct_ret;
 } settings_stub_t;
 
 static settings_stub_t g_stub;
@@ -37,8 +38,10 @@ static void reset_stub(void)
     g_stub.save_ret = ESP_OK;
     g_stub.load_ret = ESP_OK;
     g_stub.load_found = false;
-    g_stub.factory_reset_ret = ESP_OK;
-    g_stub.report_ret = ESP_OK;
+    g_stub.clear_wifi_ret = ESP_OK;
+    g_stub.clear_devices_ret = ESP_OK;
+    g_stub.erase_zb_storage_ret = ESP_OK;
+    g_stub.erase_zb_fct_ret = ESP_OK;
 }
 
 esp_err_t settings_manager_init_or_migrate(void)
@@ -114,21 +117,24 @@ esp_err_t settings_manager_save_devices(const zb_device_t *devices, size_t max_d
     return ESP_ERR_NOT_FOUND;
 }
 
-esp_err_t settings_manager_factory_reset(void)
+esp_err_t settings_manager_clear_wifi_credentials(void)
 {
-    return g_stub.factory_reset_ret;
+    return g_stub.clear_wifi_ret;
 }
 
-esp_err_t settings_manager_get_last_factory_reset_report(settings_manager_factory_reset_report_t *out_report)
+esp_err_t settings_manager_clear_devices(void)
 {
-    if (!out_report) {
-        return ESP_ERR_INVALID_ARG;
-    }
-    if (g_stub.report_ret != ESP_OK) {
-        return g_stub.report_ret;
-    }
-    *out_report = g_stub.report;
-    return ESP_OK;
+    return g_stub.clear_devices_ret;
+}
+
+esp_err_t settings_manager_erase_zigbee_storage_partition(void)
+{
+    return g_stub.erase_zb_storage_ret;
+}
+
+esp_err_t settings_manager_erase_zigbee_factory_partition(void)
+{
+    return g_stub.erase_zb_fct_ret;
 }
 
 static void test_validate_wifi_credentials_rules(void)
@@ -200,10 +206,11 @@ static void test_schema_and_factory_report(void)
     assert(version == CONFIG_SERVICE_SCHEMA_VERSION_CURRENT);
     assert(config_service_get_last_factory_reset_report(NULL) == ESP_ERR_INVALID_ARG);
 
-    g_stub.report.wifi_err = ESP_OK;
-    g_stub.report.devices_err = ESP_FAIL;
-    g_stub.report.zigbee_storage_err = ESP_ERR_NOT_FOUND;
-    g_stub.report.zigbee_fct_err = ESP_ERR_INVALID_SIZE;
+    g_stub.clear_wifi_ret = ESP_OK;
+    g_stub.clear_devices_ret = ESP_FAIL;
+    g_stub.erase_zb_storage_ret = ESP_ERR_NOT_FOUND;
+    g_stub.erase_zb_fct_ret = ESP_ERR_INVALID_SIZE;
+    assert(config_service_factory_reset() == ESP_FAIL);
 
     config_service_factory_reset_report_t out = {0};
     assert(config_service_get_last_factory_reset_report(&out) == ESP_OK);

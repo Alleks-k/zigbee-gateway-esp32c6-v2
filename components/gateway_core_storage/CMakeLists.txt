@@ -6,7 +6,6 @@ idf_component_register(
         "src/settings_manager.c"
     INCLUDE_DIRS
         "include"
-        "../gateway_core/include"
     REQUIRES
         gateway_core_events
         gateway_shared_config

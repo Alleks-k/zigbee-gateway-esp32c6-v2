@@ -15,10 +15,7 @@ set(gateway_core_priv_reqs
 if(CONFIG_GATEWAY_SELF_TEST_APP)
     list(APPEND gateway_core_srcs "test/gateway_core_self_tests.c")
     list(APPEND gateway_core_priv_reqs
-        gateway_core_zigbee
-        gateway_core_wifi
-        gateway_core_system
-        gateway_core_jobs)
+        gateway_core_zigbee)
     list(APPEND gateway_core_priv_reqs unity)
 endif()
 

@@ -2,7 +2,7 @@ idf_component_register(
     SRCS
         "src/wifi_service.c"
     INCLUDE_DIRS
-        "../gateway_core/include"
+        "include"
     REQUIRES
-        gateway_core_storage
+        gateway_core
 )

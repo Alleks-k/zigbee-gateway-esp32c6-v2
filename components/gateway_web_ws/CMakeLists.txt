@@ -5,7 +5,7 @@ idf_component_register(
         "../gateway_web/include"
     REQUIRES
         gateway_web_api
-        gateway_core
+        gateway_core_events
         esp_http_server
         esp_event
         esp_timer

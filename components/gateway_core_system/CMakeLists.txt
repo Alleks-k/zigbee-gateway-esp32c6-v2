@@ -3,9 +3,9 @@ idf_component_register(
         "src/system_service.c"
         "src/rcp_tool.c"
     INCLUDE_DIRS
-        "../gateway_core/include"
+        "include"
     REQUIRES
-        gateway_core_storage
+        gateway_core
     PRIV_REQUIRES
         esp-zigbee-lib
         esp_rcp_update

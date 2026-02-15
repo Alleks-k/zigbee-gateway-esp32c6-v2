@@ -1,5 +1,5 @@
 #include "config_service.h"
-#include "settings_manager.h"
+#include "storage_settings.h"
 #include "gateway_config_types.h"
 #include "esp_log.h"
 #include <string.h>

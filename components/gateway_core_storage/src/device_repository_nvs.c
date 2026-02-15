@@ -1,7 +1,6 @@
 #include "device_repository.h"
 
-#include "device_manager.h"
-#include "settings_manager.h"
+#include "storage_settings.h"
 
 esp_err_t device_repository_load(gateway_device_record_t *devices, size_t max_devices, int *device_count, bool *loaded)
 {

@@ -1,7 +1,8 @@
 #pragma once
 
-#include <stdint.h>
 #include <stddef.h>
+#include <stdint.h>
+
 #include "esp_err.h"
 #include "gateway_config_types.h"
 

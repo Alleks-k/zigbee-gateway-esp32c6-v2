@@ -85,7 +85,7 @@ cp components/gateway_net/include/wifi_settings.h.example components/gateway_net
 ## Важливі зауваження
 
 - Wi-Fi/Zigbee coexistence працює в 2.4 GHz на спільному радіоканалі.
-- Поточне обмеження `MAX_DEVICES` за замовчуванням: 10 (див. `components/gateway_core/include/device_manager.h`).
+- Поточне обмеження `MAX_DEVICES` за замовчуванням: 10 (див. `components/gateway_core/include/device_service.h` і Kconfig).
 
 ---
 **Author**: [Alleks-k](https://github.com/Alleks-k)

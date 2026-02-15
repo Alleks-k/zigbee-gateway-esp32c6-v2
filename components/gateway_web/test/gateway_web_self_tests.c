@@ -4,7 +4,7 @@
 #include "api_usecases.h"
 #include "lqi_json_mapper.h"
 #include "error_ring.h"
-#include "device_manager.h"
+#include "device_service.h"
 #include "state_store.h"
 #include "ws_manager.h"
 #include "web_server.h"
@@ -18,12 +18,12 @@
 
 static void test_reset_devices(void)
 {
-    TEST_ASSERT_EQUAL(ESP_OK, device_manager_init());
+    TEST_ASSERT_EQUAL(ESP_OK, device_service_init());
 
     zb_device_t snapshot[MAX_DEVICES] = {0};
-    int count = device_manager_get_snapshot(snapshot, MAX_DEVICES);
+    int count = device_service_get_snapshot(snapshot, MAX_DEVICES);
     for (int i = 0; i < count; i++) {
-        delete_device(snapshot[i].short_addr);
+        device_service_delete(snapshot[i].short_addr);
     }
 }
 
@@ -32,7 +32,7 @@ static void test_seed_devices(const zb_device_t *devices, int count, bool reset_
     TEST_ASSERT_NOT_NULL(devices);
     TEST_ASSERT_TRUE(count >= 0);
     TEST_ASSERT_TRUE(count <= MAX_DEVICES);
-    TEST_ASSERT_EQUAL(ESP_OK, device_manager_init());
+    TEST_ASSERT_EQUAL(ESP_OK, device_service_init());
     if (reset_first) {
         test_reset_devices();
     }
@@ -41,8 +41,8 @@ static void test_seed_devices(const zb_device_t *devices, int count, bool reset_
         gateway_ieee_addr_t ieee = {0};
         ieee[0] = (uint8_t)(devices[i].short_addr & 0xFF);
         ieee[1] = (uint8_t)((devices[i].short_addr >> 8) & 0xFF);
-        add_device_with_ieee(devices[i].short_addr, ieee);
-        update_device_name(devices[i].short_addr, devices[i].name);
+        device_service_add_with_ieee(devices[i].short_addr, ieee);
+        device_service_update_name(devices[i].short_addr, devices[i].name);
     }
 }
 

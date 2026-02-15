@@ -232,38 +232,3 @@ void device_service_unlock(void)
         xSemaphoreGive(s_devices_mutex);
     }
 }
-
-esp_err_t device_manager_init(void)
-{
-    return device_service_init();
-}
-
-void add_device_with_ieee(uint16_t addr, gateway_ieee_addr_t ieee)
-{
-    device_service_add_with_ieee(addr, ieee);
-}
-
-void update_device_name(uint16_t addr, const char *new_name)
-{
-    device_service_update_name(addr, new_name);
-}
-
-void delete_device(uint16_t addr)
-{
-    device_service_delete(addr);
-}
-
-int device_manager_get_snapshot(zb_device_t *out, size_t max_items)
-{
-    return device_service_get_snapshot(out, max_items);
-}
-
-void device_manager_lock(void)
-{
-    device_service_lock();
-}
-
-void device_manager_unlock(void)
-{
-    device_service_unlock();
-}

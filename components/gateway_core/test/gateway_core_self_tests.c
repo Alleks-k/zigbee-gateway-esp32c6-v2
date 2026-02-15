@@ -1,11 +1,11 @@
 #include "unity.h"
-#include "device_manager.h"
+#include "device_service.h"
 #include "zigbee_service.h"
 #include "config_service.h"
 
 static void test_device_snapshot_null_buffer(void)
 {
-    TEST_ASSERT_EQUAL_INT(0, device_manager_get_snapshot(NULL, 0));
+    TEST_ASSERT_EQUAL_INT(0, device_service_get_snapshot(NULL, 0));
 }
 
 static void test_service_rename_device_rejects_null_name(void)

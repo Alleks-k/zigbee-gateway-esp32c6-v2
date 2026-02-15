@@ -1,6 +1,16 @@
 #pragma once
 
-#include "device_manager.h"
+#include <stddef.h>
+#include <stdint.h>
+
+#include "esp_err.h"
+#include "gateway_config_types.h"
+
+#ifndef MAX_DEVICES
+#define MAX_DEVICES GATEWAY_MAX_DEVICES
+#endif
+
+typedef gateway_device_record_t zb_device_t;
 
 esp_err_t device_service_init(void);
 void device_service_add_with_ieee(uint16_t addr, gateway_ieee_addr_t ieee);

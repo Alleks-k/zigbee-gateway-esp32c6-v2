@@ -1,7 +1,7 @@
 #include <fcntl.h>
 #include <string.h>
 
-#include "device_manager.h"
+#include "device_service.h"
 #include "driver/usb_serial_jtag.h"
 #include "esp_coexist.h"
 #include "esp_event.h"
@@ -97,7 +97,7 @@ static esp_err_t zigbee_runtime_send_on_off(uint16_t short_addr, uint8_t endpoin
 
 static esp_err_t zigbee_runtime_delete_device(uint16_t short_addr)
 {
-    delete_device(short_addr);
+    device_service_delete(short_addr);
     return ESP_OK;
 }
 
@@ -106,7 +106,7 @@ static esp_err_t zigbee_runtime_rename_device(uint16_t short_addr, const char *n
     if (!new_name) {
         return ESP_ERR_INVALID_ARG;
     }
-    update_device_name(short_addr, new_name);
+    device_service_update_name(short_addr, new_name);
     return ESP_OK;
 }
 

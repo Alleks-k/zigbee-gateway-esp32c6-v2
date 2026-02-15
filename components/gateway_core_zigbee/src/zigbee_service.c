@@ -1,5 +1,5 @@
 #include "zigbee_service.h"
-#include "device_manager.h"
+#include "device_service.h"
 #include "state_store.h"
 #include "esp_zigbee_core.h"
 #include "nwk/esp_zigbee_nwk.h"
@@ -113,7 +113,7 @@ esp_err_t zigbee_service_send_on_off(uint16_t short_addr, uint8_t endpoint, uint
 
 int zigbee_service_get_devices_snapshot(zb_device_t *out, size_t max_items)
 {
-    return device_manager_get_snapshot(out, max_items);
+    return device_service_get_snapshot(out, max_items);
 }
 
 int zigbee_service_get_neighbor_lqi_snapshot(zigbee_neighbor_lqi_t *out, size_t max_items)

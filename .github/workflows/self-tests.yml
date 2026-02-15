@@ -28,6 +28,20 @@ jobs:
       - name: Run host tests
         run: ./tools/run_host_tests.sh
 
+  static-analysis:
+    needs: arch-rules
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install cppcheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cppcheck
+
+      - name: Run static analysis
+        run: ./tools/run_static_analysis.sh
+
   target-selftest-build:
     needs: arch-rules
     runs-on: ubuntu-latest

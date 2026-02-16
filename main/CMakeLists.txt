@@ -5,6 +5,9 @@ set(main_reqs
     gateway_app
 )
 
+set(main_priv_reqs
+)
+
 if(CONFIG_GATEWAY_SELF_TEST_APP)
     list(APPEND main_srcs
         "tests/self_tests.c"
@@ -15,6 +18,9 @@ if(CONFIG_GATEWAY_SELF_TEST_APP)
         gateway_core_wifi
         gateway_core_jobs
         unity)
+    list(APPEND main_priv_reqs
+        esp_wifi
+        esp_timer)
 else()
     list(APPEND main_srcs "main.c")
 endif()
@@ -23,7 +29,7 @@ endif()
 idf_component_register(SRCS ${main_srcs}
                        INCLUDE_DIRS "." "tests"
                        REQUIRES ${main_reqs}
-                       PRIV_REQUIRES esp_wifi esp_timer)
+                       PRIV_REQUIRES ${main_priv_reqs})
 
 # Генерація SPIFFS іміджу для папки www
 spiffs_create_partition_image(www web/www FLASH_IN_PROJECT)

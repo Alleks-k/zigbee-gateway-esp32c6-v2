@@ -9,7 +9,6 @@ idf_component_register(
     REQUIRES
         esp-zigbee-lib
         nvs_flash
-        esp_http_server
         spiffs
         gateway_core
         gateway_core_facade
@@ -21,7 +20,6 @@ idf_component_register(
         gateway_web_api
         gateway_web
     PRIV_REQUIRES
-        esp_wifi
         esp_timer
         esp_coex
         vfs

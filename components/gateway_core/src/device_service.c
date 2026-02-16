@@ -4,7 +4,6 @@
 #include <string.h>
 
 #include "device_service_rules.h"
-#include "gateway_status_esp.h"
 
 static const char *s_default_device_name_prefix = "Пристрій";
 
@@ -29,7 +28,6 @@ void device_service_destroy(device_service_handle_t handle)
         return;
     }
 
-    device_service_events_unregister_announce_handler(handle);
     device_service_lock_destroy(handle);
     handle->device_count = 0;
     memset(handle->devices, 0, sizeof(handle->devices));
@@ -50,7 +48,7 @@ gateway_status_t device_service_init(device_service_handle_t handle)
     (void)device_service_storage_load_locked(handle);
     device_service_lock_release(handle);
 
-    return gateway_status_from_esp_err(device_service_events_register_announce_handler(handle));
+    return GATEWAY_STATUS_OK;
 }
 
 void device_service_add_with_ieee(device_service_handle_t handle, uint16_t addr, gateway_ieee_addr_t ieee)

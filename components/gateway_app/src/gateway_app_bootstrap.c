@@ -3,6 +3,7 @@
 #include "config_service.h"
 #include "device_service.h"
 #include "error_ring.h"
+#include "gateway_events.h"
 #include "gateway_wifi_system_facade.h"
 #include "esp_event.h"
 #include "esp_log.h"
@@ -19,6 +20,7 @@
 #include "wifi_init.h"
 
 static const char *TAG = "GATEWAY_APP";
+static esp_event_handler_instance_t s_device_announce_handler = NULL;
 
 static uint64_t gateway_app_now_ms_provider(void)
 {
@@ -39,6 +41,46 @@ static bool gateway_app_http_error_map_provider(esp_err_t err, int *out_http_sta
     default:
         return false;
     }
+}
+
+static void gateway_app_device_announce_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id,
+                                                      void *event_data)
+{
+    device_service_handle_t device_service = (device_service_handle_t)arg;
+    if (!device_service) {
+        return;
+    }
+    if (event_base != GATEWAY_EVENT || event_id != GATEWAY_EVENT_DEVICE_ANNOUNCE || !event_data) {
+        return;
+    }
+
+    gateway_device_announce_event_t *evt = (gateway_device_announce_event_t *)event_data;
+    device_service_add_with_ieee(device_service, evt->short_addr, evt->ieee_addr);
+}
+
+static void gateway_app_detach_device_events(void)
+{
+    if (!s_device_announce_handler) {
+        return;
+    }
+
+    (void)esp_event_handler_instance_unregister(
+        GATEWAY_EVENT, GATEWAY_EVENT_DEVICE_ANNOUNCE, s_device_announce_handler);
+    s_device_announce_handler = NULL;
+}
+
+static esp_err_t gateway_app_attach_device_events(device_service_handle_t device_service)
+{
+    if (!device_service) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    return esp_event_handler_instance_register(
+        GATEWAY_EVENT,
+        GATEWAY_EVENT_DEVICE_ANNOUNCE,
+        gateway_app_device_announce_event_handler,
+        device_service,
+        &s_device_announce_handler);
 }
 
 void gateway_app_start(void)
@@ -64,6 +106,8 @@ void gateway_app_start(void)
     ESP_ERROR_CHECK(wifi_init_bind_state(gateway_state));
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
+    gateway_app_detach_device_events();
+    ESP_ERROR_CHECK(gateway_app_attach_device_events(device_service));
     ESP_ERROR_CHECK(gateway_zigbee_runtime_prepare(&runtime_ctx));
 
     esp_err_t wifi_ret = wifi_init_sta_and_wait();

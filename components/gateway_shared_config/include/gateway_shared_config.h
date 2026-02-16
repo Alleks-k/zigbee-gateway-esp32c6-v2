@@ -2,5 +2,6 @@
 
 #include "gateway_config_types.h"
 #include "gateway_runtime_types.h"
+#include "gateway_status.h"
 
 void gateway_shared_config_phase0_anchor(void);

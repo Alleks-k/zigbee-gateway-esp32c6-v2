@@ -6,6 +6,7 @@
 #include "esp_timer.h"
 #include "esp_zigbee_gateway.h"
 #include "gateway_events.h"
+#include "gateway_status_esp.h"
 #include "gateway_zigbee_runtime_internal.h"
 #include "zigbee_service.h"
 #include <zcl/esp_zigbee_zcl_core.h>
@@ -55,7 +56,7 @@ void gateway_state_publish(bool zigbee_started, bool factory_new)
         state.short_addr = esp_zb_get_short_address();
     }
 
-    esp_err_t ret = gateway_state_set_network(s_gateway_state, &state);
+    esp_err_t ret = gateway_status_to_esp_err(gateway_state_set_network(s_gateway_state, &state));
     if (ret != ESP_OK) {
         ESP_LOGW(TAG, "Failed to publish gateway state: %s", esp_err_to_name(ret));
     }

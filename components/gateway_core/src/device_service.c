@@ -4,25 +4,26 @@
 #include <string.h>
 
 #include "device_service_rules.h"
+#include "gateway_status_esp.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 
 static const char *TAG = "DEV_SERVICE";
 static const char *s_default_device_name_prefix = "Пристрій";
 
-esp_err_t device_service_create(device_service_handle_t *out_handle)
+gateway_status_t device_service_create(device_service_handle_t *out_handle)
 {
     if (!out_handle) {
-        return ESP_ERR_INVALID_ARG;
+        return GATEWAY_STATUS_INVALID_ARG;
     }
 
     device_service_handle_t handle = calloc(1, sizeof(*handle));
     if (!handle) {
-        return ESP_ERR_NO_MEM;
+        return GATEWAY_STATUS_NO_MEM;
     }
 
     *out_handle = handle;
-    return ESP_OK;
+    return GATEWAY_STATUS_OK;
 }
 
 void device_service_destroy(device_service_handle_t handle)
@@ -41,24 +42,24 @@ void device_service_destroy(device_service_handle_t handle)
     free(handle);
 }
 
-esp_err_t device_service_init(device_service_handle_t handle)
+gateway_status_t device_service_init(device_service_handle_t handle)
 {
     if (!handle) {
-        return ESP_ERR_INVALID_ARG;
+        return GATEWAY_STATUS_INVALID_ARG;
     }
 
     if (!handle->devices_mutex) {
         handle->devices_mutex = xSemaphoreCreateMutex();
         if (!handle->devices_mutex) {
             ESP_LOGE(TAG, "Failed to create devices mutex");
-            return ESP_ERR_NO_MEM;
+            return GATEWAY_STATUS_NO_MEM;
         }
         xSemaphoreTake(handle->devices_mutex, portMAX_DELAY);
         (void)device_service_storage_load_locked(handle);
         xSemaphoreGive(handle->devices_mutex);
     }
 
-    return device_service_events_register_announce_handler(handle);
+    return gateway_status_from_esp_err(device_service_events_register_announce_handler(handle));
 }
 
 void device_service_add_with_ieee(device_service_handle_t handle, uint16_t addr, gateway_ieee_addr_t ieee)

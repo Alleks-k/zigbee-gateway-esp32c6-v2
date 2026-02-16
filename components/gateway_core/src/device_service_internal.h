@@ -2,6 +2,7 @@
 
 #include "device_service.h"
 
+#include "esp_err.h"
 #include "esp_event.h"
 #include "freertos/semphr.h"
 

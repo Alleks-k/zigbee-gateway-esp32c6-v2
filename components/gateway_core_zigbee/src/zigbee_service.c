@@ -1,5 +1,6 @@
 #include "zigbee_service.h"
 #include "device_service.h"
+#include "gateway_status_esp.h"
 #include "state_store.h"
 #include "esp_zigbee_core.h"
 #include "nwk/esp_zigbee_nwk.h"
@@ -113,7 +114,7 @@ esp_err_t zigbee_service_get_network_status(zigbee_network_status_t *out)
     }
 
     gateway_network_state_t state = {0};
-    esp_err_t ret = gateway_state_get_network(s_gateway_state, &state);
+    esp_err_t ret = gateway_status_to_esp_err(gateway_state_get_network(s_gateway_state, &state));
     if (ret != ESP_OK) {
         return ret;
     }
@@ -152,7 +153,7 @@ int zigbee_service_get_neighbor_lqi_snapshot(zigbee_neighbor_lqi_t *out, size_t 
     }
 
     gateway_network_state_t state = {0};
-    if (gateway_state_get_network(s_gateway_state, &state) != ESP_OK || !state.zigbee_started) {
+    if (gateway_status_to_esp_err(gateway_state_get_network(s_gateway_state, &state)) != ESP_OK || !state.zigbee_started) {
         return 0;
     }
 
@@ -236,7 +237,7 @@ esp_err_t zigbee_service_refresh_neighbor_lqi_snapshot(zigbee_neighbor_lqi_t *ou
     }
 
     gateway_network_state_t state = {0};
-    esp_err_t sret = gateway_state_get_network(s_gateway_state, &state);
+    esp_err_t sret = gateway_status_to_esp_err(gateway_state_get_network(s_gateway_state, &state));
     if (sret != ESP_OK || !state.zigbee_started) {
         return ESP_ERR_INVALID_STATE;
     }

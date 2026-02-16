@@ -7,6 +7,7 @@
 #include "lqi_json_mapper.h"
 #include "error_ring.h"
 #include "device_service.h"
+#include "gateway_status.h"
 #include "gateway_runtime_context.h"
 #include "gateway_wifi_system_facade.h"
 #include "state_store.h"
@@ -30,14 +31,14 @@ static gateway_runtime_context_t s_runtime_ctx = {0};
 static void ensure_stateful_handles(void)
 {
     if (!s_device_service) {
-        TEST_ASSERT_EQUAL(ESP_OK, device_service_create(&s_device_service));
+        TEST_ASSERT_EQUAL(GATEWAY_STATUS_OK, device_service_create(&s_device_service));
     }
     if (!s_gateway_state) {
-        TEST_ASSERT_EQUAL(ESP_OK, gateway_state_create(&s_gateway_state));
+        TEST_ASSERT_EQUAL(GATEWAY_STATUS_OK, gateway_state_create(&s_gateway_state));
     }
 
-    TEST_ASSERT_EQUAL(ESP_OK, device_service_init(s_device_service));
-    TEST_ASSERT_EQUAL(ESP_OK, gateway_state_init(s_gateway_state));
+    TEST_ASSERT_EQUAL(GATEWAY_STATUS_OK, device_service_init(s_device_service));
+    TEST_ASSERT_EQUAL(GATEWAY_STATUS_OK, gateway_state_init(s_gateway_state));
 
     if (!s_runtime_bound) {
         gateway_wifi_system_init_params_t wifi_system_params = {
@@ -56,7 +57,7 @@ static void ensure_stateful_handles(void)
 static void test_reset_devices(void)
 {
     ensure_stateful_handles();
-    TEST_ASSERT_EQUAL(ESP_OK, device_service_init(s_device_service));
+    TEST_ASSERT_EQUAL(GATEWAY_STATUS_OK, device_service_init(s_device_service));
 
     zb_device_t snapshot[MAX_DEVICES] = {0};
     int count = device_service_get_snapshot(s_device_service, snapshot, MAX_DEVICES);
@@ -71,7 +72,7 @@ static void test_seed_devices(const zb_device_t *devices, int count, bool reset_
     TEST_ASSERT_TRUE(count >= 0);
     TEST_ASSERT_TRUE(count <= MAX_DEVICES);
     ensure_stateful_handles();
-    TEST_ASSERT_EQUAL(ESP_OK, device_service_init(s_device_service));
+    TEST_ASSERT_EQUAL(GATEWAY_STATUS_OK, device_service_init(s_device_service));
     if (reset_first) {
         test_reset_devices();
     }
@@ -179,8 +180,11 @@ static void test_lqi_json_mapper_uses_cached_snapshot_contract(void)
     };
     ensure_stateful_handles();
     test_seed_devices(devices, 2, true);
-    TEST_ASSERT_EQUAL(ESP_OK, gateway_state_update_lqi(s_gateway_state, 0x1001, 150, 127, GATEWAY_LQI_SOURCE_MGMT_LQI, 1000));
-    TEST_ASSERT_EQUAL(ESP_OK, gateway_state_update_lqi(s_gateway_state, 0x1002, 70, -80, GATEWAY_LQI_SOURCE_NEIGHBOR_TABLE, 900));
+    TEST_ASSERT_EQUAL(GATEWAY_STATUS_OK,
+                      gateway_state_update_lqi(s_gateway_state, 0x1001, 150, 127, GATEWAY_LQI_SOURCE_MGMT_LQI, 1000));
+    TEST_ASSERT_EQUAL(
+        GATEWAY_STATUS_OK,
+        gateway_state_update_lqi(s_gateway_state, 0x1002, 70, -80, GATEWAY_LQI_SOURCE_NEIGHBOR_TABLE, 900));
 
     char buf[2048];
     size_t out_len = 0;
@@ -235,8 +239,8 @@ static void test_health_snapshot_usecase_contract(void)
         .active_ssid = "SelfTestNet",
     };
     ensure_stateful_handles();
-    TEST_ASSERT_EQUAL(ESP_OK, gateway_state_set_network(s_gateway_state, &net));
-    TEST_ASSERT_EQUAL(ESP_OK, gateway_state_set_wifi(s_gateway_state, &wifi));
+    TEST_ASSERT_EQUAL(GATEWAY_STATUS_OK, gateway_state_set_network(s_gateway_state, &net));
+    TEST_ASSERT_EQUAL(GATEWAY_STATUS_OK, gateway_state_set_wifi(s_gateway_state, &wifi));
 
     api_health_snapshot_t snap = {0};
     esp_err_t ret = api_usecase_collect_health_snapshot(&snap);

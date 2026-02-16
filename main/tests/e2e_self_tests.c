@@ -4,6 +4,7 @@
 #include "wifi_service.h"
 #include "wifi_init.h"
 #include "state_store.h"
+#include "gateway_status.h"
 #include "job_queue.h"
 #include "system_service.h"
 #include "esp_timer.h"
@@ -318,8 +319,8 @@ static void test_e2e_wifi_connect_retry_exhausted_switches_to_ap_fallback(void)
 {
     reset_api_mocks();
     gateway_state_handle_t gateway_state = NULL;
-    TEST_ASSERT_EQUAL(ESP_OK, gateway_state_create(&gateway_state));
-    TEST_ASSERT_EQUAL(ESP_OK, gateway_state_init(gateway_state));
+    TEST_ASSERT_EQUAL(GATEWAY_STATUS_OK, gateway_state_create(&gateway_state));
+    TEST_ASSERT_EQUAL(GATEWAY_STATUS_OK, gateway_state_init(gateway_state));
     TEST_ASSERT_EQUAL(ESP_OK, wifi_init_bind_state(gateway_state));
 
     wifi_init_ops_t ops = {
@@ -336,7 +337,7 @@ static void test_e2e_wifi_connect_retry_exhausted_switches_to_ap_fallback(void)
     TEST_ASSERT_EQUAL_INT(1, s_mock_wifi_fallback_called);
 
     gateway_wifi_state_t state = {0};
-    TEST_ASSERT_EQUAL(ESP_OK, gateway_state_get_wifi(gateway_state, &state));
+    TEST_ASSERT_EQUAL(GATEWAY_STATUS_OK, gateway_state_get_wifi(gateway_state, &state));
     TEST_ASSERT_FALSE(state.sta_connected);
     TEST_ASSERT_TRUE(state.fallback_ap_active);
     TEST_ASSERT_EQUAL_STRING("ZGW-Fallback", state.active_ssid);

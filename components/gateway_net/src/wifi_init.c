@@ -4,6 +4,7 @@
 #include "wifi_sta.h"
 #include "wifi_ap_fallback.h"
 #include "net_platform_services.h"
+#include "gateway_status_esp.h"
 #include "state_store.h"
 #include <string.h>
 
@@ -56,7 +57,7 @@ void wifi_state_store_update(void)
         .loaded_from_nvs = s_ctx.loaded_from_nvs,
     };
     strlcpy(state.active_ssid, s_ctx.active_ssid, sizeof(state.active_ssid));
-    esp_err_t ret = gateway_state_set_wifi(s_gateway_state, &state);
+    esp_err_t ret = gateway_status_to_esp_err(gateway_state_set_wifi(s_gateway_state, &state));
     if (ret != ESP_OK) {
         ESP_LOGW(TAG, "Failed to publish Wi-Fi state: %s", esp_err_to_name(ret));
     }

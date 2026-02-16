@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "config_service.h"
+#include "gateway_status_esp.h"
 #include "state_store.h"
 #include "system_service.h"
 #include "wifi_service.h"
@@ -117,7 +118,7 @@ esp_err_t gateway_wifi_system_get_network_state(gateway_network_state_t *out_sta
     if (ret != ESP_OK) {
         return ret;
     }
-    return gateway_state_get_network(s_gateway_state, out_state);
+    return gateway_status_to_esp_err(gateway_state_get_network(s_gateway_state, out_state));
 }
 
 esp_err_t gateway_wifi_system_get_wifi_state(gateway_wifi_state_t *out_state)
@@ -126,7 +127,7 @@ esp_err_t gateway_wifi_system_get_wifi_state(gateway_wifi_state_t *out_state)
     if (ret != ESP_OK) {
         return ret;
     }
-    return gateway_state_get_wifi(s_gateway_state, out_state);
+    return gateway_status_to_esp_err(gateway_state_get_wifi(s_gateway_state, out_state));
 }
 
 esp_err_t gateway_wifi_system_get_schema_version(int32_t *out_version)

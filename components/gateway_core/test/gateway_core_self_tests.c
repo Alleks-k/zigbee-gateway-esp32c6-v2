@@ -1,13 +1,14 @@
 #include "unity.h"
 #include "device_service.h"
+#include "gateway_status.h"
 #include "zigbee_service.h"
 #include "config_service.h"
 
 static void test_device_snapshot_null_buffer(void)
 {
     device_service_handle_t device_service = NULL;
-    TEST_ASSERT_EQUAL(ESP_OK, device_service_create(&device_service));
-    TEST_ASSERT_EQUAL(ESP_OK, device_service_init(device_service));
+    TEST_ASSERT_EQUAL(GATEWAY_STATUS_OK, device_service_create(&device_service));
+    TEST_ASSERT_EQUAL(GATEWAY_STATUS_OK, device_service_init(device_service));
     TEST_ASSERT_EQUAL_INT(0, device_service_get_snapshot(device_service, NULL, 0));
     device_service_destroy(device_service);
 }

@@ -6,6 +6,7 @@
 #include "esp_netif.h"
 #include "esp_timer.h"
 #include "gateway_runtime_context.h"
+#include "gateway_status_esp.h"
 #include "gateway_wifi_system_facade.h"
 #include "state_store.h"
 #include "wifi_init.h"
@@ -33,10 +34,10 @@ void app_main(void)
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
 
-    ESP_ERROR_CHECK(device_service_create(&device_service));
-    ESP_ERROR_CHECK(gateway_state_create(&gateway_state));
-    ESP_ERROR_CHECK(device_service_init(device_service));
-    ESP_ERROR_CHECK(gateway_state_init(gateway_state));
+    ESP_ERROR_CHECK(gateway_status_to_esp_err(device_service_create(&device_service)));
+    ESP_ERROR_CHECK(gateway_status_to_esp_err(gateway_state_create(&gateway_state)));
+    ESP_ERROR_CHECK(gateway_status_to_esp_err(device_service_init(device_service)));
+    ESP_ERROR_CHECK(gateway_status_to_esp_err(gateway_state_init(gateway_state)));
     gateway_state_set_now_ms_provider(self_tests_now_ms);
     runtime_ctx.device_service = device_service;
     runtime_ctx.gateway_state = gateway_state;

@@ -11,6 +11,7 @@
 #include "esp_timer.h"
 #include "http_error.h"
 #include "nvs.h"
+#include "gateway_status_esp.h"
 #include "state_store.h"
 #include "gateway_zigbee_runtime.h"
 #include "nvs_flash.h"
@@ -51,10 +52,10 @@ void gateway_app_start(void)
     gateway_error_ring_set_now_ms_provider(gateway_app_now_ms_provider);
     http_error_set_map_provider(gateway_app_http_error_map_provider);
     ESP_ERROR_CHECK(config_service_init_or_migrate());
-    ESP_ERROR_CHECK(device_service_create(&device_service));
-    ESP_ERROR_CHECK(gateway_state_create(&gateway_state));
-    ESP_ERROR_CHECK(device_service_init(device_service));
-    ESP_ERROR_CHECK(gateway_state_init(gateway_state));
+    ESP_ERROR_CHECK(gateway_status_to_esp_err(device_service_create(&device_service)));
+    ESP_ERROR_CHECK(gateway_status_to_esp_err(gateway_state_create(&gateway_state)));
+    ESP_ERROR_CHECK(gateway_status_to_esp_err(device_service_init(device_service)));
+    ESP_ERROR_CHECK(gateway_status_to_esp_err(gateway_state_init(gateway_state)));
     gateway_state_set_now_ms_provider(gateway_app_now_ms_provider);
     runtime_ctx.device_service = device_service;
     runtime_ctx.gateway_state = gateway_state;
@@ -79,7 +80,7 @@ void gateway_app_start(void)
     start_web_server();
 
     gateway_wifi_state_t wifi_state = {0};
-    esp_err_t state_ret = gateway_state_get_wifi(gateway_state, &wifi_state);
+    esp_err_t state_ret = gateway_status_to_esp_err(gateway_state_get_wifi(gateway_state, &wifi_state));
     if (state_ret != ESP_OK) {
         ESP_LOGW(TAG, "Failed to read Wi-Fi state: %s", esp_err_to_name(state_ret));
     }

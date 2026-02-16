@@ -30,19 +30,19 @@ void gateway_state_set_now_ms_provider(gateway_state_now_ms_provider_t provider)
     s_now_ms_provider = provider;
 }
 
-esp_err_t gateway_state_create(gateway_state_handle_t *out_handle)
+gateway_status_t gateway_state_create(gateway_state_handle_t *out_handle)
 {
     if (!out_handle) {
-        return ESP_ERR_INVALID_ARG;
+        return GATEWAY_STATUS_INVALID_ARG;
     }
 
     gateway_state_handle_t handle = calloc(1, sizeof(*handle));
     if (!handle) {
-        return ESP_ERR_NO_MEM;
+        return GATEWAY_STATUS_NO_MEM;
     }
 
     *out_handle = handle;
-    return ESP_OK;
+    return GATEWAY_STATUS_OK;
 }
 
 void gateway_state_destroy(gateway_state_handle_t handle)
@@ -62,97 +62,97 @@ void gateway_state_destroy(gateway_state_handle_t handle)
     free(handle);
 }
 
-esp_err_t gateway_state_init(gateway_state_handle_t handle)
+gateway_status_t gateway_state_init(gateway_state_handle_t handle)
 {
     if (!handle) {
-        return ESP_ERR_INVALID_ARG;
+        return GATEWAY_STATUS_INVALID_ARG;
     }
     if (handle->state_mutex == NULL) {
         handle->state_mutex = xSemaphoreCreateMutex();
         if (handle->state_mutex == NULL) {
-            return ESP_ERR_NO_MEM;
+            return GATEWAY_STATUS_NO_MEM;
         }
     }
-    return ESP_OK;
+    return GATEWAY_STATUS_OK;
 }
 
-esp_err_t gateway_state_set_network(gateway_state_handle_t handle, const gateway_network_state_t *state)
+gateway_status_t gateway_state_set_network(gateway_state_handle_t handle, const gateway_network_state_t *state)
 {
     if (!handle || !state) {
-        return ESP_ERR_INVALID_ARG;
+        return GATEWAY_STATUS_INVALID_ARG;
     }
-    esp_err_t ret = gateway_state_init(handle);
-    if (ret != ESP_OK) {
+    gateway_status_t ret = gateway_state_init(handle);
+    if (ret != GATEWAY_STATUS_OK) {
         return ret;
     }
 
     xSemaphoreTake(handle->state_mutex, portMAX_DELAY);
     handle->network_state = *state;
     xSemaphoreGive(handle->state_mutex);
-    return ESP_OK;
+    return GATEWAY_STATUS_OK;
 }
 
-esp_err_t gateway_state_get_network(gateway_state_handle_t handle, gateway_network_state_t *out_state)
+gateway_status_t gateway_state_get_network(gateway_state_handle_t handle, gateway_network_state_t *out_state)
 {
     if (!handle || !out_state) {
-        return ESP_ERR_INVALID_ARG;
+        return GATEWAY_STATUS_INVALID_ARG;
     }
-    esp_err_t ret = gateway_state_init(handle);
-    if (ret != ESP_OK) {
+    gateway_status_t ret = gateway_state_init(handle);
+    if (ret != GATEWAY_STATUS_OK) {
         return ret;
     }
 
     xSemaphoreTake(handle->state_mutex, portMAX_DELAY);
     *out_state = handle->network_state;
     xSemaphoreGive(handle->state_mutex);
-    return ESP_OK;
+    return GATEWAY_STATUS_OK;
 }
 
-esp_err_t gateway_state_set_wifi(gateway_state_handle_t handle, const gateway_wifi_state_t *state)
+gateway_status_t gateway_state_set_wifi(gateway_state_handle_t handle, const gateway_wifi_state_t *state)
 {
     if (!handle || !state) {
-        return ESP_ERR_INVALID_ARG;
+        return GATEWAY_STATUS_INVALID_ARG;
     }
-    esp_err_t ret = gateway_state_init(handle);
-    if (ret != ESP_OK) {
+    gateway_status_t ret = gateway_state_init(handle);
+    if (ret != GATEWAY_STATUS_OK) {
         return ret;
     }
 
     xSemaphoreTake(handle->state_mutex, portMAX_DELAY);
     handle->wifi_state = *state;
     xSemaphoreGive(handle->state_mutex);
-    return ESP_OK;
+    return GATEWAY_STATUS_OK;
 }
 
-esp_err_t gateway_state_get_wifi(gateway_state_handle_t handle, gateway_wifi_state_t *out_state)
+gateway_status_t gateway_state_get_wifi(gateway_state_handle_t handle, gateway_wifi_state_t *out_state)
 {
     if (!handle || !out_state) {
-        return ESP_ERR_INVALID_ARG;
+        return GATEWAY_STATUS_INVALID_ARG;
     }
-    esp_err_t ret = gateway_state_init(handle);
-    if (ret != ESP_OK) {
+    gateway_status_t ret = gateway_state_init(handle);
+    if (ret != GATEWAY_STATUS_OK) {
         return ret;
     }
 
     xSemaphoreTake(handle->state_mutex, portMAX_DELAY);
     *out_state = handle->wifi_state;
     xSemaphoreGive(handle->state_mutex);
-    return ESP_OK;
+    return GATEWAY_STATUS_OK;
 }
 
-esp_err_t gateway_state_update_lqi(gateway_state_handle_t handle,
-                                   uint16_t short_addr,
-                                   int lqi,
-                                   int rssi,
-                                   gateway_lqi_source_t source,
-                                   uint64_t updated_ms)
+gateway_status_t gateway_state_update_lqi(gateway_state_handle_t handle,
+                                          uint16_t short_addr,
+                                          int lqi,
+                                          int rssi,
+                                          gateway_lqi_source_t source,
+                                          uint64_t updated_ms)
 {
     if (!handle) {
-        return ESP_ERR_INVALID_ARG;
+        return GATEWAY_STATUS_INVALID_ARG;
     }
 
-    esp_err_t ret = gateway_state_init(handle);
-    if (ret != ESP_OK) {
+    gateway_status_t ret = gateway_state_init(handle);
+    if (ret != GATEWAY_STATUS_OK) {
         return ret;
     }
     if (updated_ms == 0) {
@@ -170,7 +170,7 @@ esp_err_t gateway_state_update_lqi(gateway_state_handle_t handle,
     if (idx < 0) {
         if (handle->lqi_cache_count >= GATEWAY_STATE_LQI_CACHE_CAPACITY) {
             xSemaphoreGive(handle->state_mutex);
-            return ESP_ERR_NO_MEM;
+            return GATEWAY_STATUS_NO_MEM;
         }
         idx = handle->lqi_cache_count;
         handle->lqi_cache_count++;
@@ -182,7 +182,7 @@ esp_err_t gateway_state_update_lqi(gateway_state_handle_t handle,
     handle->lqi_cache[idx].source = source;
     handle->lqi_cache[idx].updated_ms = updated_ms;
     xSemaphoreGive(handle->state_mutex);
-    return ESP_OK;
+    return GATEWAY_STATUS_OK;
 }
 
 int gateway_state_get_lqi_snapshot(gateway_state_handle_t handle, gateway_lqi_cache_entry_t *out, size_t max_items)
@@ -190,8 +190,8 @@ int gateway_state_get_lqi_snapshot(gateway_state_handle_t handle, gateway_lqi_ca
     if (!handle || !out || max_items == 0) {
         return 0;
     }
-    esp_err_t ret = gateway_state_init(handle);
-    if (ret != ESP_OK) {
+    gateway_status_t ret = gateway_state_init(handle);
+    if (ret != GATEWAY_STATUS_OK) {
         return 0;
     }
 

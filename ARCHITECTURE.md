@@ -107,8 +107,11 @@ Response reports per-group status in JSON `details`.
 ## Current Technical Debt
 
 1. `gateway_web_api` still has some large handler/builder files; continue mapper/use-case extraction.
-2. Core purity is not complete yet:
-- `gateway_state` still uses a FreeRTOS-backed lock adapter (`gateway_state_lock_freertos.c`), so portability to non-FreeRTOS targets needs an additional lock backend.
+2. `gateway_state` lock layer now supports selectable backends:
+- `gateway_state_lock_freertos.c` (default for ESP-IDF targets),
+- `gateway_state_lock_noop.c` (for non-FreeRTOS/host-like targets),
+- selection via `gateway_state_set_lock_backend(...)` before first `gateway_state_init/create`.
+- if FreeRTOS backend is unavailable in target toolchain, lock layer falls back to `NOOP`.
 3. Integration coverage gaps:
 - WS real socket lifecycle/backpressure,
 - browser-level E2E contract for new health/LQI fields.

@@ -29,6 +29,11 @@ void gateway_state_set_now_ms_provider(gateway_state_now_ms_provider_t provider)
     s_now_ms_provider = provider;
 }
 
+gateway_status_t gateway_state_set_lock_backend(gateway_state_lock_backend_t backend)
+{
+    return gateway_state_lock_select_backend(backend);
+}
+
 gateway_status_t gateway_state_create(gateway_state_handle_t *out_handle)
 {
     if (!out_handle) {

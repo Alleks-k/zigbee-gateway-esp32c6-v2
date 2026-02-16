@@ -1,7 +1,9 @@
 idf_component_register(
     SRCS
         "src/gateway_state.c"
+        "src/gateway_state_lock.c"
         "src/gateway_state_lock_freertos.c"
+        "src/gateway_state_lock_noop.c"
     INCLUDE_DIRS
         "include"
     REQUIRES

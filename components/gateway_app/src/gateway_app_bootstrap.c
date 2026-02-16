@@ -19,6 +19,8 @@
 #include "web_server.h"
 #include "wifi_init.h"
 
+#include <string.h>
+
 static const char *TAG = "GATEWAY_APP";
 static esp_event_handler_instance_t s_device_announce_handler = NULL;
 
@@ -83,12 +85,33 @@ static esp_err_t gateway_app_attach_device_events(device_service_handle_t device
         &s_device_announce_handler);
 }
 
+static void gateway_app_on_device_list_changed(void *ctx)
+{
+    (void)ctx;
+    (void)esp_event_post(GATEWAY_EVENT, GATEWAY_EVENT_DEVICE_LIST_CHANGED, NULL, 0, 0);
+}
+
+static void gateway_app_on_device_delete_request(void *ctx, uint16_t short_addr, const gateway_ieee_addr_t ieee_addr)
+{
+    (void)ctx;
+    gateway_device_delete_request_event_t evt = {
+        .short_addr = short_addr,
+    };
+    memcpy(evt.ieee_addr, ieee_addr, sizeof(evt.ieee_addr));
+    (void)esp_event_post(GATEWAY_EVENT, GATEWAY_EVENT_DEVICE_DELETE_REQUEST, &evt, sizeof(evt), 0);
+}
+
 void gateway_app_start(void)
 {
     device_service_handle_t device_service = NULL;
     gateway_state_handle_t gateway_state = NULL;
     gateway_runtime_context_t runtime_ctx = {0};
     gateway_wifi_system_init_params_t wifi_system_params = {0};
+    device_service_notifier_t device_notifier = {
+        .on_list_changed = gateway_app_on_device_list_changed,
+        .on_delete_request = gateway_app_on_device_delete_request,
+        .ctx = NULL,
+    };
 
     ESP_ERROR_CHECK(nvs_flash_init());
     gateway_error_ring_set_now_ms_provider(gateway_app_now_ms_provider);
@@ -96,6 +119,7 @@ void gateway_app_start(void)
     ESP_ERROR_CHECK(config_service_init_or_migrate());
     ESP_ERROR_CHECK(gateway_status_to_esp_err(device_service_create(&device_service)));
     ESP_ERROR_CHECK(gateway_status_to_esp_err(gateway_state_create(&gateway_state)));
+    ESP_ERROR_CHECK(gateway_status_to_esp_err(device_service_set_notifier(device_service, &device_notifier)));
     ESP_ERROR_CHECK(gateway_status_to_esp_err(device_service_init(device_service)));
     ESP_ERROR_CHECK(gateway_status_to_esp_err(gateway_state_init(gateway_state)));
     gateway_state_set_now_ms_provider(gateway_app_now_ms_provider);

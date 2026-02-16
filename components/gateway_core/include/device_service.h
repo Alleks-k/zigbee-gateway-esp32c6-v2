@@ -9,9 +9,19 @@
 typedef struct device_service device_service_t;
 typedef device_service_t *device_service_handle_t;
 
+typedef void (*device_service_on_list_changed_fn)(void *ctx);
+typedef void (*device_service_on_delete_request_fn)(void *ctx, uint16_t short_addr, const gateway_ieee_addr_t ieee_addr);
+
+typedef struct {
+    device_service_on_list_changed_fn on_list_changed;
+    device_service_on_delete_request_fn on_delete_request;
+    void *ctx;
+} device_service_notifier_t;
+
 gateway_status_t device_service_create(device_service_handle_t *out_handle);
 void device_service_destroy(device_service_handle_t handle);
 gateway_status_t device_service_init(device_service_handle_t handle);
+gateway_status_t device_service_set_notifier(device_service_handle_t handle, const device_service_notifier_t *notifier);
 void device_service_add_with_ieee(device_service_handle_t handle, uint16_t addr, gateway_ieee_addr_t ieee);
 void device_service_update_name(device_service_handle_t handle, uint16_t addr, const char *new_name);
 void device_service_delete(device_service_handle_t handle, uint16_t addr);

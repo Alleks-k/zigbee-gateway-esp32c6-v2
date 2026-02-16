@@ -7,6 +7,22 @@
 
 static const char *s_default_device_name_prefix = "Пристрій";
 
+static void device_service_notify_list_changed(device_service_handle_t handle)
+{
+    if (!handle || !handle->on_list_changed) {
+        return;
+    }
+    handle->on_list_changed(handle->notifier_ctx);
+}
+
+static void device_service_notify_delete_request(device_service_handle_t handle, uint16_t short_addr, gateway_ieee_addr_t ieee_addr)
+{
+    if (!handle || !handle->on_delete_request) {
+        return;
+    }
+    handle->on_delete_request(handle->notifier_ctx, short_addr, ieee_addr);
+}
+
 gateway_status_t device_service_create(device_service_handle_t *out_handle)
 {
     if (!out_handle) {
@@ -51,6 +67,25 @@ gateway_status_t device_service_init(device_service_handle_t handle)
     return GATEWAY_STATUS_OK;
 }
 
+gateway_status_t device_service_set_notifier(device_service_handle_t handle, const device_service_notifier_t *notifier)
+{
+    if (!handle) {
+        return GATEWAY_STATUS_INVALID_ARG;
+    }
+
+    if (!notifier) {
+        handle->on_list_changed = NULL;
+        handle->on_delete_request = NULL;
+        handle->notifier_ctx = NULL;
+        return GATEWAY_STATUS_OK;
+    }
+
+    handle->on_list_changed = notifier->on_list_changed;
+    handle->on_delete_request = notifier->on_delete_request;
+    handle->notifier_ctx = notifier->ctx;
+    return GATEWAY_STATUS_OK;
+}
+
 void device_service_add_with_ieee(device_service_handle_t handle, uint16_t addr, gateway_ieee_addr_t ieee)
 {
     if (!handle) {
@@ -71,7 +106,7 @@ void device_service_add_with_ieee(device_service_handle_t handle, uint16_t addr,
     }
 
     device_service_lock_release(handle);
-    device_service_events_post_list_changed();
+    device_service_notify_list_changed(handle);
 }
 
 void device_service_update_name(device_service_handle_t handle, uint16_t addr, const char *new_name)
@@ -89,7 +124,7 @@ void device_service_update_name(device_service_handle_t handle, uint16_t addr, c
     }
 
     device_service_lock_release(handle);
-    device_service_events_post_list_changed();
+    device_service_notify_list_changed(handle);
 }
 
 void device_service_delete(device_service_handle_t handle, uint16_t addr)
@@ -114,9 +149,9 @@ void device_service_delete(device_service_handle_t handle, uint16_t addr)
 
     device_service_lock_release(handle);
     if (deleted) {
-        device_service_events_post_delete_request(deleted_short_addr, deleted_ieee);
+        device_service_notify_delete_request(handle, deleted_short_addr, deleted_ieee);
     }
-    device_service_events_post_list_changed();
+    device_service_notify_list_changed(handle);
 }
 
 int device_service_get_snapshot(device_service_handle_t handle, zb_device_t *out, size_t max_items)

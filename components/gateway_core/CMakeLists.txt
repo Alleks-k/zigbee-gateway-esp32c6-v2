@@ -4,11 +4,9 @@ set(gateway_core_srcs
     "src/device_service_rules.c"
     "src/device_service.c"
     "src/device_service_lock_freertos.c"
-    "src/device_service_events.c"
     "src/device_service_persistence.c")
 
 set(gateway_core_reqs
-    gateway_core_events
     gateway_core_storage
     gateway_shared_config
 )

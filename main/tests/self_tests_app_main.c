@@ -33,7 +33,7 @@ void app_main(void)
     runtime_ctx.device_service = device_service;
     runtime_ctx.gateway_state = gateway_state;
     ESP_ERROR_CHECK(zigbee_service_bind_context(&runtime_ctx));
-    ESP_ERROR_CHECK(gateway_core_facade_init(&runtime_ctx));
+    ESP_ERROR_CHECK(gateway_wifi_system_init(&runtime_ctx));
     ESP_ERROR_CHECK(wifi_init_bind_state(gateway_state));
     int failures = zgw_run_self_tests();
     if (failures > 0) {

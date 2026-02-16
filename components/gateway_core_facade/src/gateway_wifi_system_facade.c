@@ -7,7 +7,7 @@
 
 static gateway_state_handle_t s_gateway_state = NULL;
 
-esp_err_t gateway_core_facade_init(const gateway_runtime_context_t *ctx)
+esp_err_t gateway_wifi_system_init(const gateway_runtime_context_t *ctx)
 {
     if (!ctx || !ctx->gateway_state) {
         return ESP_ERR_INVALID_ARG;
@@ -36,32 +36,32 @@ static gateway_core_wifi_link_quality_t to_core_wifi_link_quality(system_wifi_li
     }
 }
 
-esp_err_t gateway_core_facade_wifi_save_credentials(const char *ssid, const char *password)
+esp_err_t gateway_wifi_system_save_credentials(const char *ssid, const char *password)
 {
     return wifi_service_save_credentials(ssid, password);
 }
 
-esp_err_t gateway_core_facade_schedule_reboot(uint32_t delay_ms)
+esp_err_t gateway_wifi_system_schedule_reboot(uint32_t delay_ms)
 {
     return system_service_schedule_reboot(delay_ms);
 }
 
-esp_err_t gateway_core_facade_factory_reset_and_reboot(uint32_t reboot_delay_ms)
+esp_err_t gateway_wifi_system_factory_reset_and_reboot(uint32_t reboot_delay_ms)
 {
     return system_service_factory_reset_and_reboot(reboot_delay_ms);
 }
 
-esp_err_t gateway_core_facade_wifi_scan(wifi_ap_info_t **out_list, size_t *out_count)
+esp_err_t gateway_wifi_system_scan(wifi_ap_info_t **out_list, size_t *out_count)
 {
     return wifi_service_scan(out_list, out_count);
 }
 
-void gateway_core_facade_wifi_scan_free(wifi_ap_info_t *list)
+void gateway_wifi_system_scan_free(wifi_ap_info_t *list)
 {
     wifi_service_scan_free(list);
 }
 
-esp_err_t gateway_core_facade_get_factory_reset_report(gateway_core_factory_reset_report_t *out_report)
+esp_err_t gateway_wifi_system_get_factory_reset_report(gateway_core_factory_reset_report_t *out_report)
 {
     if (!out_report) {
         return ESP_ERR_INVALID_ARG;
@@ -80,7 +80,7 @@ esp_err_t gateway_core_facade_get_factory_reset_report(gateway_core_factory_rese
     return ESP_OK;
 }
 
-esp_err_t gateway_core_facade_collect_telemetry(gateway_core_telemetry_t *out)
+esp_err_t gateway_wifi_system_collect_telemetry(gateway_core_telemetry_t *out)
 {
     if (!out) {
         return ESP_ERR_INVALID_ARG;
@@ -109,7 +109,7 @@ esp_err_t gateway_core_facade_collect_telemetry(gateway_core_telemetry_t *out)
     return ESP_OK;
 }
 
-esp_err_t gateway_core_facade_get_network_state(gateway_network_state_t *out_state)
+esp_err_t gateway_wifi_system_get_network_state(gateway_network_state_t *out_state)
 {
     esp_err_t ret = require_gateway_state_handle();
     if (ret != ESP_OK) {
@@ -118,7 +118,7 @@ esp_err_t gateway_core_facade_get_network_state(gateway_network_state_t *out_sta
     return gateway_state_get_network(s_gateway_state, out_state);
 }
 
-esp_err_t gateway_core_facade_get_wifi_state(gateway_wifi_state_t *out_state)
+esp_err_t gateway_wifi_system_get_wifi_state(gateway_wifi_state_t *out_state)
 {
     esp_err_t ret = require_gateway_state_handle();
     if (ret != ESP_OK) {
@@ -127,7 +127,7 @@ esp_err_t gateway_core_facade_get_wifi_state(gateway_wifi_state_t *out_state)
     return gateway_state_get_wifi(s_gateway_state, out_state);
 }
 
-esp_err_t gateway_core_facade_get_schema_version(int32_t *out_version)
+esp_err_t gateway_wifi_system_get_schema_version(int32_t *out_version)
 {
     return config_service_get_schema_version(out_version);
 }

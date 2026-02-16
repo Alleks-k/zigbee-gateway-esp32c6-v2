@@ -39,17 +39,17 @@ typedef struct {
     gateway_core_wifi_link_quality_t wifi_link_quality;
 } gateway_core_telemetry_t;
 
-esp_err_t gateway_core_facade_init(const gateway_runtime_context_t *ctx);
+esp_err_t gateway_wifi_system_init(const gateway_runtime_context_t *ctx);
 
-esp_err_t gateway_core_facade_wifi_save_credentials(const char *ssid, const char *password);
-esp_err_t gateway_core_facade_schedule_reboot(uint32_t delay_ms);
-esp_err_t gateway_core_facade_factory_reset_and_reboot(uint32_t reboot_delay_ms);
+esp_err_t gateway_wifi_system_save_credentials(const char *ssid, const char *password);
+esp_err_t gateway_wifi_system_schedule_reboot(uint32_t delay_ms);
+esp_err_t gateway_wifi_system_factory_reset_and_reboot(uint32_t reboot_delay_ms);
 
-esp_err_t gateway_core_facade_wifi_scan(wifi_ap_info_t **out_list, size_t *out_count);
-void gateway_core_facade_wifi_scan_free(wifi_ap_info_t *list);
+esp_err_t gateway_wifi_system_scan(wifi_ap_info_t **out_list, size_t *out_count);
+void gateway_wifi_system_scan_free(wifi_ap_info_t *list);
 
-esp_err_t gateway_core_facade_get_factory_reset_report(gateway_core_factory_reset_report_t *out_report);
-esp_err_t gateway_core_facade_collect_telemetry(gateway_core_telemetry_t *out);
-esp_err_t gateway_core_facade_get_network_state(gateway_network_state_t *out_state);
-esp_err_t gateway_core_facade_get_wifi_state(gateway_wifi_state_t *out_state);
-esp_err_t gateway_core_facade_get_schema_version(int32_t *out_version);
+esp_err_t gateway_wifi_system_get_factory_reset_report(gateway_core_factory_reset_report_t *out_report);
+esp_err_t gateway_wifi_system_collect_telemetry(gateway_core_telemetry_t *out);
+esp_err_t gateway_wifi_system_get_network_state(gateway_network_state_t *out_state);
+esp_err_t gateway_wifi_system_get_wifi_state(gateway_wifi_state_t *out_state);
+esp_err_t gateway_wifi_system_get_schema_version(int32_t *out_version);

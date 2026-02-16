@@ -53,7 +53,7 @@ static gateway_core_job_state_t from_job_state(zgw_job_state_t state)
     }
 }
 
-esp_err_t gateway_core_facade_get_job_metrics(gateway_core_job_metrics_t *out_metrics)
+esp_err_t gateway_jobs_get_metrics(gateway_core_job_metrics_t *out_metrics)
 {
     if (!out_metrics) {
         return ESP_ERR_INVALID_ARG;
@@ -75,12 +75,12 @@ esp_err_t gateway_core_facade_get_job_metrics(gateway_core_job_metrics_t *out_me
     return ESP_OK;
 }
 
-esp_err_t gateway_core_facade_job_submit(gateway_core_job_type_t type, uint32_t reboot_delay_ms, uint32_t *out_job_id)
+esp_err_t gateway_jobs_submit(gateway_core_job_type_t type, uint32_t reboot_delay_ms, uint32_t *out_job_id)
 {
     return job_queue_submit(to_job_type(type), reboot_delay_ms, out_job_id);
 }
 
-esp_err_t gateway_core_facade_job_get(uint32_t job_id, gateway_core_job_info_t *out_info)
+esp_err_t gateway_jobs_get(uint32_t job_id, gateway_core_job_info_t *out_info)
 {
     if (!out_info) {
         return ESP_ERR_INVALID_ARG;
@@ -103,12 +103,12 @@ esp_err_t gateway_core_facade_job_get(uint32_t job_id, gateway_core_job_info_t *
     return ESP_OK;
 }
 
-const char *gateway_core_facade_job_type_to_string(gateway_core_job_type_t type)
+const char *gateway_jobs_type_to_string(gateway_core_job_type_t type)
 {
     return job_queue_type_to_string(to_job_type(type));
 }
 
-const char *gateway_core_facade_job_state_to_string(gateway_core_job_state_t state)
+const char *gateway_jobs_state_to_string(gateway_core_job_state_t state)
 {
     switch (state) {
     case GATEWAY_CORE_JOB_STATE_RUNNING:

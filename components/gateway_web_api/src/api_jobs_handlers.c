@@ -84,22 +84,22 @@ esp_err_t api_jobs_submit_handler(httpd_req_t *req)
 
     gateway_core_job_type_t type = parse_job_type(in.type);
     uint32_t job_id = 0;
-    err = gateway_core_facade_job_submit(type, in.reboot_delay_ms, &job_id);
+    err = gateway_jobs_submit(type, in.reboot_delay_ms, &job_id);
     if (err != ESP_OK) {
         return http_error_send_esp(req, err, "Failed to queue job");
     }
 
     gateway_core_job_info_t info = {0};
     const char *state = "queued";
-    err = gateway_core_facade_job_get(job_id, &info);
+    err = gateway_jobs_get(job_id, &info);
     if (err == ESP_OK) {
-        state = gateway_core_facade_job_state_to_string(info.state);
+        state = gateway_jobs_state_to_string(info.state);
     }
 
     char data_json[160];
     int written = snprintf(data_json, sizeof(data_json),
                            "{\"job_id\":%" PRIu32 ",\"type\":\"%s\",\"state\":\"%s\"}",
-                           job_id, gateway_core_facade_job_type_to_string(type), state);
+                           job_id, gateway_jobs_type_to_string(type), state);
     if (written < 0 || (size_t)written >= sizeof(data_json)) {
         return http_error_send_esp(req, ESP_ERR_NO_MEM, "Failed to build job response");
     }
@@ -119,7 +119,7 @@ esp_err_t api_jobs_get_handler(httpd_req_t *req)
         return http_error_send_esp(req, ESP_ERR_NO_MEM, "Out of memory");
     }
 
-    err = gateway_core_facade_job_get(job_id, info);
+    err = gateway_jobs_get(job_id, info);
     if (err != ESP_OK) {
         free(info);
         return http_error_send_esp(req, err, "Job not found");
@@ -149,8 +149,8 @@ esp_err_t api_jobs_get_handler(httpd_req_t *req)
         "{\"job_id\":%" PRIu32 ",\"type\":\"%s\",\"state\":\"%s\",\"done\":%s,"
         "\"created_ms\":%" PRIu64 ",\"updated_ms\":%" PRIu64 ",\"error\":\"%s\",\"result\":%s}",
         info->id,
-        gateway_core_facade_job_type_to_string(info->type),
-        gateway_core_facade_job_state_to_string(info->state),
+        gateway_jobs_type_to_string(info->type),
+        gateway_jobs_state_to_string(info->state),
         (info->state == GATEWAY_CORE_JOB_STATE_SUCCEEDED || info->state == GATEWAY_CORE_JOB_STATE_FAILED) ? "true" : "false",
         info->created_ms,
         info->updated_ms,
@@ -173,8 +173,8 @@ esp_err_t api_jobs_get_handler(httpd_req_t *req)
         "{\"job_id\":%" PRIu32 ",\"type\":\"%s\",\"state\":\"%s\",\"done\":%s,"
         "\"created_ms\":%" PRIu64 ",\"updated_ms\":%" PRIu64 ",\"error\":\"%s\",\"result\":%s}",
         info->id,
-        gateway_core_facade_job_type_to_string(info->type),
-        gateway_core_facade_job_state_to_string(info->state),
+        gateway_jobs_type_to_string(info->type),
+        gateway_jobs_state_to_string(info->state),
         (info->state == GATEWAY_CORE_JOB_STATE_SUCCEEDED || info->state == GATEWAY_CORE_JOB_STATE_FAILED) ? "true" : "false",
         info->created_ms,
         info->updated_ms,

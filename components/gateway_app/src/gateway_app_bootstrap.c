@@ -56,7 +56,7 @@ void gateway_app_start(void)
     ESP_ERROR_CHECK(gateway_state_init(gateway_state));
     runtime_ctx.device_service = device_service;
     runtime_ctx.gateway_state = gateway_state;
-    ESP_ERROR_CHECK(gateway_core_facade_init(&runtime_ctx));
+    ESP_ERROR_CHECK(gateway_wifi_system_init(&runtime_ctx));
     ESP_ERROR_CHECK(wifi_init_bind_state(gateway_state));
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());

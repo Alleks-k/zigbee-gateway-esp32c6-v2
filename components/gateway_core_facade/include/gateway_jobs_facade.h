@@ -41,8 +41,8 @@ typedef struct {
     char result_json[2048];
 } gateway_core_job_info_t;
 
-esp_err_t gateway_core_facade_get_job_metrics(gateway_core_job_metrics_t *out_metrics);
-esp_err_t gateway_core_facade_job_submit(gateway_core_job_type_t type, uint32_t reboot_delay_ms, uint32_t *out_job_id);
-esp_err_t gateway_core_facade_job_get(uint32_t job_id, gateway_core_job_info_t *out_info);
-const char *gateway_core_facade_job_type_to_string(gateway_core_job_type_t type);
-const char *gateway_core_facade_job_state_to_string(gateway_core_job_state_t state);
+esp_err_t gateway_jobs_get_metrics(gateway_core_job_metrics_t *out_metrics);
+esp_err_t gateway_jobs_submit(gateway_core_job_type_t type, uint32_t reboot_delay_ms, uint32_t *out_job_id);
+esp_err_t gateway_jobs_get(uint32_t job_id, gateway_core_job_info_t *out_info);
+const char *gateway_jobs_type_to_string(gateway_core_job_type_t type);
+const char *gateway_jobs_state_to_string(gateway_core_job_state_t state);

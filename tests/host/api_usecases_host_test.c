@@ -95,7 +95,7 @@ static esp_err_t injected_factory_reset_and_reboot(uint32_t reboot_delay_ms)
     return g_stub.inj_factory_reset_ret;
 }
 
-esp_err_t gateway_core_facade_send_on_off(uint16_t short_addr, uint8_t endpoint, uint8_t on_off)
+esp_err_t gateway_device_zigbee_send_on_off(uint16_t short_addr, uint8_t endpoint, uint8_t on_off)
 {
     g_stub.facade_send_calls++;
     g_stub.facade_send_short_addr = short_addr;
@@ -104,26 +104,26 @@ esp_err_t gateway_core_facade_send_on_off(uint16_t short_addr, uint8_t endpoint,
     return g_stub.facade_send_ret;
 }
 
-esp_err_t gateway_core_facade_wifi_save_credentials(const char *ssid, const char *password)
+esp_err_t gateway_wifi_system_save_credentials(const char *ssid, const char *password)
 {
     (void)ssid;
     (void)password;
     return ESP_OK;
 }
 
-esp_err_t gateway_core_facade_schedule_reboot(uint32_t delay_ms)
+esp_err_t gateway_wifi_system_schedule_reboot(uint32_t delay_ms)
 {
     (void)delay_ms;
     return ESP_OK;
 }
 
-esp_err_t gateway_core_facade_factory_reset_and_reboot(uint32_t reboot_delay_ms)
+esp_err_t gateway_wifi_system_factory_reset_and_reboot(uint32_t reboot_delay_ms)
 {
     (void)reboot_delay_ms;
     return ESP_OK;
 }
 
-esp_err_t gateway_core_facade_get_network_status(zigbee_network_status_t *out_status)
+esp_err_t gateway_device_zigbee_get_network_status(zigbee_network_status_t *out_status)
 {
     if (!out_status) {
         return ESP_ERR_INVALID_ARG;
@@ -132,21 +132,21 @@ esp_err_t gateway_core_facade_get_network_status(zigbee_network_status_t *out_st
     return ESP_OK;
 }
 
-int gateway_core_facade_get_devices_snapshot(zb_device_t *out_devices, int max_devices)
+int gateway_device_zigbee_get_devices_snapshot(zb_device_t *out_devices, int max_devices)
 {
     (void)out_devices;
     (void)max_devices;
     return 0;
 }
 
-int gateway_core_facade_get_neighbor_lqi_snapshot(zigbee_neighbor_lqi_t *out_neighbors, int max_neighbors)
+int gateway_device_zigbee_get_neighbor_lqi_snapshot(zigbee_neighbor_lqi_t *out_neighbors, int max_neighbors)
 {
     (void)out_neighbors;
     (void)max_neighbors;
     return 0;
 }
 
-esp_err_t gateway_core_facade_get_cached_lqi_snapshot(zigbee_neighbor_lqi_t *out_neighbors, int max_neighbors, int *out_count,
+esp_err_t gateway_device_zigbee_get_cached_lqi_snapshot(zigbee_neighbor_lqi_t *out_neighbors, int max_neighbors, int *out_count,
                                                       zigbee_lqi_source_t *out_source, uint64_t *out_updated_ms)
 {
     (void)out_neighbors;
@@ -163,26 +163,26 @@ esp_err_t gateway_core_facade_get_cached_lqi_snapshot(zigbee_neighbor_lqi_t *out
     return ESP_OK;
 }
 
-esp_err_t gateway_core_facade_permit_join(uint8_t duration_seconds)
+esp_err_t gateway_device_zigbee_permit_join(uint8_t duration_seconds)
 {
     (void)duration_seconds;
     return ESP_OK;
 }
 
-esp_err_t gateway_core_facade_delete_device(uint16_t short_addr)
+esp_err_t gateway_device_zigbee_delete_device(uint16_t short_addr)
 {
     (void)short_addr;
     return ESP_OK;
 }
 
-esp_err_t gateway_core_facade_rename_device(uint16_t short_addr, const char *name)
+esp_err_t gateway_device_zigbee_rename_device(uint16_t short_addr, const char *name)
 {
     (void)short_addr;
     (void)name;
     return ESP_OK;
 }
 
-esp_err_t gateway_core_facade_wifi_scan(wifi_ap_info_t **out_list, size_t *out_count)
+esp_err_t gateway_wifi_system_scan(wifi_ap_info_t **out_list, size_t *out_count)
 {
     if (!out_list || !out_count) {
         return ESP_ERR_INVALID_ARG;
@@ -192,12 +192,12 @@ esp_err_t gateway_core_facade_wifi_scan(wifi_ap_info_t **out_list, size_t *out_c
     return ESP_OK;
 }
 
-void gateway_core_facade_wifi_scan_free(wifi_ap_info_t *list)
+void gateway_wifi_system_scan_free(wifi_ap_info_t *list)
 {
     (void)list;
 }
 
-esp_err_t gateway_core_facade_get_factory_reset_report(gateway_core_factory_reset_report_t *out_report)
+esp_err_t gateway_wifi_system_get_factory_reset_report(gateway_core_factory_reset_report_t *out_report)
 {
     if (!out_report) {
         return ESP_ERR_INVALID_ARG;
@@ -209,7 +209,7 @@ esp_err_t gateway_core_facade_get_factory_reset_report(gateway_core_factory_rese
     return ESP_OK;
 }
 
-esp_err_t gateway_core_facade_collect_telemetry(gateway_core_telemetry_t *out)
+esp_err_t gateway_wifi_system_collect_telemetry(gateway_core_telemetry_t *out)
 {
     if (!out) {
         return ESP_ERR_INVALID_ARG;
@@ -218,7 +218,7 @@ esp_err_t gateway_core_facade_collect_telemetry(gateway_core_telemetry_t *out)
     return ESP_OK;
 }
 
-esp_err_t gateway_core_facade_get_job_metrics(gateway_core_job_metrics_t *out_metrics)
+esp_err_t gateway_jobs_get_metrics(gateway_core_job_metrics_t *out_metrics)
 {
     if (!out_metrics) {
         return ESP_ERR_INVALID_ARG;
@@ -227,7 +227,7 @@ esp_err_t gateway_core_facade_get_job_metrics(gateway_core_job_metrics_t *out_me
     return ESP_OK;
 }
 
-esp_err_t gateway_core_facade_get_network_state(gateway_network_state_t *out_state)
+esp_err_t gateway_wifi_system_get_network_state(gateway_network_state_t *out_state)
 {
     if (!out_state) {
         return ESP_ERR_INVALID_ARG;
@@ -236,7 +236,7 @@ esp_err_t gateway_core_facade_get_network_state(gateway_network_state_t *out_sta
     return ESP_OK;
 }
 
-esp_err_t gateway_core_facade_get_wifi_state(gateway_wifi_state_t *out_state)
+esp_err_t gateway_wifi_system_get_wifi_state(gateway_wifi_state_t *out_state)
 {
     if (!out_state) {
         return ESP_ERR_INVALID_ARG;
@@ -245,7 +245,7 @@ esp_err_t gateway_core_facade_get_wifi_state(gateway_wifi_state_t *out_state)
     return ESP_OK;
 }
 
-esp_err_t gateway_core_facade_get_schema_version(int32_t *out_version)
+esp_err_t gateway_wifi_system_get_schema_version(int32_t *out_version)
 {
     if (!out_version) {
         return ESP_ERR_INVALID_ARG;

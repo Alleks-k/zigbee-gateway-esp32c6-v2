@@ -79,6 +79,21 @@ check_web_api_headers_are_facade_only() {
     fi
 }
 
+check_core_facade_headers_no_low_level_includes() {
+    local facade_dir="${ROOT_DIR}/components/gateway_core_facade/include"
+    local hits
+    hits="$(
+        rg -n '#include[[:space:]]+"(device_service\.h|zigbee_service\.h|wifi_service\.h|system_service\.h|job_queue\.h|state_store\.h|gateway_runtime_context\.h)"' \
+            "${facade_dir}" || true
+    )"
+    if [[ -n "${hits}" ]]; then
+        while IFS= read -r hit; do
+            local rel="${hit#${ROOT_DIR}/}"
+            report_violation "gateway_core_facade public header includes low-level header: ${rel}"
+        done <<< "${hits}"
+    fi
+}
+
 check_web_api_no_low_level_idf_includes() {
     local web_api_dir="${ROOT_DIR}/components/gateway_web_api"
     local forbidden_patterns=(
@@ -123,7 +138,7 @@ check_web_api_no_low_level_idf_includes() {
     fi
 }
 
-check_default_getters_bootstrap_only() {
+check_default_getters_test_only() {
     local hits
     hits="$(
         rg -n '\b(device_service_get_default|gateway_state_get_default)\s*\(' \
@@ -142,7 +157,6 @@ check_default_getters_bootstrap_only() {
         local rel="${abs_file#${ROOT_DIR}/}"
 
         case "${rel}" in
-            components/gateway_app/src/gateway_app_bootstrap.c|\
             components/gateway_core/src/device_service.c|\
             components/gateway_core_state/src/gateway_state.c|\
             main/tests/*|\
@@ -152,7 +166,7 @@ check_default_getters_bootstrap_only() {
                 ;;
         esac
 
-        report_violation "default getter is forbidden outside bootstrap/tests: ${hit#${ROOT_DIR}/}"
+        report_violation "default getter is forbidden outside tests: ${hit#${ROOT_DIR}/}"
     done <<< "${hits}"
 }
 
@@ -160,8 +174,9 @@ check_web_api_dependency_rules
 check_no_cmake_include_hacks
 check_no_relative_source_includes
 check_web_api_headers_are_facade_only
+check_core_facade_headers_no_low_level_includes
 check_web_api_no_low_level_idf_includes
-check_default_getters_bootstrap_only
+check_default_getters_test_only
 
 if [[ "${violations}" -ne 0 ]]; then
     echo "Component dependency/include edge check failed."

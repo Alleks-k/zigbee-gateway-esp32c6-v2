@@ -5,9 +5,7 @@
 #include <stdint.h>
 
 #include "esp_err.h"
-#include "gateway_runtime_context.h"
-#include "state_store.h"
-#include "wifi_service.h"
+#include "gateway_runtime_types.h"
 
 typedef enum {
     GATEWAY_CORE_WIFI_LINK_UNKNOWN = 0,
@@ -39,7 +37,11 @@ typedef struct {
     gateway_core_wifi_link_quality_t wifi_link_quality;
 } gateway_core_telemetry_t;
 
-esp_err_t gateway_wifi_system_init(const gateway_runtime_context_t *ctx);
+typedef struct {
+    void *gateway_state_handle;
+} gateway_wifi_system_init_params_t;
+
+esp_err_t gateway_wifi_system_init(const gateway_wifi_system_init_params_t *params);
 
 esp_err_t gateway_wifi_system_save_credentials(const char *ssid, const char *password);
 esp_err_t gateway_wifi_system_schedule_reboot(uint32_t delay_ms);

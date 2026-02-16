@@ -3,9 +3,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "device_service.h"
 #include "esp_err.h"
-#include "zigbee_service.h"
+#include "gateway_runtime_types.h"
 
 esp_err_t gateway_device_zigbee_send_on_off(uint16_t short_addr, uint8_t endpoint, uint8_t on_off);
 esp_err_t gateway_device_zigbee_get_network_status(zigbee_network_status_t *out_status);

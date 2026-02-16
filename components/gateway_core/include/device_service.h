@@ -4,17 +4,13 @@
 #include <stdint.h>
 
 #include "esp_err.h"
-#include "gateway_config_types.h"
-
-#ifndef MAX_DEVICES
-#define MAX_DEVICES GATEWAY_MAX_DEVICES
-#endif
-
-typedef gateway_device_record_t zb_device_t;
+#include "gateway_runtime_types.h"
 
 typedef struct device_service device_service_t;
 typedef device_service_t *device_service_handle_t;
 
+esp_err_t device_service_create(device_service_handle_t *out_handle);
+void device_service_destroy(device_service_handle_t handle);
 esp_err_t device_service_get_default(device_service_handle_t *out_handle);
 esp_err_t device_service_init(device_service_handle_t handle);
 void device_service_add_with_ieee(device_service_handle_t handle, uint16_t addr, gateway_ieee_addr_t ieee);

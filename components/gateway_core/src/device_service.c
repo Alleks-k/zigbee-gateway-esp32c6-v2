@@ -1,5 +1,6 @@
 #include "device_service.h"
 
+#include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -22,6 +23,54 @@ struct device_service {
 };
 
 static device_service_t s_default_service = {0};
+
+static void device_service_reset(device_service_handle_t handle)
+{
+    if (!handle) {
+        return;
+    }
+
+    if (handle->dev_announce_handler) {
+        (void)esp_event_handler_instance_unregister(
+            GATEWAY_EVENT, GATEWAY_EVENT_DEVICE_ANNOUNCE, handle->dev_announce_handler);
+        handle->dev_announce_handler = NULL;
+    }
+
+    if (handle->devices_mutex) {
+        vSemaphoreDelete(handle->devices_mutex);
+        handle->devices_mutex = NULL;
+    }
+
+    handle->device_count = 0;
+    memset(handle->devices, 0, sizeof(handle->devices));
+}
+
+esp_err_t device_service_create(device_service_handle_t *out_handle)
+{
+    if (!out_handle) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    device_service_handle_t handle = calloc(1, sizeof(*handle));
+    if (!handle) {
+        return ESP_ERR_NO_MEM;
+    }
+
+    *out_handle = handle;
+    return ESP_OK;
+}
+
+void device_service_destroy(device_service_handle_t handle)
+{
+    if (!handle) {
+        return;
+    }
+
+    device_service_reset(handle);
+    if (handle != &s_default_service) {
+        free(handle);
+    }
+}
 
 static void save_devices_locked(device_service_handle_t handle)
 {
@@ -239,4 +288,3 @@ int device_service_get_snapshot(device_service_handle_t handle, zb_device_t *out
     }
     return count;
 }
-

@@ -1,5 +1,6 @@
 #include "state_store.h"
 
+#include <stdlib.h>
 #include <string.h>
 
 #include "esp_timer.h"
@@ -15,6 +16,50 @@ struct gateway_state_store {
 };
 
 static gateway_state_store_t s_default_state = {0};
+
+static void gateway_state_reset(gateway_state_handle_t handle)
+{
+    if (!handle) {
+        return;
+    }
+
+    if (handle->state_mutex) {
+        vSemaphoreDelete(handle->state_mutex);
+        handle->state_mutex = NULL;
+    }
+
+    handle->network_state = (gateway_network_state_t){0};
+    handle->wifi_state = (gateway_wifi_state_t){0};
+    handle->lqi_cache_count = 0;
+    memset(handle->lqi_cache, 0, sizeof(handle->lqi_cache));
+}
+
+esp_err_t gateway_state_create(gateway_state_handle_t *out_handle)
+{
+    if (!out_handle) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    gateway_state_handle_t handle = calloc(1, sizeof(*handle));
+    if (!handle) {
+        return ESP_ERR_NO_MEM;
+    }
+
+    *out_handle = handle;
+    return ESP_OK;
+}
+
+void gateway_state_destroy(gateway_state_handle_t handle)
+{
+    if (!handle) {
+        return;
+    }
+
+    gateway_state_reset(handle);
+    if (handle != &s_default_state) {
+        free(handle);
+    }
+}
 
 esp_err_t gateway_state_get_default(gateway_state_handle_t *out_handle)
 {
@@ -169,4 +214,3 @@ int gateway_state_get_lqi_snapshot(gateway_state_handle_t handle, gateway_lqi_ca
     xSemaphoreGive(handle->state_mutex);
     return count;
 }
-

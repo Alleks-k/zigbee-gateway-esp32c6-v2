@@ -20,6 +20,7 @@ void app_main(void)
     device_service_handle_t device_service = NULL;
     gateway_state_handle_t gateway_state = NULL;
     gateway_runtime_context_t runtime_ctx = {0};
+    gateway_wifi_system_init_params_t wifi_system_params = {0};
 
     ESP_ERROR_CHECK(nvs_flash_init());
     ESP_ERROR_CHECK(config_service_init_or_migrate());
@@ -33,7 +34,8 @@ void app_main(void)
     runtime_ctx.device_service = device_service;
     runtime_ctx.gateway_state = gateway_state;
     ESP_ERROR_CHECK(zigbee_service_bind_context(&runtime_ctx));
-    ESP_ERROR_CHECK(gateway_wifi_system_init(&runtime_ctx));
+    wifi_system_params.gateway_state_handle = gateway_state;
+    ESP_ERROR_CHECK(gateway_wifi_system_init(&wifi_system_params));
     ESP_ERROR_CHECK(wifi_init_bind_state(gateway_state));
     int failures = zgw_run_self_tests();
     if (failures > 0) {

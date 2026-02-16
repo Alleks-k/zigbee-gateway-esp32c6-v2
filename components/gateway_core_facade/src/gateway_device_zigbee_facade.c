@@ -1,5 +1,7 @@
 #include "gateway_device_zigbee_facade.h"
 
+#include "zigbee_service.h"
+
 esp_err_t gateway_device_zigbee_send_on_off(uint16_t short_addr, uint8_t endpoint, uint8_t on_off)
 {
     return zigbee_service_send_on_off(short_addr, endpoint, on_off);

@@ -4,5 +4,6 @@ idf_component_register(
     INCLUDE_DIRS
         "include"
     REQUIRES
+        gateway_shared_config
         gateway_core
 )

@@ -45,18 +45,20 @@ void gateway_app_start(void)
     device_service_handle_t device_service = NULL;
     gateway_state_handle_t gateway_state = NULL;
     gateway_runtime_context_t runtime_ctx = {0};
+    gateway_wifi_system_init_params_t wifi_system_params = {0};
 
     ESP_ERROR_CHECK(nvs_flash_init());
     gateway_error_ring_set_now_ms_provider(gateway_app_now_ms_provider);
     http_error_set_map_provider(gateway_app_http_error_map_provider);
     ESP_ERROR_CHECK(config_service_init_or_migrate());
-    ESP_ERROR_CHECK(device_service_get_default(&device_service));
-    ESP_ERROR_CHECK(gateway_state_get_default(&gateway_state));
+    ESP_ERROR_CHECK(device_service_create(&device_service));
+    ESP_ERROR_CHECK(gateway_state_create(&gateway_state));
     ESP_ERROR_CHECK(device_service_init(device_service));
     ESP_ERROR_CHECK(gateway_state_init(gateway_state));
     runtime_ctx.device_service = device_service;
     runtime_ctx.gateway_state = gateway_state;
-    ESP_ERROR_CHECK(gateway_wifi_system_init(&runtime_ctx));
+    wifi_system_params.gateway_state_handle = gateway_state;
+    ESP_ERROR_CHECK(gateway_wifi_system_init(&wifi_system_params));
     ESP_ERROR_CHECK(wifi_init_bind_state(gateway_state));
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());

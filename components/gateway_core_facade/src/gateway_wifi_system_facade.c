@@ -3,16 +3,18 @@
 #include <string.h>
 
 #include "config_service.h"
+#include "state_store.h"
 #include "system_service.h"
+#include "wifi_service.h"
 
 static gateway_state_handle_t s_gateway_state = NULL;
 
-esp_err_t gateway_wifi_system_init(const gateway_runtime_context_t *ctx)
+esp_err_t gateway_wifi_system_init(const gateway_wifi_system_init_params_t *params)
 {
-    if (!ctx || !ctx->gateway_state) {
+    if (!params || !params->gateway_state_handle) {
         return ESP_ERR_INVALID_ARG;
     }
-    s_gateway_state = ctx->gateway_state;
+    s_gateway_state = (gateway_state_handle_t)params->gateway_state_handle;
     return ESP_OK;
 }
 

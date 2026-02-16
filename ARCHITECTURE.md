@@ -72,7 +72,8 @@
 4. Cross-cutting notifications should go through `gateway_core_events`.
 5. `gateway_net` is adapter/platform runtime; business decisions stay in core services.
 6. Core stateful APIs use `gateway_status_t`; mapping to `esp_err_t` happens at boundaries (facade/app/net/zigbee adapter).
-7. Public transport contract is `/api/v1/*` + WS typed envelopes.
+7. `device_service` emits device notifications via notifier callbacks; `gateway_app` maps them to `esp_event_post`.
+8. Public transport contract is `/api/v1/*` + WS typed envelopes.
 
 ## Runtime Flows (Canonical)
 
@@ -107,8 +108,7 @@ Response reports per-group status in JSON `details`.
 
 1. `gateway_web_api` still has some large handler/builder files; continue mapper/use-case extraction.
 2. Core purity is not complete yet:
-- `device_service` still mixes core policy with ESP/FreeRTOS concerns (`esp_log`, mutex/event wiring paths),
-- `gateway_state` still depends on FreeRTOS mutex primitives.
+- `gateway_state` still uses a FreeRTOS-backed lock adapter (`gateway_state_lock_freertos.c`), so portability to non-FreeRTOS targets needs an additional lock backend.
 3. Integration coverage gaps:
 - WS real socket lifecycle/backpressure,
 - browser-level E2E contract for new health/LQI fields.

@@ -109,6 +109,12 @@ sudo apt-get install -y build-essential cppcheck
 - У core-компонентах (`gateway_core`, `gateway_core_state`) використовується `gateway_status_t`.
 - На межах з ESP-IDF (`gateway_app`, `gateway_net`, `gateway_core_facade`, `gateway_core_zigbee`) робиться явний мапінг `gateway_status_t <-> esp_err_t` через `gateway_status_esp.h`.
 
+## Події пристроїв (boundary)
+
+- `device_service` у core не публікує `esp_event` напряму.
+- Core віддає події через notifier callbacks (`device_service_set_notifier`).
+- `gateway_app` є boundary-adapter: приймає notifier callbacks і публікує `GATEWAY_EVENT_*` в ESP event loop.
+
 ## Архітектура
 
 Детальний опис шарів і правил залежностей: [`ARCHITECTURE.md`](./ARCHITECTURE.md).

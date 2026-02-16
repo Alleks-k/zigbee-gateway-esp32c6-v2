@@ -3,6 +3,7 @@ set(gateway_core_srcs
     "src/config_service.c"
     "src/device_service_rules.c"
     "src/device_service.c"
+    "src/device_service_lock_freertos.c"
     "src/device_service_events.c"
     "src/device_service_persistence.c")
 

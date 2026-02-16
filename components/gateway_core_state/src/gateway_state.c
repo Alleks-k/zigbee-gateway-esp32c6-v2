@@ -3,11 +3,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "freertos/FreeRTOS.h"
-#include "freertos/semphr.h"
+#include "gateway_state_lock.h"
 
 struct gateway_state_store {
-    SemaphoreHandle_t state_mutex;
+    gateway_state_lock_t state_lock;
     gateway_network_state_t network_state;
     gateway_wifi_state_t wifi_state;
     gateway_lqi_cache_entry_t lqi_cache[GATEWAY_STATE_LQI_CACHE_CAPACITY];
@@ -51,9 +50,9 @@ void gateway_state_destroy(gateway_state_handle_t handle)
         return;
     }
 
-    if (handle->state_mutex) {
-        vSemaphoreDelete(handle->state_mutex);
-        handle->state_mutex = NULL;
+    if (handle->state_lock) {
+        gateway_state_lock_destroy(handle->state_lock);
+        handle->state_lock = NULL;
     }
     handle->network_state = (gateway_network_state_t){0};
     handle->wifi_state = (gateway_wifi_state_t){0};
@@ -67,11 +66,8 @@ gateway_status_t gateway_state_init(gateway_state_handle_t handle)
     if (!handle) {
         return GATEWAY_STATUS_INVALID_ARG;
     }
-    if (handle->state_mutex == NULL) {
-        handle->state_mutex = xSemaphoreCreateMutex();
-        if (handle->state_mutex == NULL) {
-            return GATEWAY_STATUS_NO_MEM;
-        }
+    if (handle->state_lock == NULL) {
+        return gateway_state_lock_create(&handle->state_lock);
     }
     return GATEWAY_STATUS_OK;
 }
@@ -86,9 +82,9 @@ gateway_status_t gateway_state_set_network(gateway_state_handle_t handle, const 
         return ret;
     }
 
-    xSemaphoreTake(handle->state_mutex, portMAX_DELAY);
+    gateway_state_lock_enter(handle->state_lock);
     handle->network_state = *state;
-    xSemaphoreGive(handle->state_mutex);
+    gateway_state_lock_exit(handle->state_lock);
     return GATEWAY_STATUS_OK;
 }
 
@@ -102,9 +98,9 @@ gateway_status_t gateway_state_get_network(gateway_state_handle_t handle, gatewa
         return ret;
     }
 
-    xSemaphoreTake(handle->state_mutex, portMAX_DELAY);
+    gateway_state_lock_enter(handle->state_lock);
     *out_state = handle->network_state;
-    xSemaphoreGive(handle->state_mutex);
+    gateway_state_lock_exit(handle->state_lock);
     return GATEWAY_STATUS_OK;
 }
 
@@ -118,9 +114,9 @@ gateway_status_t gateway_state_set_wifi(gateway_state_handle_t handle, const gat
         return ret;
     }
 
-    xSemaphoreTake(handle->state_mutex, portMAX_DELAY);
+    gateway_state_lock_enter(handle->state_lock);
     handle->wifi_state = *state;
-    xSemaphoreGive(handle->state_mutex);
+    gateway_state_lock_exit(handle->state_lock);
     return GATEWAY_STATUS_OK;
 }
 
@@ -134,9 +130,9 @@ gateway_status_t gateway_state_get_wifi(gateway_state_handle_t handle, gateway_w
         return ret;
     }
 
-    xSemaphoreTake(handle->state_mutex, portMAX_DELAY);
+    gateway_state_lock_enter(handle->state_lock);
     *out_state = handle->wifi_state;
-    xSemaphoreGive(handle->state_mutex);
+    gateway_state_lock_exit(handle->state_lock);
     return GATEWAY_STATUS_OK;
 }
 
@@ -159,7 +155,7 @@ gateway_status_t gateway_state_update_lqi(gateway_state_handle_t handle,
         updated_ms = gateway_state_now_ms();
     }
 
-    xSemaphoreTake(handle->state_mutex, portMAX_DELAY);
+    gateway_state_lock_enter(handle->state_lock);
     int idx = -1;
     for (int i = 0; i < handle->lqi_cache_count; i++) {
         if (handle->lqi_cache[i].short_addr == short_addr) {
@@ -169,7 +165,7 @@ gateway_status_t gateway_state_update_lqi(gateway_state_handle_t handle,
     }
     if (idx < 0) {
         if (handle->lqi_cache_count >= GATEWAY_STATE_LQI_CACHE_CAPACITY) {
-            xSemaphoreGive(handle->state_mutex);
+            gateway_state_lock_exit(handle->state_lock);
             return GATEWAY_STATUS_NO_MEM;
         }
         idx = handle->lqi_cache_count;
@@ -181,7 +177,7 @@ gateway_status_t gateway_state_update_lqi(gateway_state_handle_t handle,
     handle->lqi_cache[idx].rssi = rssi;
     handle->lqi_cache[idx].source = source;
     handle->lqi_cache[idx].updated_ms = updated_ms;
-    xSemaphoreGive(handle->state_mutex);
+    gateway_state_lock_exit(handle->state_lock);
     return GATEWAY_STATUS_OK;
 }
 
@@ -195,7 +191,7 @@ int gateway_state_get_lqi_snapshot(gateway_state_handle_t handle, gateway_lqi_ca
         return 0;
     }
 
-    xSemaphoreTake(handle->state_mutex, portMAX_DELAY);
+    gateway_state_lock_enter(handle->state_lock);
     int count = handle->lqi_cache_count;
     if ((size_t)count > max_items) {
         count = (int)max_items;
@@ -203,6 +199,6 @@ int gateway_state_get_lqi_snapshot(gateway_state_handle_t handle, gateway_lqi_ca
     if (count > 0) {
         memcpy(out, handle->lqi_cache, sizeof(gateway_lqi_cache_entry_t) * (size_t)count);
     }
-    xSemaphoreGive(handle->state_mutex);
+    gateway_state_lock_exit(handle->state_lock);
     return count;
 }

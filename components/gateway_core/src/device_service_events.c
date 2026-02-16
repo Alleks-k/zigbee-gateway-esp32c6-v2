@@ -26,14 +26,17 @@ esp_err_t device_service_events_register_announce_handler(device_service_handle_
     if (!handle) {
         return ESP_ERR_INVALID_ARG;
     }
-    if (handle->dev_announce_handler) {
+    if ((esp_event_handler_instance_t)handle->dev_announce_handler) {
         return ESP_OK;
     }
 
+    esp_event_handler_instance_t handler = NULL;
     esp_err_t ret = esp_event_handler_instance_register(
-        GATEWAY_EVENT, GATEWAY_EVENT_DEVICE_ANNOUNCE, device_announce_event_handler, handle, &handle->dev_announce_handler);
+        GATEWAY_EVENT, GATEWAY_EVENT_DEVICE_ANNOUNCE, device_announce_event_handler, handle, &handler);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to register DEVICE_ANNOUNCE handler: %s", esp_err_to_name(ret));
+    } else {
+        handle->dev_announce_handler = (void *)handler;
     }
     return ret;
 }
@@ -45,7 +48,7 @@ void device_service_events_unregister_announce_handler(device_service_handle_t h
     }
 
     (void)esp_event_handler_instance_unregister(
-        GATEWAY_EVENT, GATEWAY_EVENT_DEVICE_ANNOUNCE, handle->dev_announce_handler);
+        GATEWAY_EVENT, GATEWAY_EVENT_DEVICE_ANNOUNCE, (esp_event_handler_instance_t)handle->dev_announce_handler);
     handle->dev_announce_handler = NULL;
 }
 

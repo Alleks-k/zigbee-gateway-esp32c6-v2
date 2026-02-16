@@ -1,4 +1,8 @@
+# Self-test profile overlay.
+# Used together with sdkconfig.defaults by tools/run_target_self_tests.sh.
+
 CONFIG_GATEWAY_SELF_TEST_APP=y
+CONFIG_GATEWAY_STATE_ALLOW_NOOP_LOCK_BACKEND=y
 
 # The partition table allocates > 4 MB total flash.
 # Self-test build should always use 16 MB flash layout.

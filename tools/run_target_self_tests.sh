@@ -64,7 +64,7 @@ rm -rf "${BUILD_DIR}"
 
 "${IDF_PY}" -B "${BUILD_DIR}" \
     -D SDKCONFIG="${SDKCONFIG_TMP}" \
-    -D SDKCONFIG_DEFAULTS="${ROOT_DIR}/sdkconfig.defaults;${ROOT_DIR}/tests/selftest.sdkconfig.defaults" \
+    -D SDKCONFIG_DEFAULTS="${ROOT_DIR}/sdkconfig.defaults;${ROOT_DIR}/sdkconfig.selftest" \
     reconfigure build
 
 echo "Target self-test firmware build passed."

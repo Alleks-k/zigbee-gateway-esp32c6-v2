@@ -76,6 +76,7 @@ sudo apt-get install -y build-essential cppcheck
 ```
 
 `run_target_self_tests.sh` потребує доступного `idf.py` (через `IDF_PY`, `IDF_PATH` або після source ESP-IDF environment).
+Self-test build overlay конфігурації: `sdkconfig.selftest`.
 
 ## Використання
 

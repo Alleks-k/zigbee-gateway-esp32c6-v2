@@ -30,4 +30,4 @@ Run firmware build gate:
 
 Notes:
 - Script always uses a fresh temporary `SDKCONFIG` to avoid stale config drift.
-- Self-test defaults are defined in `tests/selftest.sdkconfig.defaults`.
+- Self-test profile overlay is defined in `sdkconfig.selftest`.

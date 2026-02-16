@@ -5,6 +5,7 @@
 #include <stdint.h>
 
 #include "esp_err.h"
+#include "gateway_runtime_context.h"
 #include "state_store.h"
 #include "wifi_service.h"
 #include "zigbee_service.h"
@@ -74,6 +75,8 @@ typedef struct {
     bool has_result;
     char result_json[2048];
 } gateway_core_job_info_t;
+
+esp_err_t gateway_core_facade_init(const gateway_runtime_context_t *ctx);
 
 esp_err_t gateway_core_facade_send_on_off(uint16_t short_addr, uint8_t endpoint, uint8_t on_off);
 esp_err_t gateway_core_facade_wifi_save_credentials(const char *ssid, const char *password);

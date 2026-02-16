@@ -302,17 +302,18 @@ static void esp_zb_task(void *pvParameters)
     vTaskDelete(NULL);
 }
 
-esp_err_t gateway_zigbee_runtime_prepare(void)
+esp_err_t gateway_zigbee_runtime_prepare(const gateway_runtime_context_t *ctx)
 {
-    esp_err_t ret = device_service_get_default(&s_device_service);
-    if (ret != ESP_OK) {
-        return ret;
+    if (!ctx || !ctx->device_service || !ctx->gateway_state) {
+        return ESP_ERR_INVALID_ARG;
     }
-    ret = gateway_state_get_default(&s_gateway_state);
-    if (ret != ESP_OK) {
-        return ret;
-    }
+    s_device_service = ctx->device_service;
+    s_gateway_state = ctx->gateway_state;
 
+    esp_err_t ret = zigbee_service_bind_context(ctx);
+    if (ret != ESP_OK) {
+        return ret;
+    }
     zigbee_service_set_runtime_ops(&s_zigbee_runtime_ops);
     gateway_state_publish(false, false);
 

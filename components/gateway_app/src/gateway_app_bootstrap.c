@@ -3,6 +3,7 @@
 #include "config_service.h"
 #include "device_service.h"
 #include "error_ring.h"
+#include "gateway_core_facade.h"
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_netif.h"
@@ -43,6 +44,7 @@ void gateway_app_start(void)
 {
     device_service_handle_t device_service = NULL;
     gateway_state_handle_t gateway_state = NULL;
+    gateway_runtime_context_t runtime_ctx = {0};
 
     ESP_ERROR_CHECK(nvs_flash_init());
     gateway_error_ring_set_now_ms_provider(gateway_app_now_ms_provider);
@@ -52,9 +54,13 @@ void gateway_app_start(void)
     ESP_ERROR_CHECK(gateway_state_get_default(&gateway_state));
     ESP_ERROR_CHECK(device_service_init(device_service));
     ESP_ERROR_CHECK(gateway_state_init(gateway_state));
+    runtime_ctx.device_service = device_service;
+    runtime_ctx.gateway_state = gateway_state;
+    ESP_ERROR_CHECK(gateway_core_facade_init(&runtime_ctx));
+    ESP_ERROR_CHECK(wifi_init_bind_state(gateway_state));
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
-    ESP_ERROR_CHECK(gateway_zigbee_runtime_prepare());
+    ESP_ERROR_CHECK(gateway_zigbee_runtime_prepare(&runtime_ctx));
 
     esp_err_t wifi_ret = wifi_init_sta_and_wait();
     if (wifi_ret != ESP_OK) {

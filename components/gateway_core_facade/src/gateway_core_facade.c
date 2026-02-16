@@ -8,12 +8,18 @@
 
 static gateway_state_handle_t s_gateway_state = NULL;
 
-static esp_err_t ensure_gateway_state_handle(void)
+esp_err_t gateway_core_facade_init(const gateway_runtime_context_t *ctx)
 {
-    if (s_gateway_state) {
-        return ESP_OK;
+    if (!ctx || !ctx->gateway_state) {
+        return ESP_ERR_INVALID_ARG;
     }
-    return gateway_state_get_default(&s_gateway_state);
+    s_gateway_state = ctx->gateway_state;
+    return ESP_OK;
+}
+
+static esp_err_t require_gateway_state_handle(void)
+{
+    return s_gateway_state ? ESP_OK : ESP_ERR_INVALID_STATE;
 }
 
 static gateway_core_wifi_link_quality_t to_core_wifi_link_quality(system_wifi_link_quality_t quality)
@@ -275,7 +281,7 @@ const char *gateway_core_facade_job_state_to_string(gateway_core_job_state_t sta
 
 esp_err_t gateway_core_facade_get_network_state(gateway_network_state_t *out_state)
 {
-    esp_err_t ret = ensure_gateway_state_handle();
+    esp_err_t ret = require_gateway_state_handle();
     if (ret != ESP_OK) {
         return ret;
     }
@@ -284,7 +290,7 @@ esp_err_t gateway_core_facade_get_network_state(gateway_network_state_t *out_sta
 
 esp_err_t gateway_core_facade_get_wifi_state(gateway_wifi_state_t *out_state)
 {
-    esp_err_t ret = ensure_gateway_state_handle();
+    esp_err_t ret = require_gateway_state_handle();
     if (ret != ESP_OK) {
         return ret;
     }

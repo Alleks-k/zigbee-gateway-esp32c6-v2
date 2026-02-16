@@ -2,6 +2,7 @@
 
 #include <stdbool.h>
 #include "esp_err.h"
+#include "state_store.h"
 #include "wifi_context.h"
 
 /**
@@ -11,6 +12,7 @@
  */
 esp_err_t wifi_init_sta_and_wait(void);
 void wifi_state_store_update(void);
+esp_err_t wifi_init_bind_state(gateway_state_handle_t state_handle);
 
 #if CONFIG_GATEWAY_SELF_TEST_APP
 typedef struct {

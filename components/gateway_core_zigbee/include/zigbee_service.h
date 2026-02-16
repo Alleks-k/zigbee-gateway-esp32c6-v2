@@ -5,6 +5,7 @@
 
 #include "esp_err.h"
 #include "gateway_config_types.h"
+#include "gateway_runtime_context.h"
 
 #ifndef MAX_DEVICES
 #define MAX_DEVICES GATEWAY_MAX_DEVICES
@@ -41,6 +42,7 @@ typedef struct {
 } zigbee_service_runtime_ops_t;
 
 void zigbee_service_set_runtime_ops(const zigbee_service_runtime_ops_t *ops);
+esp_err_t zigbee_service_bind_context(const gateway_runtime_context_t *ctx);
 
 esp_err_t zigbee_service_get_network_status(zigbee_network_status_t *out);
 esp_err_t zigbee_service_permit_join(uint16_t seconds);

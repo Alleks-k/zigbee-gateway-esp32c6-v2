@@ -41,6 +41,7 @@ cc -std=c11 -Wall -Wextra -Werror \
 
 cc -std=c11 -Wall -Wextra -Werror \
     -I"${ROOT_DIR}/tests/host/include" \
+    -I"${ROOT_DIR}/components/gateway_core/include" \
     -I"${ROOT_DIR}/components/gateway_web_api/include" \
     -I"${ROOT_DIR}/components/gateway_core_facade/include" \
     -I"${ROOT_DIR}/components/gateway_core_state/include" \

@@ -10,6 +10,7 @@ idf_component_register(
         esp_http_server
         spiffs
         gateway_core
+        gateway_core_facade
         gateway_core_events
         gateway_core_state
         gateway_core_system

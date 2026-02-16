@@ -11,12 +11,13 @@ static const char *TAG = "wifi_init";
 static wifi_runtime_ctx_t s_ctx = {0};
 static gateway_state_handle_t s_gateway_state = NULL;
 
-static esp_err_t ensure_gateway_state_handle(void)
+esp_err_t wifi_init_bind_state(gateway_state_handle_t state_handle)
 {
-    if (s_gateway_state) {
-        return ESP_OK;
+    if (!state_handle) {
+        return ESP_ERR_INVALID_ARG;
     }
-    return gateway_state_get_default(&s_gateway_state);
+    s_gateway_state = state_handle;
+    return ESP_OK;
 }
 
 #if CONFIG_GATEWAY_SELF_TEST_APP
@@ -44,9 +45,8 @@ static wifi_init_ops_t s_wifi_init_ops = {
 
 void wifi_state_store_update(void)
 {
-    esp_err_t handle_ret = ensure_gateway_state_handle();
-    if (handle_ret != ESP_OK) {
-        ESP_LOGW(TAG, "Failed to access gateway state handle: %s", esp_err_to_name(handle_ret));
+    if (!s_gateway_state) {
+        ESP_LOGW(TAG, "Gateway state handle is not bound");
         return;
     }
 

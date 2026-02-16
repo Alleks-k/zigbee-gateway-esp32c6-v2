@@ -4,7 +4,6 @@ set(gateway_web_srcs
     "gateway_web_placeholder.c")
 
 set(gateway_web_reqs
-    gateway_core
     gateway_web_api
     gateway_web_ws
     gateway_web_static

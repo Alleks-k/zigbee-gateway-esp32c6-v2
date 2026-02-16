@@ -3,12 +3,6 @@ set(main_srcs
 
 set(main_reqs
     gateway_app
-    gateway_core
-    gateway_core_events
-    gateway_core_system
-    gateway_core_zigbee
-    gateway_net
-    gateway_web
 )
 
 if(CONFIG_GATEWAY_SELF_TEST_APP)

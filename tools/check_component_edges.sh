@@ -79,10 +79,55 @@ check_web_api_headers_are_facade_only() {
     fi
 }
 
+check_web_api_no_low_level_idf_includes() {
+    local web_api_dir="${ROOT_DIR}/components/gateway_web_api"
+    local forbidden_patterns=(
+        'nvs(_flash)?\.h'
+        'esp_timer\.h'
+        'freertos/[^">]+'
+        'driver/[^">]+'
+        'esp_wifi\.h'
+        'esp_netif\.h'
+        'esp_event(_base)?\.h'
+        'esp_partition\.h'
+        'esp_ota_ops\.h'
+        'esp_spiffs\.h'
+        'esp_vfs[^">]*\.h'
+        'esp_private/[^">]+'
+        'esp_rom/[^">]+'
+        'hal/[^">]+'
+        'soc/[^">]+'
+        'esp_flash[^">]*\.h'
+        'esp_heap_caps\.h'
+        'esp_task_wdt\.h'
+    )
+
+    local hits=""
+    for pattern in "${forbidden_patterns[@]}"; do
+        local pattern_hits
+        pattern_hits="$(
+            rg -n "#include[[:space:]]+[<\"](${pattern})[>\"]" \
+                "${web_api_dir}/src" "${web_api_dir}/include" || true
+        )"
+        if [[ -n "${pattern_hits}" ]]; then
+            hits+="${pattern_hits}"$'\n'
+        fi
+    done
+
+    if [[ -n "${hits}" ]]; then
+        while IFS= read -r hit; do
+            [[ -z "${hit}" ]] && continue
+            local rel="${hit#${ROOT_DIR}/}"
+            report_violation "gateway_web_api includes forbidden low-level ESP-IDF header: ${rel}"
+        done <<< "${hits}"
+    fi
+}
+
 check_web_api_dependency_rules
 check_no_cmake_include_hacks
 check_no_relative_source_includes
 check_web_api_headers_are_facade_only
+check_web_api_no_low_level_idf_includes
 
 if [[ "${violations}" -ne 0 ]]; then
     echo "Component dependency/include edge check failed."

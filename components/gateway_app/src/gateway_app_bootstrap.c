@@ -55,6 +55,7 @@ void gateway_app_start(void)
     ESP_ERROR_CHECK(gateway_state_create(&gateway_state));
     ESP_ERROR_CHECK(device_service_init(device_service));
     ESP_ERROR_CHECK(gateway_state_init(gateway_state));
+    gateway_state_set_now_ms_provider(gateway_app_now_ms_provider);
     runtime_ctx.device_service = device_service;
     runtime_ctx.gateway_state = gateway_state;
     wifi_system_params.gateway_state_handle = gateway_state;

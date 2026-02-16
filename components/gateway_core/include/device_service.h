@@ -11,7 +11,6 @@ typedef device_service_t *device_service_handle_t;
 
 esp_err_t device_service_create(device_service_handle_t *out_handle);
 void device_service_destroy(device_service_handle_t handle);
-esp_err_t device_service_get_default(device_service_handle_t *out_handle);
 esp_err_t device_service_init(device_service_handle_t handle);
 void device_service_add_with_ieee(device_service_handle_t handle, uint16_t addr, gateway_ieee_addr_t ieee);
 void device_service_update_name(device_service_handle_t handle, uint16_t addr, const char *new_name);

@@ -317,6 +317,11 @@ static void test_e2e_wifi_scan_contract_and_usecase(void)
 static void test_e2e_wifi_connect_retry_exhausted_switches_to_ap_fallback(void)
 {
     reset_api_mocks();
+    gateway_state_handle_t gateway_state = NULL;
+    TEST_ASSERT_EQUAL(ESP_OK, gateway_state_create(&gateway_state));
+    TEST_ASSERT_EQUAL(ESP_OK, gateway_state_init(gateway_state));
+    TEST_ASSERT_EQUAL(ESP_OK, wifi_init_bind_state(gateway_state));
+
     wifi_init_ops_t ops = {
         .net_platform_services_init = mock_net_platform_services_init,
         .wifi_sta_connect_and_wait = mock_wifi_sta_connect_and_wait_fail_after_retries,
@@ -329,9 +334,6 @@ static void test_e2e_wifi_connect_retry_exhausted_switches_to_ap_fallback(void)
     TEST_ASSERT_EQUAL_INT(1, s_mock_wifi_net_platform_init_called);
     TEST_ASSERT_EQUAL_INT(1, s_mock_wifi_sta_connect_called);
     TEST_ASSERT_EQUAL_INT(1, s_mock_wifi_fallback_called);
-
-    gateway_state_handle_t gateway_state = NULL;
-    TEST_ASSERT_EQUAL(ESP_OK, gateway_state_get_default(&gateway_state));
 
     gateway_wifi_state_t state = {0};
     TEST_ASSERT_EQUAL(ESP_OK, gateway_state_get_wifi(gateway_state, &state));

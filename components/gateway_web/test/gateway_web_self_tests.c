@@ -7,7 +7,11 @@
 #include "lqi_json_mapper.h"
 #include "error_ring.h"
 #include "device_service.h"
+#include "gateway_runtime_context.h"
+#include "gateway_wifi_system_facade.h"
 #include "state_store.h"
+#include "wifi_init.h"
+#include "zigbee_service.h"
 #include "ws_manager.h"
 #include "web_server.h"
 #include "cJSON.h"
@@ -20,11 +24,33 @@
 
 static device_service_handle_t s_device_service = NULL;
 static gateway_state_handle_t s_gateway_state = NULL;
+static bool s_runtime_bound = false;
+static gateway_runtime_context_t s_runtime_ctx = {0};
 
 static void ensure_stateful_handles(void)
 {
-    TEST_ASSERT_EQUAL(ESP_OK, device_service_get_default(&s_device_service));
-    TEST_ASSERT_EQUAL(ESP_OK, gateway_state_get_default(&s_gateway_state));
+    if (!s_device_service) {
+        TEST_ASSERT_EQUAL(ESP_OK, device_service_create(&s_device_service));
+    }
+    if (!s_gateway_state) {
+        TEST_ASSERT_EQUAL(ESP_OK, gateway_state_create(&s_gateway_state));
+    }
+
+    TEST_ASSERT_EQUAL(ESP_OK, device_service_init(s_device_service));
+    TEST_ASSERT_EQUAL(ESP_OK, gateway_state_init(s_gateway_state));
+
+    if (!s_runtime_bound) {
+        gateway_wifi_system_init_params_t wifi_system_params = {
+            .gateway_state_handle = s_gateway_state,
+        };
+
+        s_runtime_ctx.device_service = s_device_service;
+        s_runtime_ctx.gateway_state = s_gateway_state;
+        TEST_ASSERT_EQUAL(ESP_OK, zigbee_service_bind_context(&s_runtime_ctx));
+        TEST_ASSERT_EQUAL(ESP_OK, gateway_wifi_system_init(&wifi_system_params));
+        TEST_ASSERT_EQUAL(ESP_OK, wifi_init_bind_state(s_gateway_state));
+        s_runtime_bound = true;
+    }
 }
 
 static void test_reset_devices(void)

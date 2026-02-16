@@ -138,12 +138,12 @@ check_web_api_no_low_level_idf_includes() {
     fi
 }
 
-check_default_getters_test_only() {
+check_no_legacy_default_getters() {
     local hits
     hits="$(
         rg -n '\b(device_service_get_default|gateway_state_get_default)\s*\(' \
             "${ROOT_DIR}/components" "${ROOT_DIR}/main" "${ROOT_DIR}/tests" \
-            --glob '*.c' || true
+            --glob '*.[ch]' || true
     )"
 
     if [[ -z "${hits}" ]]; then
@@ -152,21 +152,7 @@ check_default_getters_test_only() {
 
     while IFS= read -r hit; do
         [[ -z "${hit}" ]] && continue
-
-        local abs_file="${hit%%:*}"
-        local rel="${abs_file#${ROOT_DIR}/}"
-
-        case "${rel}" in
-            components/gateway_core/src/device_service.c|\
-            components/gateway_core_state/src/gateway_state.c|\
-            main/tests/*|\
-            components/*/test/*|\
-            tests/host/*)
-                continue
-                ;;
-        esac
-
-        report_violation "default getter is forbidden outside tests: ${hit#${ROOT_DIR}/}"
+        report_violation "legacy default getter API is forbidden: ${hit#${ROOT_DIR}/}"
     done <<< "${hits}"
 }
 
@@ -176,7 +162,7 @@ check_no_relative_source_includes
 check_web_api_headers_are_facade_only
 check_core_facade_headers_no_low_level_includes
 check_web_api_no_low_level_idf_includes
-check_default_getters_test_only
+check_no_legacy_default_getters
 
 if [[ "${violations}" -ne 0 ]]; then
     echo "Component dependency/include edge check failed."

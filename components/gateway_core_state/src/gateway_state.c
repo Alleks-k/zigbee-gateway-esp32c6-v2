@@ -3,7 +3,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 
@@ -15,23 +14,20 @@ struct gateway_state_store {
     int lqi_cache_count;
 };
 
-static gateway_state_store_t s_default_state = {0};
+static gateway_state_now_ms_provider_t s_now_ms_provider = NULL;
+static uint64_t s_fallback_now_ms = 0;
 
-static void gateway_state_reset(gateway_state_handle_t handle)
+static uint64_t gateway_state_now_ms(void)
 {
-    if (!handle) {
-        return;
+    if (s_now_ms_provider) {
+        return s_now_ms_provider();
     }
+    return ++s_fallback_now_ms;
+}
 
-    if (handle->state_mutex) {
-        vSemaphoreDelete(handle->state_mutex);
-        handle->state_mutex = NULL;
-    }
-
-    handle->network_state = (gateway_network_state_t){0};
-    handle->wifi_state = (gateway_wifi_state_t){0};
-    handle->lqi_cache_count = 0;
-    memset(handle->lqi_cache, 0, sizeof(handle->lqi_cache));
+void gateway_state_set_now_ms_provider(gateway_state_now_ms_provider_t provider)
+{
+    s_now_ms_provider = provider;
 }
 
 esp_err_t gateway_state_create(gateway_state_handle_t *out_handle)
@@ -55,19 +51,15 @@ void gateway_state_destroy(gateway_state_handle_t handle)
         return;
     }
 
-    gateway_state_reset(handle);
-    if (handle != &s_default_state) {
-        free(handle);
+    if (handle->state_mutex) {
+        vSemaphoreDelete(handle->state_mutex);
+        handle->state_mutex = NULL;
     }
-}
-
-esp_err_t gateway_state_get_default(gateway_state_handle_t *out_handle)
-{
-    if (!out_handle) {
-        return ESP_ERR_INVALID_ARG;
-    }
-    *out_handle = &s_default_state;
-    return ESP_OK;
+    handle->network_state = (gateway_network_state_t){0};
+    handle->wifi_state = (gateway_wifi_state_t){0};
+    handle->lqi_cache_count = 0;
+    memset(handle->lqi_cache, 0, sizeof(handle->lqi_cache));
+    free(handle);
 }
 
 esp_err_t gateway_state_init(gateway_state_handle_t handle)
@@ -164,7 +156,7 @@ esp_err_t gateway_state_update_lqi(gateway_state_handle_t handle,
         return ret;
     }
     if (updated_ms == 0) {
-        updated_ms = (uint64_t)(esp_timer_get_time() / 1000);
+        updated_ms = gateway_state_now_ms();
     }
 
     xSemaphoreTake(handle->state_mutex, portMAX_DELAY);

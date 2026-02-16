@@ -9,10 +9,11 @@
 
 typedef struct gateway_state_store gateway_state_store_t;
 typedef gateway_state_store_t *gateway_state_handle_t;
+typedef uint64_t (*gateway_state_now_ms_provider_t)(void);
 
 esp_err_t gateway_state_create(gateway_state_handle_t *out_handle);
 void gateway_state_destroy(gateway_state_handle_t handle);
-esp_err_t gateway_state_get_default(gateway_state_handle_t *out_handle);
+void gateway_state_set_now_ms_provider(gateway_state_now_ms_provider_t provider);
 esp_err_t gateway_state_init(gateway_state_handle_t handle);
 esp_err_t gateway_state_set_network(gateway_state_handle_t handle, const gateway_network_state_t *state);
 esp_err_t gateway_state_get_network(gateway_state_handle_t handle, gateway_network_state_t *out_state);

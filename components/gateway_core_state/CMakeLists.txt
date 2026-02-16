@@ -5,6 +5,4 @@ idf_component_register(
         "include"
     REQUIRES
         gateway_shared_config
-    PRIV_REQUIRES
-        esp_timer
 )

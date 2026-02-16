@@ -36,6 +36,15 @@ menu "ESP Zigbee gateway core"
         help
             Maximum number of Zigbee devices kept in memory snapshots
             (device manager, state cache, LQI cache).
+
+    config GATEWAY_STATE_ALLOW_NOOP_LOCK_BACKEND
+        bool "Allow gateway_state NOOP lock backend"
+        depends on GATEWAY_SELF_TEST_APP
+        default n
+        help
+            Enable NOOP lock backend for gateway_state.
+            Keep disabled in production builds.
+            This option is intended only for host/test-like single-thread flows.
 endmenu
 
 menu "ESP Zigbee gateway tests"

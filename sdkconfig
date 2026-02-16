@@ -635,6 +635,7 @@ CONFIG_PARTITION_TABLE_MD5=y
 # ESP Zigbee gateway core
 #
 CONFIG_GATEWAY_MAX_DEVICES=10
+# CONFIG_GATEWAY_STATE_ALLOW_NOOP_LOCK_BACKEND is not set
 # end of ESP Zigbee gateway core
 
 #

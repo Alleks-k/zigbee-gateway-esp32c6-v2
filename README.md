@@ -110,8 +110,9 @@ sudo apt-get install -y build-essential cppcheck
 - На межах з ESP-IDF (`gateway_app`, `gateway_net`, `gateway_core_facade`, `gateway_core_zigbee`) робиться явний мапінг `gateway_status_t <-> esp_err_t` через `gateway_status_esp.h`.
 - `gateway_state` підтримує вибір lock backend через `gateway_state_set_lock_backend(...)`:
   - `GATEWAY_STATE_LOCK_BACKEND_FREERTOS` (default на ESP-IDF),
-  - `GATEWAY_STATE_LOCK_BACKEND_NOOP` (для non-FreeRTOS/host-like середовищ).
-- Якщо FreeRTOS backend недоступний у цільовому build, runtime автоматично fallback-иться на `NOOP`.
+  - `GATEWAY_STATE_LOCK_BACKEND_NOOP` (лише коли увімкнено `CONFIG_GATEWAY_STATE_ALLOW_NOOP_LOCK_BACKEND`).
+- Неявного fallback на `NOOP` немає: `NOOP` дозволено лише через явний opt-in (`gateway_state_set_lock_backend(GATEWAY_STATE_LOCK_BACKEND_NOOP)`) до першого `gateway_state_init/create`.
+- У production тримайте `CONFIG_GATEWAY_STATE_ALLOW_NOOP_LOCK_BACKEND=n` (default); опція призначена для host/test-like профілів.
 
 ## Події пристроїв (boundary)
 

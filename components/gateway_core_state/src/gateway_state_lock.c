@@ -3,7 +3,9 @@
 #include <stdbool.h>
 
 const gateway_state_lock_ops_t *gateway_state_lock_backend_freertos_ops(void);
+#if CONFIG_GATEWAY_STATE_ALLOW_NOOP_LOCK_BACKEND
 const gateway_state_lock_ops_t *gateway_state_lock_backend_noop_ops(void);
+#endif
 
 static const gateway_state_lock_ops_t *s_lock_ops = NULL;
 static bool s_backend_locked = false;
@@ -14,7 +16,11 @@ static const gateway_state_lock_ops_t *gateway_state_lock_backend_ops(gateway_st
     case GATEWAY_STATE_LOCK_BACKEND_FREERTOS:
         return gateway_state_lock_backend_freertos_ops();
     case GATEWAY_STATE_LOCK_BACKEND_NOOP:
+#if CONFIG_GATEWAY_STATE_ALLOW_NOOP_LOCK_BACKEND
         return gateway_state_lock_backend_noop_ops();
+#else
+        return NULL;
+#endif
     default:
         return NULL;
     }
@@ -47,9 +53,6 @@ const gateway_state_lock_ops_t *gateway_state_lock_get_ops(void)
 {
     if (!s_lock_ops) {
         s_lock_ops = gateway_state_lock_backend_freertos_ops();
-        if (!s_lock_ops) {
-            s_lock_ops = gateway_state_lock_backend_noop_ops();
-        }
     }
     return s_lock_ops;
 }
@@ -57,7 +60,10 @@ const gateway_state_lock_ops_t *gateway_state_lock_get_ops(void)
 gateway_status_t gateway_state_lock_create(gateway_state_lock_t *out_lock)
 {
     const gateway_state_lock_ops_t *ops = gateway_state_lock_get_ops();
-    if (!ops || !ops->create) {
+    if (!ops) {
+        return GATEWAY_STATUS_NOT_SUPPORTED;
+    }
+    if (!ops->create) {
         return GATEWAY_STATUS_FAIL;
     }
 

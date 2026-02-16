@@ -109,9 +109,9 @@ Response reports per-group status in JSON `details`.
 1. `gateway_web_api` still has some large handler/builder files; continue mapper/use-case extraction.
 2. `gateway_state` lock layer now supports selectable backends:
 - `gateway_state_lock_freertos.c` (default for ESP-IDF targets),
-- `gateway_state_lock_noop.c` (for non-FreeRTOS/host-like targets),
+- `gateway_state_lock_noop.c` (compiled only when `CONFIG_GATEWAY_STATE_ALLOW_NOOP_LOCK_BACKEND=y`),
 - selection via `gateway_state_set_lock_backend(...)` before first `gateway_state_init/create`.
-- if FreeRTOS backend is unavailable in target toolchain, lock layer falls back to `NOOP`.
+- no implicit fallback to `NOOP`; use explicit opt-in only for single-thread/host-like execution modes.
 3. Integration coverage gaps:
 - WS real socket lifecycle/backpressure,
 - browser-level E2E contract for new health/LQI fields.

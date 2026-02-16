@@ -1,6 +1,8 @@
 idf_component_register(
     SRCS
-        "src/gateway_core_facade.c"
+        "src/gateway_device_zigbee_facade.c"
+        "src/gateway_wifi_system_facade.c"
+        "src/gateway_jobs_facade.c"
     INCLUDE_DIRS
         "include"
     REQUIRES

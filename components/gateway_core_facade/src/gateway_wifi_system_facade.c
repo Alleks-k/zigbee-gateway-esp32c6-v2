@@ -1,0 +1,133 @@
+#include "gateway_wifi_system_facade.h"
+
+#include <string.h>
+
+#include "config_service.h"
+#include "system_service.h"
+
+static gateway_state_handle_t s_gateway_state = NULL;
+
+esp_err_t gateway_core_facade_init(const gateway_runtime_context_t *ctx)
+{
+    if (!ctx || !ctx->gateway_state) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    s_gateway_state = ctx->gateway_state;
+    return ESP_OK;
+}
+
+static esp_err_t require_gateway_state_handle(void)
+{
+    return s_gateway_state ? ESP_OK : ESP_ERR_INVALID_STATE;
+}
+
+static gateway_core_wifi_link_quality_t to_core_wifi_link_quality(system_wifi_link_quality_t quality)
+{
+    switch (quality) {
+    case SYSTEM_WIFI_LINK_GOOD:
+        return GATEWAY_CORE_WIFI_LINK_GOOD;
+    case SYSTEM_WIFI_LINK_WARN:
+        return GATEWAY_CORE_WIFI_LINK_WARN;
+    case SYSTEM_WIFI_LINK_BAD:
+        return GATEWAY_CORE_WIFI_LINK_BAD;
+    case SYSTEM_WIFI_LINK_UNKNOWN:
+    default:
+        return GATEWAY_CORE_WIFI_LINK_UNKNOWN;
+    }
+}
+
+esp_err_t gateway_core_facade_wifi_save_credentials(const char *ssid, const char *password)
+{
+    return wifi_service_save_credentials(ssid, password);
+}
+
+esp_err_t gateway_core_facade_schedule_reboot(uint32_t delay_ms)
+{
+    return system_service_schedule_reboot(delay_ms);
+}
+
+esp_err_t gateway_core_facade_factory_reset_and_reboot(uint32_t reboot_delay_ms)
+{
+    return system_service_factory_reset_and_reboot(reboot_delay_ms);
+}
+
+esp_err_t gateway_core_facade_wifi_scan(wifi_ap_info_t **out_list, size_t *out_count)
+{
+    return wifi_service_scan(out_list, out_count);
+}
+
+void gateway_core_facade_wifi_scan_free(wifi_ap_info_t *list)
+{
+    wifi_service_scan_free(list);
+}
+
+esp_err_t gateway_core_facade_get_factory_reset_report(gateway_core_factory_reset_report_t *out_report)
+{
+    if (!out_report) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    system_factory_reset_report_t report = {0};
+    esp_err_t err = system_service_get_last_factory_reset_report(&report);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    out_report->wifi_err = report.wifi_err;
+    out_report->devices_err = report.devices_err;
+    out_report->zigbee_storage_err = report.zigbee_storage_err;
+    out_report->zigbee_fct_err = report.zigbee_fct_err;
+    return ESP_OK;
+}
+
+esp_err_t gateway_core_facade_collect_telemetry(gateway_core_telemetry_t *out)
+{
+    if (!out) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    system_telemetry_t telemetry = {0};
+    esp_err_t err = system_service_collect_telemetry(&telemetry);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    memset(out, 0, sizeof(*out));
+    out->uptime_ms = telemetry.uptime_ms;
+    out->heap_free = telemetry.heap_free;
+    out->heap_min = telemetry.heap_min;
+    out->heap_largest_block = telemetry.heap_largest_block;
+    out->main_stack_hwm_bytes = telemetry.main_stack_hwm_bytes;
+    out->httpd_stack_hwm_bytes = telemetry.httpd_stack_hwm_bytes;
+    out->has_temperature_c = telemetry.has_temperature_c;
+    out->temperature_c = telemetry.temperature_c;
+    out->has_wifi_rssi = telemetry.has_wifi_rssi;
+    out->wifi_rssi = telemetry.wifi_rssi;
+    out->has_wifi_ip = telemetry.has_wifi_ip;
+    memcpy(out->wifi_ip, telemetry.wifi_ip, sizeof(out->wifi_ip));
+    out->wifi_link_quality = to_core_wifi_link_quality(telemetry.wifi_link_quality);
+    return ESP_OK;
+}
+
+esp_err_t gateway_core_facade_get_network_state(gateway_network_state_t *out_state)
+{
+    esp_err_t ret = require_gateway_state_handle();
+    if (ret != ESP_OK) {
+        return ret;
+    }
+    return gateway_state_get_network(s_gateway_state, out_state);
+}
+
+esp_err_t gateway_core_facade_get_wifi_state(gateway_wifi_state_t *out_state)
+{
+    esp_err_t ret = require_gateway_state_handle();
+    if (ret != ESP_OK) {
+        return ret;
+    }
+    return gateway_state_get_wifi(s_gateway_state, out_state);
+}
+
+esp_err_t gateway_core_facade_get_schema_version(int32_t *out_version)
+{
+    return config_service_get_schema_version(out_version);
+}

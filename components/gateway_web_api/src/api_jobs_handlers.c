@@ -1,6 +1,6 @@
 #include "api_handlers.h"
 #include "api_contracts.h"
-#include "gateway_core_facade.h"
+#include "gateway_jobs_facade.h"
 #include "http_error.h"
 
 #include <inttypes.h>

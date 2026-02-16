@@ -2,7 +2,9 @@
 
 #include "esp_err.h"
 #include "api_contracts.h"
-#include "gateway_core_facade.h"
+#include "gateway_device_zigbee_facade.h"
+#include "gateway_jobs_facade.h"
+#include "gateway_wifi_system_facade.h"
 #include <stdbool.h>
 #include <stdint.h>
 

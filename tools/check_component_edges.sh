@@ -123,11 +123,45 @@ check_web_api_no_low_level_idf_includes() {
     fi
 }
 
+check_default_getters_bootstrap_only() {
+    local hits
+    hits="$(
+        rg -n '\b(device_service_get_default|gateway_state_get_default)\s*\(' \
+            "${ROOT_DIR}/components" "${ROOT_DIR}/main" "${ROOT_DIR}/tests" \
+            --glob '*.c' || true
+    )"
+
+    if [[ -z "${hits}" ]]; then
+        return
+    fi
+
+    while IFS= read -r hit; do
+        [[ -z "${hit}" ]] && continue
+
+        local abs_file="${hit%%:*}"
+        local rel="${abs_file#${ROOT_DIR}/}"
+
+        case "${rel}" in
+            components/gateway_app/src/gateway_app_bootstrap.c|\
+            components/gateway_core/src/device_service.c|\
+            components/gateway_core_state/src/gateway_state.c|\
+            main/tests/*|\
+            components/*/test/*|\
+            tests/host/*)
+                continue
+                ;;
+        esac
+
+        report_violation "default getter is forbidden outside bootstrap/tests: ${hit#${ROOT_DIR}/}"
+    done <<< "${hits}"
+}
+
 check_web_api_dependency_rules
 check_no_cmake_include_hacks
 check_no_relative_source_includes
 check_web_api_headers_are_facade_only
 check_web_api_no_low_level_idf_includes
+check_default_getters_bootstrap_only
 
 if [[ "${violations}" -ne 0 ]]; then
     echo "Component dependency/include edge check failed."

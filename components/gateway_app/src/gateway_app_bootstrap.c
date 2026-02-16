@@ -3,7 +3,7 @@
 #include "config_service.h"
 #include "device_service.h"
 #include "error_ring.h"
-#include "gateway_core_facade.h"
+#include "gateway_wifi_system_facade.h"
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_netif.h"

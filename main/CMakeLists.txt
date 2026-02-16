@@ -8,6 +8,9 @@ set(main_reqs
 set(main_priv_reqs
 )
 
+set(main_priv_include_dirs
+)
+
 if(CONFIG_GATEWAY_SELF_TEST_APP)
     list(APPEND main_srcs
         "tests/self_tests.c"
@@ -19,8 +22,12 @@ if(CONFIG_GATEWAY_SELF_TEST_APP)
         gateway_core_jobs
         unity)
     list(APPEND main_priv_reqs
+        unity
         esp_wifi
         esp_timer)
+    list(APPEND main_priv_include_dirs
+        "${IDF_PATH}/components/unity/include"
+        "${IDF_PATH}/components/unity/unity/src")
 else()
     list(APPEND main_srcs "main.c")
 endif()
@@ -28,8 +35,15 @@ endif()
 # Реєстрація компонентів вашого проєкту
 idf_component_register(SRCS ${main_srcs}
                        INCLUDE_DIRS "." "tests"
+                       PRIV_INCLUDE_DIRS ${main_priv_include_dirs}
                        REQUIRES ${main_reqs}
                        PRIV_REQUIRES ${main_priv_reqs})
+
+if(CONFIG_GATEWAY_SELF_TEST_APP)
+    target_link_options(${COMPONENT_LIB} INTERFACE
+        "LINKER:-u,esp_zb_app_signal_handler"
+        "LINKER:-u,send_on_off_command")
+endif()
 
 # Генерація SPIFFS іміджу для папки www
 spiffs_create_partition_image(www web/www FLASH_IN_PROJECT)

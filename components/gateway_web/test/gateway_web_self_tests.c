@@ -252,7 +252,6 @@ static void test_health_snapshot_usecase_contract(void)
     TEST_ASSERT_TRUE(snap.wifi_sta_connected);
     TEST_ASSERT_FALSE(snap.wifi_fallback_ap_active);
     TEST_ASSERT_EQUAL_STRING("SelfTestNet", snap.wifi_active_ssid);
-    TEST_ASSERT_TRUE(snap.telemetry.uptime_ms >= 0);
     TEST_ASSERT_TRUE(snap.telemetry.heap_free > 0);
 }
 

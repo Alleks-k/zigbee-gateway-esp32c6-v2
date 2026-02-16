@@ -29,7 +29,7 @@ if(CONFIG_GATEWAY_SELF_TEST_APP)
         gateway_core_zigbee
         unity)
     list(APPEND gateway_core_priv_include_dirs
-        "${PROJECT_DIR}/components/gateway_core_zigbee/include"
+        "${CMAKE_SOURCE_DIR}/components/gateway_core_zigbee/include"
         "${IDF_PATH}/components/unity/include"
         "${IDF_PATH}/components/unity/unity/src")
 endif()

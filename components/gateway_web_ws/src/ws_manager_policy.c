@@ -1,7 +1,8 @@
 #include "ws_manager.h"
 
-#include "api_handlers.h"
+#include "health_json_builder.h"
 #include "lqi_json_mapper.h"
+#include "status_json_builder.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_timer.h"

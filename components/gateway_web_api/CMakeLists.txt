@@ -4,6 +4,8 @@ idf_component_register(
         "src/api_handlers.c"
         "src/api_status_handlers.c"
         "src/api_health_handlers.c"
+        "src/status_json_builder.c"
+        "src/health_json_builder.c"
         "src/api_jobs_handlers.c"
         "src/api_usecases.c"
         "src/http_error.c"

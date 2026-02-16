@@ -1,5 +1,7 @@
 #include "unity.h"
 #include "api_handlers.h"
+#include "health_json_builder.h"
+#include "status_json_builder.h"
 #include "api_contracts.h"
 #include "api_usecases.h"
 #include "lqi_json_mapper.h"

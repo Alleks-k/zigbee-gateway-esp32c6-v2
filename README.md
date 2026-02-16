@@ -91,13 +91,23 @@ sudo apt-get install -y build-essential cppcheck
 
 ## Структура проєкту
 
-- `components/gateway_core/` — service layer, settings manager, event loop, zigbee domain/state.
+- `components/gateway_app/` — bootstrap/orchestration і Zigbee runtime wiring.
+- `components/gateway_core_facade/` — фасади для web/api: `gateway_device_zigbee_*`, `gateway_wifi_system_*`, `gateway_jobs_*`.
+- `components/gateway_core/` — core business rules/use-cases (`config_service`, `device_service`).
+- `components/gateway_core_state/` — runtime state store (network/wifi/lqi cache).
+- `components/gateway_core_storage/` — persistence layer (NVS KV/repositories/schema/partitions).
+- `components/gateway_core_zigbee|gateway_core_wifi|gateway_core_system|gateway_core_jobs|gateway_core_events/` — доменні та platform adapters.
 - `components/gateway_net/` — Wi-Fi STA/AP fallback та мережеві налаштування.
-- `components/gateway_web/` — HTTP routes, API handlers, WebSocket manager, static serving.
-- `components/gateway_app/` — runtime/bootstrap orchestration (startup flow).
+- `components/gateway_web/` — web facade (routes + composition API/WS/static).
+- `components/gateway_web_api|gateway_web_ws|gateway_web_static/` — API handlers/use-cases, WebSocket, static serving.
 - `main/main.c` — thin app entrypoint that delegates to bootstrap component.
 - `main/web/www/` — фронтенд (index.html, style.css, script.js).
 - `partitions.csv` — таблиця розділів.
+
+## Модель статусів у core
+
+- У core-компонентах (`gateway_core`, `gateway_core_state`) використовується `gateway_status_t`.
+- На межах з ESP-IDF (`gateway_app`, `gateway_net`, `gateway_core_facade`, `gateway_core_zigbee`) робиться явний мапінг `gateway_status_t <-> esp_err_t` через `gateway_status_esp.h`.
 
 ## Архітектура
 
@@ -106,7 +116,7 @@ sudo apt-get install -y build-essential cppcheck
 ## Важливі зауваження
 
 - Wi-Fi/Zigbee coexistence працює в 2.4 GHz на спільному радіоканалі.
-- Поточне обмеження `MAX_DEVICES` за замовчуванням: 10 (див. `components/gateway_core/include/device_service.h` і Kconfig).
+- Поточне обмеження `MAX_DEVICES` за замовчуванням: 10 (див. `components/gateway_shared_config/include/gateway_config_types.h` і Kconfig).
 
 ---
 **Author**: [Alleks-k](https://github.com/Alleks-k)

@@ -41,12 +41,17 @@ static bool gateway_app_http_error_map_provider(esp_err_t err, int *out_http_sta
 
 void gateway_app_start(void)
 {
+    device_service_handle_t device_service = NULL;
+    gateway_state_handle_t gateway_state = NULL;
+
     ESP_ERROR_CHECK(nvs_flash_init());
     gateway_error_ring_set_now_ms_provider(gateway_app_now_ms_provider);
     http_error_set_map_provider(gateway_app_http_error_map_provider);
     ESP_ERROR_CHECK(config_service_init_or_migrate());
-    ESP_ERROR_CHECK(device_service_init());
-    ESP_ERROR_CHECK(gateway_state_init());
+    ESP_ERROR_CHECK(device_service_get_default(&device_service));
+    ESP_ERROR_CHECK(gateway_state_get_default(&gateway_state));
+    ESP_ERROR_CHECK(device_service_init(device_service));
+    ESP_ERROR_CHECK(gateway_state_init(gateway_state));
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
     ESP_ERROR_CHECK(gateway_zigbee_runtime_prepare());
@@ -65,7 +70,7 @@ void gateway_app_start(void)
     start_web_server();
 
     gateway_wifi_state_t wifi_state = {0};
-    esp_err_t state_ret = gateway_state_get_wifi(&wifi_state);
+    esp_err_t state_ret = gateway_state_get_wifi(gateway_state, &wifi_state);
     if (state_ret != ESP_OK) {
         ESP_LOGW(TAG, "Failed to read Wi-Fi state: %s", esp_err_to_name(state_ret));
     }

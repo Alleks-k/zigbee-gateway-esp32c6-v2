@@ -37,6 +37,25 @@ static const zigbee_service_runtime_ops_t s_default_runtime_ops = {
 };
 
 static const zigbee_service_runtime_ops_t *s_runtime_ops = &s_default_runtime_ops;
+static device_service_handle_t s_device_service = NULL;
+static gateway_state_handle_t s_gateway_state = NULL;
+
+static esp_err_t ensure_core_handles(void)
+{
+    if (!s_device_service) {
+        esp_err_t ret = device_service_get_default(&s_device_service);
+        if (ret != ESP_OK) {
+            return ret;
+        }
+    }
+    if (!s_gateway_state) {
+        esp_err_t ret = gateway_state_get_default(&s_gateway_state);
+        if (ret != ESP_OK) {
+            return ret;
+        }
+    }
+    return ESP_OK;
+}
 
 void zigbee_service_set_runtime_ops(const zigbee_service_runtime_ops_t *ops)
 {
@@ -71,6 +90,9 @@ static zigbee_lqi_source_t from_gateway_lqi_source(gateway_lqi_source_t src)
 
 static void update_gateway_lqi_from_snapshot(const zigbee_neighbor_lqi_t *items, int count, zigbee_lqi_source_t source)
 {
+    if (ensure_core_handles() != ESP_OK) {
+        return;
+    }
     if (!items || count <= 0) {
         return;
     }
@@ -79,7 +101,7 @@ static void update_gateway_lqi_from_snapshot(const zigbee_neighbor_lqi_t *items,
     gateway_lqi_source_t gw_src = to_gateway_lqi_source(source);
     for (int i = 0; i < count; i++) {
         uint64_t ts = items[i].updated_ms > 0 ? items[i].updated_ms : now_ms;
-        (void)gateway_state_update_lqi(items[i].short_addr, items[i].lqi, items[i].rssi, gw_src, ts);
+        (void)gateway_state_update_lqi(s_gateway_state, items[i].short_addr, items[i].lqi, items[i].rssi, gw_src, ts);
     }
 }
 
@@ -88,9 +110,13 @@ esp_err_t zigbee_service_get_network_status(zigbee_network_status_t *out)
     if (!out) {
         return ESP_ERR_INVALID_ARG;
     }
+    esp_err_t ensure_ret = ensure_core_handles();
+    if (ensure_ret != ESP_OK) {
+        return ensure_ret;
+    }
 
     gateway_network_state_t state = {0};
-    esp_err_t ret = gateway_state_get_network(&state);
+    esp_err_t ret = gateway_state_get_network(s_gateway_state, &state);
     if (ret != ESP_OK) {
         return ret;
     }
@@ -113,7 +139,10 @@ esp_err_t zigbee_service_send_on_off(uint16_t short_addr, uint8_t endpoint, uint
 
 int zigbee_service_get_devices_snapshot(zb_device_t *out, size_t max_items)
 {
-    return device_service_get_snapshot(out, max_items);
+    if (ensure_core_handles() != ESP_OK) {
+        return 0;
+    }
+    return device_service_get_snapshot(s_device_service, out, max_items);
 }
 
 int zigbee_service_get_neighbor_lqi_snapshot(zigbee_neighbor_lqi_t *out, size_t max_items)
@@ -121,9 +150,12 @@ int zigbee_service_get_neighbor_lqi_snapshot(zigbee_neighbor_lqi_t *out, size_t 
     if (!out || max_items == 0) {
         return 0;
     }
+    if (ensure_core_handles() != ESP_OK) {
+        return 0;
+    }
 
     gateway_network_state_t state = {0};
-    if (gateway_state_get_network(&state) != ESP_OK || !state.zigbee_started) {
+    if (gateway_state_get_network(s_gateway_state, &state) != ESP_OK || !state.zigbee_started) {
         return 0;
     }
 
@@ -202,9 +234,13 @@ esp_err_t zigbee_service_refresh_neighbor_lqi_snapshot(zigbee_neighbor_lqi_t *ou
         return ESP_ERR_INVALID_ARG;
     }
     *out_count = 0;
+    esp_err_t ensure_ret = ensure_core_handles();
+    if (ensure_ret != ESP_OK) {
+        return ensure_ret;
+    }
 
     gateway_network_state_t state = {0};
-    esp_err_t sret = gateway_state_get_network(&state);
+    esp_err_t sret = gateway_state_get_network(s_gateway_state, &state);
     if (sret != ESP_OK || !state.zigbee_started) {
         return ESP_ERR_INVALID_STATE;
     }
@@ -267,7 +303,11 @@ esp_err_t zigbee_service_get_cached_lqi_snapshot(zigbee_neighbor_lqi_t *out, siz
     }
 
     gateway_lqi_cache_entry_t snapshot[MAX_DEVICES];
-    int count = gateway_state_get_lqi_snapshot(snapshot, MAX_DEVICES);
+    esp_err_t ensure_ret = ensure_core_handles();
+    if (ensure_ret != ESP_OK) {
+        return ensure_ret;
+    }
+    int count = gateway_state_get_lqi_snapshot(s_gateway_state, snapshot, MAX_DEVICES);
     if (count < 0) {
         count = 0;
     }

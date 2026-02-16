@@ -6,6 +6,16 @@
 #include "job_queue.h"
 #include "system_service.h"
 
+static gateway_state_handle_t s_gateway_state = NULL;
+
+static esp_err_t ensure_gateway_state_handle(void)
+{
+    if (s_gateway_state) {
+        return ESP_OK;
+    }
+    return gateway_state_get_default(&s_gateway_state);
+}
+
 static gateway_core_wifi_link_quality_t to_core_wifi_link_quality(system_wifi_link_quality_t quality)
 {
     switch (quality) {
@@ -265,12 +275,20 @@ const char *gateway_core_facade_job_state_to_string(gateway_core_job_state_t sta
 
 esp_err_t gateway_core_facade_get_network_state(gateway_network_state_t *out_state)
 {
-    return gateway_state_get_network(out_state);
+    esp_err_t ret = ensure_gateway_state_handle();
+    if (ret != ESP_OK) {
+        return ret;
+    }
+    return gateway_state_get_network(s_gateway_state, out_state);
 }
 
 esp_err_t gateway_core_facade_get_wifi_state(gateway_wifi_state_t *out_state)
 {
-    return gateway_state_get_wifi(out_state);
+    esp_err_t ret = ensure_gateway_state_handle();
+    if (ret != ESP_OK) {
+        return ret;
+    }
+    return gateway_state_get_wifi(s_gateway_state, out_state);
 }
 
 esp_err_t gateway_core_facade_get_schema_version(int32_t *out_version)

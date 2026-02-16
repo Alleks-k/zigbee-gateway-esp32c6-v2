@@ -18,14 +18,24 @@
 #include "lwip/sockets.h"
 #include "lwip/inet.h"
 
+static device_service_handle_t s_device_service = NULL;
+static gateway_state_handle_t s_gateway_state = NULL;
+
+static void ensure_stateful_handles(void)
+{
+    TEST_ASSERT_EQUAL(ESP_OK, device_service_get_default(&s_device_service));
+    TEST_ASSERT_EQUAL(ESP_OK, gateway_state_get_default(&s_gateway_state));
+}
+
 static void test_reset_devices(void)
 {
-    TEST_ASSERT_EQUAL(ESP_OK, device_service_init());
+    ensure_stateful_handles();
+    TEST_ASSERT_EQUAL(ESP_OK, device_service_init(s_device_service));
 
     zb_device_t snapshot[MAX_DEVICES] = {0};
-    int count = device_service_get_snapshot(snapshot, MAX_DEVICES);
+    int count = device_service_get_snapshot(s_device_service, snapshot, MAX_DEVICES);
     for (int i = 0; i < count; i++) {
-        device_service_delete(snapshot[i].short_addr);
+        device_service_delete(s_device_service, snapshot[i].short_addr);
     }
 }
 
@@ -34,7 +44,8 @@ static void test_seed_devices(const zb_device_t *devices, int count, bool reset_
     TEST_ASSERT_NOT_NULL(devices);
     TEST_ASSERT_TRUE(count >= 0);
     TEST_ASSERT_TRUE(count <= MAX_DEVICES);
-    TEST_ASSERT_EQUAL(ESP_OK, device_service_init());
+    ensure_stateful_handles();
+    TEST_ASSERT_EQUAL(ESP_OK, device_service_init(s_device_service));
     if (reset_first) {
         test_reset_devices();
     }
@@ -43,8 +54,8 @@ static void test_seed_devices(const zb_device_t *devices, int count, bool reset_
         gateway_ieee_addr_t ieee = {0};
         ieee[0] = (uint8_t)(devices[i].short_addr & 0xFF);
         ieee[1] = (uint8_t)((devices[i].short_addr >> 8) & 0xFF);
-        device_service_add_with_ieee(devices[i].short_addr, ieee);
-        device_service_update_name(devices[i].short_addr, devices[i].name);
+        device_service_add_with_ieee(s_device_service, devices[i].short_addr, ieee);
+        device_service_update_name(s_device_service, devices[i].short_addr, devices[i].name);
     }
 }
 
@@ -140,9 +151,10 @@ static void test_lqi_json_mapper_uses_cached_snapshot_contract(void)
         {.short_addr = 0x1001, .name = "Dev A"},
         {.short_addr = 0x1002, .name = "Dev B"},
     };
+    ensure_stateful_handles();
     test_seed_devices(devices, 2, true);
-    TEST_ASSERT_EQUAL(ESP_OK, gateway_state_update_lqi(0x1001, 150, 127, GATEWAY_LQI_SOURCE_MGMT_LQI, 1000));
-    TEST_ASSERT_EQUAL(ESP_OK, gateway_state_update_lqi(0x1002, 70, -80, GATEWAY_LQI_SOURCE_NEIGHBOR_TABLE, 900));
+    TEST_ASSERT_EQUAL(ESP_OK, gateway_state_update_lqi(s_gateway_state, 0x1001, 150, 127, GATEWAY_LQI_SOURCE_MGMT_LQI, 1000));
+    TEST_ASSERT_EQUAL(ESP_OK, gateway_state_update_lqi(s_gateway_state, 0x1002, 70, -80, GATEWAY_LQI_SOURCE_NEIGHBOR_TABLE, 900));
 
     char buf[2048];
     size_t out_len = 0;
@@ -196,8 +208,9 @@ static void test_health_snapshot_usecase_contract(void)
         .loaded_from_nvs = true,
         .active_ssid = "SelfTestNet",
     };
-    TEST_ASSERT_EQUAL(ESP_OK, gateway_state_set_network(&net));
-    TEST_ASSERT_EQUAL(ESP_OK, gateway_state_set_wifi(&wifi));
+    ensure_stateful_handles();
+    TEST_ASSERT_EQUAL(ESP_OK, gateway_state_set_network(s_gateway_state, &net));
+    TEST_ASSERT_EQUAL(ESP_OK, gateway_state_set_wifi(s_gateway_state, &wifi));
 
     api_health_snapshot_t snap = {0};
     esp_err_t ret = api_usecase_collect_health_snapshot(&snap);

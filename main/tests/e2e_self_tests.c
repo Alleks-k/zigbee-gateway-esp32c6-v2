@@ -330,8 +330,11 @@ static void test_e2e_wifi_connect_retry_exhausted_switches_to_ap_fallback(void)
     TEST_ASSERT_EQUAL_INT(1, s_mock_wifi_sta_connect_called);
     TEST_ASSERT_EQUAL_INT(1, s_mock_wifi_fallback_called);
 
+    gateway_state_handle_t gateway_state = NULL;
+    TEST_ASSERT_EQUAL(ESP_OK, gateway_state_get_default(&gateway_state));
+
     gateway_wifi_state_t state = {0};
-    TEST_ASSERT_EQUAL(ESP_OK, gateway_state_get_wifi(&state));
+    TEST_ASSERT_EQUAL(ESP_OK, gateway_state_get_wifi(gateway_state, &state));
     TEST_ASSERT_FALSE(state.sta_connected);
     TEST_ASSERT_TRUE(state.fallback_ap_active);
     TEST_ASSERT_EQUAL_STRING("ZGW-Fallback", state.active_ssid);

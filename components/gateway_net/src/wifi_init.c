@@ -9,6 +9,15 @@
 
 static const char *TAG = "wifi_init";
 static wifi_runtime_ctx_t s_ctx = {0};
+static gateway_state_handle_t s_gateway_state = NULL;
+
+static esp_err_t ensure_gateway_state_handle(void)
+{
+    if (s_gateway_state) {
+        return ESP_OK;
+    }
+    return gateway_state_get_default(&s_gateway_state);
+}
 
 #if CONFIG_GATEWAY_SELF_TEST_APP
 static void wifi_init_default_net_platform_services_init(void)
@@ -35,13 +44,19 @@ static wifi_init_ops_t s_wifi_init_ops = {
 
 void wifi_state_store_update(void)
 {
+    esp_err_t handle_ret = ensure_gateway_state_handle();
+    if (handle_ret != ESP_OK) {
+        ESP_LOGW(TAG, "Failed to access gateway state handle: %s", esp_err_to_name(handle_ret));
+        return;
+    }
+
     gateway_wifi_state_t state = {
         .sta_connected = s_ctx.sta_connected,
         .fallback_ap_active = s_ctx.fallback_ap_active,
         .loaded_from_nvs = s_ctx.loaded_from_nvs,
     };
     strlcpy(state.active_ssid, s_ctx.active_ssid, sizeof(state.active_ssid));
-    esp_err_t ret = gateway_state_set_wifi(&state);
+    esp_err_t ret = gateway_state_set_wifi(s_gateway_state, &state);
     if (ret != ESP_OK) {
         ESP_LOGW(TAG, "Failed to publish Wi-Fi state: %s", esp_err_to_name(ret));
     }

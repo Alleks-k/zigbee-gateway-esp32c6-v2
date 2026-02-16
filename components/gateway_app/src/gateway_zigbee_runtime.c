@@ -27,6 +27,8 @@
 static const char *TAG = "ZIGBEE_RUNTIME";
 static esp_event_handler_instance_t s_delete_req_handler = NULL;
 static int64_t s_last_live_lqi_refresh_us = 0;
+static device_service_handle_t s_device_service = NULL;
+static gateway_state_handle_t s_gateway_state = NULL;
 #define LIVE_LQI_REFRESH_MIN_INTERVAL_US (3 * 1000 * 1000)
 
 #if CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
@@ -69,6 +71,11 @@ static void refresh_lqi_from_live_event(const char *reason)
 
 static void gateway_state_publish(bool zigbee_started, bool factory_new)
 {
+    if (!s_gateway_state) {
+        ESP_LOGW(TAG, "Gateway state handle is not initialized");
+        return;
+    }
+
     gateway_network_state_t state = {
         .zigbee_started = zigbee_started,
         .factory_new = factory_new,
@@ -83,7 +90,7 @@ static void gateway_state_publish(bool zigbee_started, bool factory_new)
         state.short_addr = esp_zb_get_short_address();
     }
 
-    esp_err_t ret = gateway_state_set_network(&state);
+    esp_err_t ret = gateway_state_set_network(s_gateway_state, &state);
     if (ret != ESP_OK) {
         ESP_LOGW(TAG, "Failed to publish gateway state: %s", esp_err_to_name(ret));
     }
@@ -97,7 +104,10 @@ static esp_err_t zigbee_runtime_send_on_off(uint16_t short_addr, uint8_t endpoin
 
 static esp_err_t zigbee_runtime_delete_device(uint16_t short_addr)
 {
-    device_service_delete(short_addr);
+    if (!s_device_service) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    device_service_delete(s_device_service, short_addr);
     return ESP_OK;
 }
 
@@ -106,7 +116,10 @@ static esp_err_t zigbee_runtime_rename_device(uint16_t short_addr, const char *n
     if (!new_name) {
         return ESP_ERR_INVALID_ARG;
     }
-    device_service_update_name(short_addr, new_name);
+    if (!s_device_service) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    device_service_update_name(s_device_service, short_addr, new_name);
     return ESP_OK;
 }
 
@@ -291,6 +304,15 @@ static void esp_zb_task(void *pvParameters)
 
 esp_err_t gateway_zigbee_runtime_prepare(void)
 {
+    esp_err_t ret = device_service_get_default(&s_device_service);
+    if (ret != ESP_OK) {
+        return ret;
+    }
+    ret = gateway_state_get_default(&s_gateway_state);
+    if (ret != ESP_OK) {
+        return ret;
+    }
+
     zigbee_service_set_runtime_ops(&s_zigbee_runtime_ops);
     gateway_state_publish(false, false);
 

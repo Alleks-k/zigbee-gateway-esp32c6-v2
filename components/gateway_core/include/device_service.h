@@ -3,6 +3,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "device_service_lock_port.h"
+#include "device_service_repo_port.h"
 #include "gateway_runtime_types.h"
 #include "gateway_status.h"
 
@@ -18,6 +20,14 @@ typedef struct {
     void *ctx;
 } device_service_notifier_t;
 
+typedef struct {
+    const device_service_lock_port_t *lock_port;
+    const device_service_repo_port_t *repo_port;
+    const device_service_notifier_t *notifier;
+} device_service_init_params_t;
+
+gateway_status_t device_service_create_with_params(const device_service_init_params_t *params,
+                                                   device_service_handle_t *out_handle);
 gateway_status_t device_service_create(device_service_handle_t *out_handle);
 void device_service_destroy(device_service_handle_t handle);
 gateway_status_t device_service_init(device_service_handle_t handle);

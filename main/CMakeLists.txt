@@ -18,6 +18,8 @@ if(CONFIG_GATEWAY_SELF_TEST_APP)
         "tests/self_tests_app_main.c")
     list(APPEND main_reqs
         gateway_core_state
+        gateway_core_platform_freertos
+        gateway_core_persistence_adapter
         gateway_core_wifi
         gateway_core_jobs
         unity)

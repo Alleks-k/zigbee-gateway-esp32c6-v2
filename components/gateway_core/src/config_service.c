@@ -1,10 +1,8 @@
 #include "config_service.h"
 #include "gateway_config_types.h"
 #include "gateway_persistence_adapter.h"
-#include "esp_log.h"
 #include <string.h>
 
-static const char *TAG = "CONFIG_SERVICE";
 static config_service_factory_reset_report_t s_last_factory_reset_report = {
     .wifi_err = GATEWAY_STATUS_FAIL,
     .devices_err = GATEWAY_STATUS_FAIL,
@@ -49,8 +47,6 @@ gateway_status_t config_service_init_or_migrate(void)
     }
 
     if (version > CONFIG_SERVICE_SCHEMA_VERSION_CURRENT) {
-        ESP_LOGE(TAG, "Unsupported settings schema version: %ld > %d",
-                 (long)version, CONFIG_SERVICE_SCHEMA_VERSION_CURRENT);
         return GATEWAY_STATUS_NOT_SUPPORTED;
     }
 
@@ -62,30 +58,21 @@ gateway_status_t config_service_init_or_migrate(void)
             next_version = 1;
             break;
         default:
-            ESP_LOGE(TAG, "Missing migration step from v%ld", (long)version);
             return GATEWAY_STATUS_NOT_SUPPORTED;
         }
 
         if (status != GATEWAY_STATUS_OK) {
-            ESP_LOGE(TAG, "Migration function failed: v%ld -> v%ld (status=%d)",
-                     (long)version, (long)next_version,
-                     (int)status);
             return status;
         }
 
         status = gateway_persistence_schema_set_version(next_version);
         if (status != GATEWAY_STATUS_OK) {
-            ESP_LOGE(TAG, "Failed to persist schema version v%ld: status=%d",
-                     (long)next_version, (int)status);
             return status;
         }
 
-        ESP_LOGI(TAG, "Settings schema migrated: v%ld -> v%ld",
-                 (long)version, (long)next_version);
         version = next_version;
     }
 
-    ESP_LOGI(TAG, "Settings schema up-to-date: v%ld", (long)version);
     return GATEWAY_STATUS_OK;
 }
 
@@ -142,7 +129,6 @@ gateway_status_t config_service_load_wifi_credentials(char *ssid, size_t ssid_si
 
     status = config_service_validate_wifi_credentials(ssid, password);
     if (status != GATEWAY_STATUS_OK) {
-        ESP_LOGW(TAG, "Ignoring invalid Wi-Fi credentials loaded from storage");
         ssid[0] = '\0';
         password[0] = '\0';
         *loaded_from_storage = false;
@@ -158,12 +144,6 @@ gateway_status_t config_service_factory_reset(void)
     gateway_status_t devices_status = gateway_persistence_devices_clear();
     gateway_status_t zb_storage_status = gateway_persistence_partitions_erase_zigbee_storage();
     gateway_status_t zb_fct_status = gateway_persistence_partitions_erase_zigbee_factory();
-
-    ESP_LOGI(TAG, "Factory reset result: wifi=%d, devices=%d, zigbee_storage=%d, zigbee_fct=%d",
-             (int)wifi_status,
-             (int)devices_status,
-             (int)zb_storage_status,
-             (int)zb_fct_status);
 
     s_last_factory_reset_report.wifi_err = wifi_status;
     s_last_factory_reset_report.devices_err = devices_status;

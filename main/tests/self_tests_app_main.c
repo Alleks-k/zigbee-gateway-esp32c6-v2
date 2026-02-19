@@ -8,9 +8,11 @@
 #include "gateway_runtime_context.h"
 #include "gateway_status_esp.h"
 #include "gateway_wifi_system_facade.h"
+#include "gateway_persistence_adapter.h"
 #include "state_store.h"
 #include "wifi_init.h"
 #include "zigbee_service.h"
+#include "device_service_lock_freertos_port.h"
 #include "nvs_flash.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -22,19 +24,50 @@ static uint64_t self_tests_now_ms(void)
     return (uint64_t)(esp_timer_get_time() / 1000);
 }
 
+static gateway_status_t self_tests_device_repo_load(void *ctx,
+                                                    gateway_device_record_t *devices,
+                                                    size_t max_devices,
+                                                    int *device_count,
+                                                    bool *loaded)
+{
+    (void)ctx;
+    return gateway_persistence_devices_load(devices, max_devices, device_count, loaded);
+}
+
+static gateway_status_t self_tests_device_repo_save(void *ctx,
+                                                    const gateway_device_record_t *devices,
+                                                    size_t max_devices,
+                                                    int device_count)
+{
+    (void)ctx;
+    return gateway_persistence_devices_save(devices, max_devices, device_count);
+}
+
+static const device_service_repo_port_t s_self_tests_device_repo_port = {
+    .load = self_tests_device_repo_load,
+    .save = self_tests_device_repo_save,
+    .ctx = NULL,
+};
+
 void app_main(void)
 {
     device_service_handle_t device_service = NULL;
     gateway_state_handle_t gateway_state = NULL;
     gateway_runtime_context_t runtime_ctx = {0};
     gateway_wifi_system_init_params_t wifi_system_params = {0};
+    device_service_init_params_t device_service_params = {
+        .lock_port = NULL,
+        .repo_port = &s_self_tests_device_repo_port,
+        .notifier = NULL,
+    };
+    device_service_params.lock_port = device_service_lock_port_freertos();
 
     ESP_ERROR_CHECK(nvs_flash_init());
     ESP_ERROR_CHECK(gateway_status_to_esp_err(config_service_init_or_migrate()));
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
 
-    ESP_ERROR_CHECK(gateway_status_to_esp_err(device_service_create(&device_service)));
+    ESP_ERROR_CHECK(gateway_status_to_esp_err(device_service_create_with_params(&device_service_params, &device_service)));
     ESP_ERROR_CHECK(gateway_status_to_esp_err(gateway_state_create(&gateway_state)));
     ESP_ERROR_CHECK(gateway_status_to_esp_err(device_service_init(device_service)));
     ESP_ERROR_CHECK(gateway_status_to_esp_err(gateway_state_init(gateway_state)));

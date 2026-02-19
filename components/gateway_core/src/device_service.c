@@ -7,6 +7,45 @@
 
 static const char *s_default_device_name_prefix = "Пристрій";
 
+static gateway_status_t device_service_lock_ensure(device_service_handle_t handle)
+{
+    if (!handle) {
+        return GATEWAY_STATUS_INVALID_ARG;
+    }
+    if (!handle->lock_port || !handle->lock_port->create) {
+        return GATEWAY_STATUS_INVALID_STATE;
+    }
+    if (handle->lock_handle) {
+        return GATEWAY_STATUS_OK;
+    }
+    return handle->lock_port->create(handle->lock_port->ctx, &handle->lock_handle);
+}
+
+static void device_service_lock_destroy(device_service_handle_t handle)
+{
+    if (!handle || !handle->lock_handle || !handle->lock_port || !handle->lock_port->destroy) {
+        return;
+    }
+    handle->lock_port->destroy(handle->lock_port->ctx, handle->lock_handle);
+    handle->lock_handle = NULL;
+}
+
+static void device_service_lock_acquire(device_service_handle_t handle)
+{
+    if (!handle || !handle->lock_handle || !handle->lock_port || !handle->lock_port->enter) {
+        return;
+    }
+    handle->lock_port->enter(handle->lock_port->ctx, handle->lock_handle);
+}
+
+static void device_service_lock_release(device_service_handle_t handle)
+{
+    if (!handle || !handle->lock_handle || !handle->lock_port || !handle->lock_port->exit) {
+        return;
+    }
+    handle->lock_port->exit(handle->lock_port->ctx, handle->lock_handle);
+}
+
 static void device_service_notify_list_changed(device_service_handle_t handle)
 {
     if (!handle || !handle->on_list_changed) {
@@ -23,7 +62,8 @@ static void device_service_notify_delete_request(device_service_handle_t handle,
     handle->on_delete_request(handle->notifier_ctx, short_addr, ieee_addr);
 }
 
-gateway_status_t device_service_create(device_service_handle_t *out_handle)
+gateway_status_t device_service_create_with_params(const device_service_init_params_t *params,
+                                                   device_service_handle_t *out_handle)
 {
     if (!out_handle) {
         return GATEWAY_STATUS_INVALID_ARG;
@@ -34,8 +74,23 @@ gateway_status_t device_service_create(device_service_handle_t *out_handle)
         return GATEWAY_STATUS_NO_MEM;
     }
 
+    if (params) {
+        handle->lock_port = params->lock_port;
+        handle->repo_port = params->repo_port;
+        if (params->notifier) {
+            handle->on_list_changed = params->notifier->on_list_changed;
+            handle->on_delete_request = params->notifier->on_delete_request;
+            handle->notifier_ctx = params->notifier->ctx;
+        }
+    }
+
     *out_handle = handle;
     return GATEWAY_STATUS_OK;
+}
+
+gateway_status_t device_service_create(device_service_handle_t *out_handle)
+{
+    return device_service_create_with_params(NULL, out_handle);
 }
 
 void device_service_destroy(device_service_handle_t handle)
@@ -54,6 +109,9 @@ gateway_status_t device_service_init(device_service_handle_t handle)
 {
     if (!handle) {
         return GATEWAY_STATUS_INVALID_ARG;
+    }
+    if (!handle->lock_port || !handle->repo_port) {
+        return GATEWAY_STATUS_INVALID_STATE;
     }
 
     gateway_status_t lock_ret = device_service_lock_ensure(handle);

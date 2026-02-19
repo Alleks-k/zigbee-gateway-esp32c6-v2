@@ -5,6 +5,7 @@
 #include "error_ring.h"
 #include "gateway_events.h"
 #include "gateway_wifi_system_facade.h"
+#include "device_service_lock_freertos_port.h"
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_netif.h"
@@ -12,6 +13,7 @@
 #include "esp_timer.h"
 #include "http_error.h"
 #include "nvs.h"
+#include "gateway_persistence_adapter.h"
 #include "gateway_status_esp.h"
 #include "state_store.h"
 #include "gateway_zigbee_runtime.h"
@@ -23,6 +25,31 @@
 
 static const char *TAG = "GATEWAY_APP";
 static esp_event_handler_instance_t s_device_announce_handler = NULL;
+
+static gateway_status_t gateway_app_device_repo_load(void *ctx,
+                                                      gateway_device_record_t *devices,
+                                                      size_t max_devices,
+                                                      int *device_count,
+                                                      bool *loaded)
+{
+    (void)ctx;
+    return gateway_persistence_devices_load(devices, max_devices, device_count, loaded);
+}
+
+static gateway_status_t gateway_app_device_repo_save(void *ctx,
+                                                      const gateway_device_record_t *devices,
+                                                      size_t max_devices,
+                                                      int device_count)
+{
+    (void)ctx;
+    return gateway_persistence_devices_save(devices, max_devices, device_count);
+}
+
+static const device_service_repo_port_t s_gateway_app_device_repo_port = {
+    .load = gateway_app_device_repo_load,
+    .save = gateway_app_device_repo_save,
+    .ctx = NULL,
+};
 
 static uint64_t gateway_app_now_ms_provider(void)
 {
@@ -107,19 +134,25 @@ void gateway_app_start(void)
     gateway_state_handle_t gateway_state = NULL;
     gateway_runtime_context_t runtime_ctx = {0};
     gateway_wifi_system_init_params_t wifi_system_params = {0};
+    device_service_init_params_t device_service_params = {
+        .lock_port = NULL,
+        .repo_port = &s_gateway_app_device_repo_port,
+        .notifier = NULL,
+    };
     device_service_notifier_t device_notifier = {
         .on_list_changed = gateway_app_on_device_list_changed,
         .on_delete_request = gateway_app_on_device_delete_request,
         .ctx = NULL,
     };
+    device_service_params.lock_port = device_service_lock_port_freertos();
+    device_service_params.notifier = &device_notifier;
 
     ESP_ERROR_CHECK(nvs_flash_init());
     gateway_error_ring_set_now_ms_provider(gateway_app_now_ms_provider);
     http_error_set_map_provider(gateway_app_http_error_map_provider);
     ESP_ERROR_CHECK(gateway_status_to_esp_err(config_service_init_or_migrate()));
-    ESP_ERROR_CHECK(gateway_status_to_esp_err(device_service_create(&device_service)));
+    ESP_ERROR_CHECK(gateway_status_to_esp_err(device_service_create_with_params(&device_service_params, &device_service)));
     ESP_ERROR_CHECK(gateway_status_to_esp_err(gateway_state_create(&gateway_state)));
-    ESP_ERROR_CHECK(gateway_status_to_esp_err(device_service_set_notifier(device_service, &device_notifier)));
     ESP_ERROR_CHECK(gateway_status_to_esp_err(device_service_init(device_service)));
     ESP_ERROR_CHECK(gateway_status_to_esp_err(gateway_state_init(gateway_state)));
     gateway_state_set_now_ms_provider(gateway_app_now_ms_provider);

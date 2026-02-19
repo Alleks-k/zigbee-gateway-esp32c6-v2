@@ -13,6 +13,8 @@ idf_component_register(
         gateway_core
         gateway_core_facade
         gateway_core_events
+        gateway_core_platform_freertos
+        gateway_core_persistence_adapter
         gateway_core_state
         gateway_core_system
         gateway_core_zigbee

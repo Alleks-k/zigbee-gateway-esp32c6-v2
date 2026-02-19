@@ -3,7 +3,6 @@ set(gateway_core_srcs
     "src/config_service.c"
     "src/device_service_rules.c"
     "src/device_service.c"
-    "src/device_service_lock_freertos.c"
     "src/device_service_persistence.c")
 
 set(gateway_core_include_dirs
@@ -26,6 +25,7 @@ if(CONFIG_GATEWAY_SELF_TEST_APP)
     list(APPEND gateway_core_reqs
         unity)
     list(APPEND gateway_core_priv_reqs
+        gateway_core_platform_freertos
         gateway_core_zigbee
         unity)
     list(APPEND gateway_core_priv_include_dirs

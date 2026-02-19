@@ -7,8 +7,10 @@
 #include "lqi_json_mapper.h"
 #include "error_ring.h"
 #include "device_service.h"
+#include "device_service_lock_freertos_port.h"
 #include "gateway_status.h"
 #include "gateway_runtime_context.h"
+#include "gateway_persistence_adapter.h"
 #include "gateway_wifi_system_facade.h"
 #include "state_store.h"
 #include "wifi_init.h"
@@ -28,10 +30,40 @@ static gateway_state_handle_t s_gateway_state = NULL;
 static bool s_runtime_bound = false;
 static gateway_runtime_context_t s_runtime_ctx = {0};
 
+static gateway_status_t web_selftest_device_repo_load(void *ctx,
+                                                      gateway_device_record_t *devices,
+                                                      size_t max_devices,
+                                                      int *device_count,
+                                                      bool *loaded)
+{
+    (void)ctx;
+    return gateway_persistence_devices_load(devices, max_devices, device_count, loaded);
+}
+
+static gateway_status_t web_selftest_device_repo_save(void *ctx,
+                                                      const gateway_device_record_t *devices,
+                                                      size_t max_devices,
+                                                      int device_count)
+{
+    (void)ctx;
+    return gateway_persistence_devices_save(devices, max_devices, device_count);
+}
+
+static const device_service_repo_port_t s_web_selftest_device_repo_port = {
+    .load = web_selftest_device_repo_load,
+    .save = web_selftest_device_repo_save,
+    .ctx = NULL,
+};
+
 static void ensure_stateful_handles(void)
 {
     if (!s_device_service) {
-        TEST_ASSERT_EQUAL(GATEWAY_STATUS_OK, device_service_create(&s_device_service));
+        device_service_init_params_t params = {
+            .lock_port = device_service_lock_port_freertos(),
+            .repo_port = &s_web_selftest_device_repo_port,
+            .notifier = NULL,
+        };
+        TEST_ASSERT_EQUAL(GATEWAY_STATUS_OK, device_service_create_with_params(&params, &s_device_service));
     }
     if (!s_gateway_state) {
         TEST_ASSERT_EQUAL(GATEWAY_STATUS_OK, gateway_state_create(&s_gateway_state));

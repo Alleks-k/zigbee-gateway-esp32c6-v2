@@ -27,6 +27,8 @@
 
 static device_service_handle_t s_device_service = NULL;
 static gateway_state_handle_t s_gateway_state = NULL;
+static gateway_wifi_system_handle_t s_wifi_system = NULL;
+static gateway_jobs_handle_t s_jobs = NULL;
 static bool s_runtime_bound = false;
 static gateway_runtime_context_t s_runtime_ctx = {0};
 
@@ -76,11 +78,15 @@ static void ensure_stateful_handles(void)
         gateway_wifi_system_init_params_t wifi_system_params = {
             .gateway_state_handle = s_gateway_state,
         };
+        gateway_jobs_init_params_t jobs_params = {0};
 
         s_runtime_ctx.device_service = s_device_service;
         s_runtime_ctx.gateway_state = s_gateway_state;
         TEST_ASSERT_EQUAL(ESP_OK, zigbee_service_bind_context(&s_runtime_ctx));
-        TEST_ASSERT_EQUAL(ESP_OK, gateway_wifi_system_init(&wifi_system_params));
+        TEST_ASSERT_EQUAL(ESP_OK, gateway_wifi_system_create(&wifi_system_params, &s_wifi_system));
+        TEST_ASSERT_EQUAL(ESP_OK, gateway_jobs_create(&jobs_params, &s_jobs));
+        api_usecases_set_wifi_system_handle(s_wifi_system);
+        api_usecases_set_jobs_handle(s_jobs);
         TEST_ASSERT_EQUAL(ESP_OK, wifi_init_bind_state(s_gateway_state));
         s_runtime_bound = true;
     }

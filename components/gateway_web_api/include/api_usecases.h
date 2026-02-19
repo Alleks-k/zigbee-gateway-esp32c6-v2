@@ -89,6 +89,8 @@ typedef bool (*api_ws_metrics_provider_t)(api_ws_runtime_metrics_t *out_metrics)
 void api_usecases_set_service_ops(const api_service_ops_t *ops);
 void api_usecases_set_ws_client_count_provider(api_ws_client_count_provider_t provider);
 void api_usecases_set_ws_metrics_provider(api_ws_metrics_provider_t provider);
+void api_usecases_set_wifi_system_handle(gateway_wifi_system_handle_t handle);
+void api_usecases_set_jobs_handle(gateway_jobs_handle_t handle);
 
 esp_err_t api_usecase_control(const api_control_request_t *in);
 esp_err_t api_usecase_wifi_save(const api_wifi_save_request_t *in);
@@ -107,3 +109,5 @@ esp_err_t api_usecase_schedule_reboot(uint32_t delay_ms);
 esp_err_t api_usecase_get_factory_reset_report(api_factory_reset_report_t *out_report);
 esp_err_t api_usecase_collect_telemetry(api_system_telemetry_t *out);
 esp_err_t api_usecase_collect_health_snapshot(api_health_snapshot_t *out);
+esp_err_t api_usecase_jobs_submit(gateway_core_job_type_t type, uint32_t reboot_delay_ms, uint32_t *out_job_id);
+esp_err_t api_usecase_jobs_get(uint32_t job_id, gateway_core_job_info_t *out_info);

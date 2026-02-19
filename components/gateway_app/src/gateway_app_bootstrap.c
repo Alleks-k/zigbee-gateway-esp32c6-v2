@@ -3,7 +3,9 @@
 #include "config_service.h"
 #include "device_service.h"
 #include "error_ring.h"
+#include "api_usecases.h"
 #include "gateway_events.h"
+#include "gateway_jobs_facade.h"
 #include "gateway_wifi_system_facade.h"
 #include "device_service_lock_freertos_port.h"
 #include "esp_event.h"
@@ -132,8 +134,11 @@ void gateway_app_start(void)
 {
     device_service_handle_t device_service = NULL;
     gateway_state_handle_t gateway_state = NULL;
+    gateway_wifi_system_handle_t wifi_system = NULL;
+    gateway_jobs_handle_t jobs = NULL;
     gateway_runtime_context_t runtime_ctx = {0};
     gateway_wifi_system_init_params_t wifi_system_params = {0};
+    gateway_jobs_init_params_t jobs_params = {0};
     device_service_init_params_t device_service_params = {
         .lock_port = NULL,
         .repo_port = &s_gateway_app_device_repo_port,
@@ -159,7 +164,10 @@ void gateway_app_start(void)
     runtime_ctx.device_service = device_service;
     runtime_ctx.gateway_state = gateway_state;
     wifi_system_params.gateway_state_handle = gateway_state;
-    ESP_ERROR_CHECK(gateway_wifi_system_init(&wifi_system_params));
+    ESP_ERROR_CHECK(gateway_wifi_system_create(&wifi_system_params, &wifi_system));
+    ESP_ERROR_CHECK(gateway_jobs_create(&jobs_params, &jobs));
+    api_usecases_set_wifi_system_handle(wifi_system);
+    api_usecases_set_jobs_handle(jobs);
     ESP_ERROR_CHECK(wifi_init_bind_state(gateway_state));
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());

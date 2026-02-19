@@ -37,6 +37,10 @@ typedef struct {
 } api_usecases_stub_t;
 
 static api_usecases_stub_t g_stub;
+static int g_wifi_system_ctx = 0;
+static int g_jobs_ctx = 0;
+static gateway_wifi_system_handle_t g_wifi_system_handle = (gateway_wifi_system_handle_t)&g_wifi_system_ctx;
+static gateway_jobs_handle_t g_jobs_handle = (gateway_jobs_handle_t)&g_jobs_ctx;
 
 size_t strlcpy(char *dst, const char *src, size_t dst_size)
 {
@@ -62,6 +66,8 @@ static void reset_stub(void)
     g_stub.facade_factory_reset_report.devices_err = ESP_OK;
     g_stub.facade_factory_reset_report.zigbee_storage_err = ESP_OK;
     g_stub.facade_factory_reset_report.zigbee_fct_err = ESP_OK;
+    api_usecases_set_wifi_system_handle(g_wifi_system_handle);
+    api_usecases_set_jobs_handle(g_jobs_handle);
 }
 
 static esp_err_t injected_send_on_off(uint16_t short_addr, uint8_t endpoint, uint8_t on_off)
@@ -104,21 +110,39 @@ esp_err_t gateway_device_zigbee_send_on_off(uint16_t short_addr, uint8_t endpoin
     return g_stub.facade_send_ret;
 }
 
-esp_err_t gateway_wifi_system_save_credentials(const char *ssid, const char *password)
+esp_err_t gateway_wifi_system_create(const gateway_wifi_system_init_params_t *params, gateway_wifi_system_handle_t *out_handle)
 {
+    (void)params;
+    if (!out_handle) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    *out_handle = g_wifi_system_handle;
+    return ESP_OK;
+}
+
+void gateway_wifi_system_destroy(gateway_wifi_system_handle_t handle)
+{
+    (void)handle;
+}
+
+esp_err_t gateway_wifi_system_save_credentials(gateway_wifi_system_handle_t handle, const char *ssid, const char *password)
+{
+    (void)handle;
     (void)ssid;
     (void)password;
     return ESP_OK;
 }
 
-esp_err_t gateway_wifi_system_schedule_reboot(uint32_t delay_ms)
+esp_err_t gateway_wifi_system_schedule_reboot(gateway_wifi_system_handle_t handle, uint32_t delay_ms)
 {
+    (void)handle;
     (void)delay_ms;
     return ESP_OK;
 }
 
-esp_err_t gateway_wifi_system_factory_reset_and_reboot(uint32_t reboot_delay_ms)
+esp_err_t gateway_wifi_system_factory_reset_and_reboot(gateway_wifi_system_handle_t handle, uint32_t reboot_delay_ms)
 {
+    (void)handle;
     (void)reboot_delay_ms;
     return ESP_OK;
 }
@@ -182,8 +206,9 @@ esp_err_t gateway_device_zigbee_rename_device(uint16_t short_addr, const char *n
     return ESP_OK;
 }
 
-esp_err_t gateway_wifi_system_scan(wifi_ap_info_t **out_list, size_t *out_count)
+esp_err_t gateway_wifi_system_scan(gateway_wifi_system_handle_t handle, wifi_ap_info_t **out_list, size_t *out_count)
 {
+    (void)handle;
     if (!out_list || !out_count) {
         return ESP_ERR_INVALID_ARG;
     }
@@ -192,13 +217,16 @@ esp_err_t gateway_wifi_system_scan(wifi_ap_info_t **out_list, size_t *out_count)
     return ESP_OK;
 }
 
-void gateway_wifi_system_scan_free(wifi_ap_info_t *list)
+void gateway_wifi_system_scan_free(gateway_wifi_system_handle_t handle, wifi_ap_info_t *list)
 {
+    (void)handle;
     (void)list;
 }
 
-esp_err_t gateway_wifi_system_get_factory_reset_report(gateway_core_factory_reset_report_t *out_report)
+esp_err_t gateway_wifi_system_get_factory_reset_report(gateway_wifi_system_handle_t handle,
+                                                       gateway_core_factory_reset_report_t *out_report)
 {
+    (void)handle;
     if (!out_report) {
         return ESP_ERR_INVALID_ARG;
     }
@@ -209,8 +237,9 @@ esp_err_t gateway_wifi_system_get_factory_reset_report(gateway_core_factory_rese
     return ESP_OK;
 }
 
-esp_err_t gateway_wifi_system_collect_telemetry(gateway_core_telemetry_t *out)
+esp_err_t gateway_wifi_system_collect_telemetry(gateway_wifi_system_handle_t handle, gateway_core_telemetry_t *out)
 {
+    (void)handle;
     if (!out) {
         return ESP_ERR_INVALID_ARG;
     }
@@ -218,8 +247,24 @@ esp_err_t gateway_wifi_system_collect_telemetry(gateway_core_telemetry_t *out)
     return ESP_OK;
 }
 
-esp_err_t gateway_jobs_get_metrics(gateway_core_job_metrics_t *out_metrics)
+esp_err_t gateway_jobs_create(const gateway_jobs_init_params_t *params, gateway_jobs_handle_t *out_handle)
 {
+    (void)params;
+    if (!out_handle) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    *out_handle = g_jobs_handle;
+    return ESP_OK;
+}
+
+void gateway_jobs_destroy(gateway_jobs_handle_t handle)
+{
+    (void)handle;
+}
+
+esp_err_t gateway_jobs_get_metrics(gateway_jobs_handle_t handle, gateway_core_job_metrics_t *out_metrics)
+{
+    (void)handle;
     if (!out_metrics) {
         return ESP_ERR_INVALID_ARG;
     }
@@ -227,8 +272,36 @@ esp_err_t gateway_jobs_get_metrics(gateway_core_job_metrics_t *out_metrics)
     return ESP_OK;
 }
 
-esp_err_t gateway_wifi_system_get_network_state(gateway_network_state_t *out_state)
+esp_err_t gateway_jobs_submit(gateway_jobs_handle_t handle, gateway_core_job_type_t type, uint32_t reboot_delay_ms,
+                              uint32_t *out_job_id)
 {
+    (void)handle;
+    (void)type;
+    (void)reboot_delay_ms;
+    if (!out_job_id) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    *out_job_id = 1;
+    return ESP_OK;
+}
+
+esp_err_t gateway_jobs_get(gateway_jobs_handle_t handle, uint32_t job_id, gateway_core_job_info_t *out_info)
+{
+    (void)handle;
+    if (!job_id || !out_info) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    memset(out_info, 0, sizeof(*out_info));
+    out_info->id = job_id;
+    out_info->type = GATEWAY_CORE_JOB_TYPE_WIFI_SCAN;
+    out_info->state = GATEWAY_CORE_JOB_STATE_QUEUED;
+    out_info->err = ESP_OK;
+    return ESP_OK;
+}
+
+esp_err_t gateway_wifi_system_get_network_state(gateway_wifi_system_handle_t handle, gateway_network_state_t *out_state)
+{
+    (void)handle;
     if (!out_state) {
         return ESP_ERR_INVALID_ARG;
     }
@@ -236,8 +309,9 @@ esp_err_t gateway_wifi_system_get_network_state(gateway_network_state_t *out_sta
     return ESP_OK;
 }
 
-esp_err_t gateway_wifi_system_get_wifi_state(gateway_wifi_state_t *out_state)
+esp_err_t gateway_wifi_system_get_wifi_state(gateway_wifi_system_handle_t handle, gateway_wifi_state_t *out_state)
 {
+    (void)handle;
     if (!out_state) {
         return ESP_ERR_INVALID_ARG;
     }
@@ -245,8 +319,9 @@ esp_err_t gateway_wifi_system_get_wifi_state(gateway_wifi_state_t *out_state)
     return ESP_OK;
 }
 
-esp_err_t gateway_wifi_system_get_schema_version(int32_t *out_version)
+esp_err_t gateway_wifi_system_get_schema_version(gateway_wifi_system_handle_t handle, int32_t *out_version)
 {
+    (void)handle;
     if (!out_version) {
         return ESP_ERR_INVALID_ARG;
     }

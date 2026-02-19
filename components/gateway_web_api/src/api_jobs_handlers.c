@@ -1,5 +1,6 @@
 #include "api_handlers.h"
 #include "api_contracts.h"
+#include "api_usecases.h"
 #include "gateway_jobs_facade.h"
 #include "http_error.h"
 
@@ -84,14 +85,14 @@ esp_err_t api_jobs_submit_handler(httpd_req_t *req)
 
     gateway_core_job_type_t type = parse_job_type(in.type);
     uint32_t job_id = 0;
-    err = gateway_jobs_submit(type, in.reboot_delay_ms, &job_id);
+    err = api_usecase_jobs_submit(type, in.reboot_delay_ms, &job_id);
     if (err != ESP_OK) {
         return http_error_send_esp(req, err, "Failed to queue job");
     }
 
     gateway_core_job_info_t info = {0};
     const char *state = "queued";
-    err = gateway_jobs_get(job_id, &info);
+    err = api_usecase_jobs_get(job_id, &info);
     if (err == ESP_OK) {
         state = gateway_jobs_state_to_string(info.state);
     }
@@ -119,7 +120,7 @@ esp_err_t api_jobs_get_handler(httpd_req_t *req)
         return http_error_send_esp(req, ESP_ERR_NO_MEM, "Out of memory");
     }
 
-    err = gateway_jobs_get(job_id, info);
+    err = api_usecase_jobs_get(job_id, info);
     if (err != ESP_OK) {
         free(info);
         return http_error_send_esp(req, err, "Job not found");

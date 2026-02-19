@@ -1,20 +1,69 @@
 #include "gateway_jobs_facade.h"
 
+#include <stdlib.h>
 #include <string.h>
 
 #include "job_queue.h"
 
-static job_queue_handle_t s_job_queue = NULL;
+struct gateway_jobs {
+    job_queue_handle_t job_queue;
+    bool owns_job_queue;
+};
 
-static esp_err_t ensure_job_queue(void)
+esp_err_t gateway_jobs_create(const gateway_jobs_init_params_t *params, gateway_jobs_handle_t *out_handle)
 {
-    if (!s_job_queue) {
-        esp_err_t err = job_queue_create(&s_job_queue);
+    if (!out_handle) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    gateway_jobs_t *handle = (gateway_jobs_t *)calloc(1, sizeof(*handle));
+    if (!handle) {
+        return ESP_ERR_NO_MEM;
+    }
+
+    if (params && params->job_queue_handle) {
+        handle->job_queue = (job_queue_handle_t)params->job_queue_handle;
+        handle->owns_job_queue = false;
+    } else {
+        esp_err_t err = job_queue_create(&handle->job_queue);
         if (err != ESP_OK) {
+            free(handle);
             return err;
         }
+        handle->owns_job_queue = true;
     }
-    return job_queue_init_with_handle(s_job_queue);
+
+    esp_err_t err = job_queue_init_with_handle(handle->job_queue);
+    if (err != ESP_OK) {
+        if (handle->owns_job_queue) {
+            job_queue_destroy(handle->job_queue);
+        }
+        free(handle);
+        return err;
+    }
+
+    *out_handle = handle;
+    return ESP_OK;
+}
+
+void gateway_jobs_destroy(gateway_jobs_handle_t handle)
+{
+    if (!handle) {
+        return;
+    }
+    if (handle->owns_job_queue && handle->job_queue) {
+        job_queue_destroy(handle->job_queue);
+        handle->job_queue = NULL;
+    }
+    free(handle);
+}
+
+static esp_err_t ensure_job_queue(gateway_jobs_handle_t handle)
+{
+    if (!handle || !handle->job_queue) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    return job_queue_init_with_handle(handle->job_queue);
 }
 
 static zgw_job_type_t to_job_type(gateway_core_job_type_t type)
@@ -66,19 +115,19 @@ static gateway_core_job_state_t from_job_state(zgw_job_state_t state)
     }
 }
 
-esp_err_t gateway_jobs_get_metrics(gateway_core_job_metrics_t *out_metrics)
+esp_err_t gateway_jobs_get_metrics(gateway_jobs_handle_t handle, gateway_core_job_metrics_t *out_metrics)
 {
     if (!out_metrics) {
         return ESP_ERR_INVALID_ARG;
     }
 
-    esp_err_t err = ensure_job_queue();
+    esp_err_t err = ensure_job_queue(handle);
     if (err != ESP_OK) {
         return err;
     }
 
     zgw_job_metrics_t metrics = {0};
-    err = job_queue_get_metrics_with_handle(s_job_queue, &metrics);
+    err = job_queue_get_metrics_with_handle(handle->job_queue, &metrics);
     if (err != ESP_OK) {
         return err;
     }
@@ -93,28 +142,29 @@ esp_err_t gateway_jobs_get_metrics(gateway_core_job_metrics_t *out_metrics)
     return ESP_OK;
 }
 
-esp_err_t gateway_jobs_submit(gateway_core_job_type_t type, uint32_t reboot_delay_ms, uint32_t *out_job_id)
+esp_err_t gateway_jobs_submit(gateway_jobs_handle_t handle, gateway_core_job_type_t type, uint32_t reboot_delay_ms,
+                              uint32_t *out_job_id)
 {
-    esp_err_t err = ensure_job_queue();
+    esp_err_t err = ensure_job_queue(handle);
     if (err != ESP_OK) {
         return err;
     }
-    return job_queue_submit_with_handle(s_job_queue, to_job_type(type), reboot_delay_ms, out_job_id);
+    return job_queue_submit_with_handle(handle->job_queue, to_job_type(type), reboot_delay_ms, out_job_id);
 }
 
-esp_err_t gateway_jobs_get(uint32_t job_id, gateway_core_job_info_t *out_info)
+esp_err_t gateway_jobs_get(gateway_jobs_handle_t handle, uint32_t job_id, gateway_core_job_info_t *out_info)
 {
     if (!out_info) {
         return ESP_ERR_INVALID_ARG;
     }
 
-    esp_err_t err = ensure_job_queue();
+    esp_err_t err = ensure_job_queue(handle);
     if (err != ESP_OK) {
         return err;
     }
 
     zgw_job_info_t info = {0};
-    err = job_queue_get_with_handle(s_job_queue, job_id, &info);
+    err = job_queue_get_with_handle(handle->job_queue, job_id, &info);
     if (err != ESP_OK) {
         return err;
     }

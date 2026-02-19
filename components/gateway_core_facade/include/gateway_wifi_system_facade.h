@@ -41,17 +41,23 @@ typedef struct {
     void *gateway_state_handle;
 } gateway_wifi_system_init_params_t;
 
-esp_err_t gateway_wifi_system_init(const gateway_wifi_system_init_params_t *params);
+typedef struct gateway_wifi_system gateway_wifi_system_t;
+typedef gateway_wifi_system_t *gateway_wifi_system_handle_t;
 
-esp_err_t gateway_wifi_system_save_credentials(const char *ssid, const char *password);
-esp_err_t gateway_wifi_system_schedule_reboot(uint32_t delay_ms);
-esp_err_t gateway_wifi_system_factory_reset_and_reboot(uint32_t reboot_delay_ms);
+esp_err_t gateway_wifi_system_create(const gateway_wifi_system_init_params_t *params,
+                                     gateway_wifi_system_handle_t *out_handle);
+void gateway_wifi_system_destroy(gateway_wifi_system_handle_t handle);
 
-esp_err_t gateway_wifi_system_scan(wifi_ap_info_t **out_list, size_t *out_count);
-void gateway_wifi_system_scan_free(wifi_ap_info_t *list);
+esp_err_t gateway_wifi_system_save_credentials(gateway_wifi_system_handle_t handle, const char *ssid, const char *password);
+esp_err_t gateway_wifi_system_schedule_reboot(gateway_wifi_system_handle_t handle, uint32_t delay_ms);
+esp_err_t gateway_wifi_system_factory_reset_and_reboot(gateway_wifi_system_handle_t handle, uint32_t reboot_delay_ms);
 
-esp_err_t gateway_wifi_system_get_factory_reset_report(gateway_core_factory_reset_report_t *out_report);
-esp_err_t gateway_wifi_system_collect_telemetry(gateway_core_telemetry_t *out);
-esp_err_t gateway_wifi_system_get_network_state(gateway_network_state_t *out_state);
-esp_err_t gateway_wifi_system_get_wifi_state(gateway_wifi_state_t *out_state);
-esp_err_t gateway_wifi_system_get_schema_version(int32_t *out_version);
+esp_err_t gateway_wifi_system_scan(gateway_wifi_system_handle_t handle, wifi_ap_info_t **out_list, size_t *out_count);
+void gateway_wifi_system_scan_free(gateway_wifi_system_handle_t handle, wifi_ap_info_t *list);
+
+esp_err_t gateway_wifi_system_get_factory_reset_report(gateway_wifi_system_handle_t handle,
+                                                       gateway_core_factory_reset_report_t *out_report);
+esp_err_t gateway_wifi_system_collect_telemetry(gateway_wifi_system_handle_t handle, gateway_core_telemetry_t *out);
+esp_err_t gateway_wifi_system_get_network_state(gateway_wifi_system_handle_t handle, gateway_network_state_t *out_state);
+esp_err_t gateway_wifi_system_get_wifi_state(gateway_wifi_system_handle_t handle, gateway_wifi_state_t *out_state);
+esp_err_t gateway_wifi_system_get_schema_version(gateway_wifi_system_handle_t handle, int32_t *out_version);

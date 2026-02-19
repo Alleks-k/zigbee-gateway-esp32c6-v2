@@ -3,7 +3,6 @@
 #include <stdbool.h>
 
 #include "gateway_persistence_adapter.h"
-#include "gateway_status_esp.h"
 #include "esp_log.h"
 
 static const char *TAG = "DEV_SERVICE_STORE";
@@ -19,7 +18,7 @@ gateway_status_t device_service_storage_save_locked(device_service_handle_t hand
     if (status == GATEWAY_STATUS_OK) {
         ESP_LOGI(TAG, "Device list successfully saved");
     } else {
-        ESP_LOGW(TAG, "Failed to save devices: %s", esp_err_to_name(gateway_status_to_esp_err(status)));
+        ESP_LOGW(TAG, "Failed to save devices: status=%d", (int)status);
     }
     return status;
 }
@@ -41,7 +40,7 @@ gateway_status_t device_service_storage_load_locked(device_service_handle_t hand
         ESP_LOGW(TAG, "No device data found (first boot?)");
     } else {
         handle->device_count = 0;
-        ESP_LOGW(TAG, "Failed to load device data: %s", esp_err_to_name(gateway_status_to_esp_err(status)));
+        ESP_LOGW(TAG, "Failed to load device data: status=%d", (int)status);
     }
 
     return status;

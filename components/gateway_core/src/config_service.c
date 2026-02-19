@@ -1,7 +1,6 @@
 #include "config_service.h"
 #include "gateway_config_types.h"
 #include "gateway_persistence_adapter.h"
-#include "gateway_status_esp.h"
 #include "esp_log.h"
 #include <string.h>
 
@@ -68,16 +67,16 @@ gateway_status_t config_service_init_or_migrate(void)
         }
 
         if (status != GATEWAY_STATUS_OK) {
-            ESP_LOGE(TAG, "Migration function failed: v%ld -> v%ld (%s)",
+            ESP_LOGE(TAG, "Migration function failed: v%ld -> v%ld (status=%d)",
                      (long)version, (long)next_version,
-                     esp_err_to_name(gateway_status_to_esp_err(status)));
+                     (int)status);
             return status;
         }
 
         status = gateway_persistence_schema_set_version(next_version);
         if (status != GATEWAY_STATUS_OK) {
-            ESP_LOGE(TAG, "Failed to persist schema version v%ld: %s",
-                     (long)next_version, esp_err_to_name(gateway_status_to_esp_err(status)));
+            ESP_LOGE(TAG, "Failed to persist schema version v%ld: status=%d",
+                     (long)next_version, (int)status);
             return status;
         }
 
@@ -160,11 +159,11 @@ gateway_status_t config_service_factory_reset(void)
     gateway_status_t zb_storage_status = gateway_persistence_partitions_erase_zigbee_storage();
     gateway_status_t zb_fct_status = gateway_persistence_partitions_erase_zigbee_factory();
 
-    ESP_LOGI(TAG, "Factory reset result: wifi=%s, devices=%s, zigbee_storage=%s, zigbee_fct=%s",
-             esp_err_to_name(gateway_status_to_esp_err(wifi_status)),
-             esp_err_to_name(gateway_status_to_esp_err(devices_status)),
-             esp_err_to_name(gateway_status_to_esp_err(zb_storage_status)),
-             esp_err_to_name(gateway_status_to_esp_err(zb_fct_status)));
+    ESP_LOGI(TAG, "Factory reset result: wifi=%d, devices=%d, zigbee_storage=%d, zigbee_fct=%d",
+             (int)wifi_status,
+             (int)devices_status,
+             (int)zb_storage_status,
+             (int)zb_fct_status);
 
     s_last_factory_reset_report.wifi_err = wifi_status;
     s_last_factory_reset_report.devices_err = devices_status;

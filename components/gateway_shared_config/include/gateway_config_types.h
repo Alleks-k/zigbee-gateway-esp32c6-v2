@@ -1,7 +1,7 @@
 #pragma once
 
 #include <stdint.h>
-#include "esp_err.h"
+#include "gateway_status.h"
 
 /* Project-wide limits and shared DTOs used across core/web/storage layers. */
 #define GATEWAY_WIFI_SSID_MAX_LEN 32
@@ -29,8 +29,8 @@ typedef struct {
 } gateway_device_record_t;
 
 typedef struct {
-    esp_err_t wifi_err;
-    esp_err_t devices_err;
-    esp_err_t zigbee_storage_err;
-    esp_err_t zigbee_fct_err;
+    gateway_status_t wifi_err;
+    gateway_status_t devices_err;
+    gateway_status_t zigbee_storage_err;
+    gateway_status_t zigbee_fct_err;
 } gateway_factory_reset_report_t;

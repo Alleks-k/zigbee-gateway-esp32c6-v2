@@ -116,7 +116,7 @@ void gateway_app_start(void)
     ESP_ERROR_CHECK(nvs_flash_init());
     gateway_error_ring_set_now_ms_provider(gateway_app_now_ms_provider);
     http_error_set_map_provider(gateway_app_http_error_map_provider);
-    ESP_ERROR_CHECK(config_service_init_or_migrate());
+    ESP_ERROR_CHECK(gateway_status_to_esp_err(config_service_init_or_migrate()));
     ESP_ERROR_CHECK(gateway_status_to_esp_err(device_service_create(&device_service)));
     ESP_ERROR_CHECK(gateway_status_to_esp_err(gateway_state_create(&gateway_state)));
     ESP_ERROR_CHECK(gateway_status_to_esp_err(device_service_set_notifier(device_service, &device_notifier)));

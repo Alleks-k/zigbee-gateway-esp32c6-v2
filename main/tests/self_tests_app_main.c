@@ -30,7 +30,7 @@ void app_main(void)
     gateway_wifi_system_init_params_t wifi_system_params = {0};
 
     ESP_ERROR_CHECK(nvs_flash_init());
-    ESP_ERROR_CHECK(config_service_init_or_migrate());
+    ESP_ERROR_CHECK(gateway_status_to_esp_err(config_service_init_or_migrate()));
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
 

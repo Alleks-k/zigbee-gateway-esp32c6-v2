@@ -3,6 +3,7 @@
 #include "wifi_settings.h"
 #include "wifi_init.h"
 #include "config_service.h"
+#include "gateway_status_esp.h"
 #include "esp_log.h"
 #include "esp_check.h"
 #include "esp_wifi.h"
@@ -84,10 +85,10 @@ static void event_handler(void *arg, esp_event_base_t event_base, int32_t event_
 static void load_wifi_credentials(wifi_runtime_ctx_t *ctx, wifi_config_t *wifi_config)
 {
     bool loaded_from_nvs = false;
-    esp_err_t err = config_service_load_wifi_credentials(
+    esp_err_t err = gateway_status_to_esp_err(config_service_load_wifi_credentials(
         (char *)wifi_config->sta.ssid, sizeof(wifi_config->sta.ssid),
         (char *)wifi_config->sta.password, sizeof(wifi_config->sta.password),
-        &loaded_from_nvs);
+        &loaded_from_nvs));
     if (err != ESP_OK) {
         ESP_LOGW(TAG, "Failed to load Wi-Fi settings from storage: %s", esp_err_to_name(err));
     }

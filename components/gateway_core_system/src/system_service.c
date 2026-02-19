@@ -1,5 +1,6 @@
 #include "system_service.h"
 #include "config_service.h"
+#include "gateway_status_esp.h"
 #include "esp_system.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
@@ -76,7 +77,7 @@ esp_err_t system_service_schedule_reboot(uint32_t delay_ms)
 
 esp_err_t system_service_factory_reset_and_reboot(uint32_t reboot_delay_ms)
 {
-    esp_err_t err = config_service_factory_reset();
+    esp_err_t err = gateway_status_to_esp_err(config_service_factory_reset());
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Factory reset failed: %s", esp_err_to_name(err));
         return err;
@@ -91,15 +92,15 @@ esp_err_t system_service_get_last_factory_reset_report(system_factory_reset_repo
     }
 
     config_service_factory_reset_report_t report = {0};
-    esp_err_t err = config_service_get_last_factory_reset_report(&report);
+    esp_err_t err = gateway_status_to_esp_err(config_service_get_last_factory_reset_report(&report));
     if (err != ESP_OK) {
         return err;
     }
 
-    out_report->wifi_err = report.wifi_err;
-    out_report->devices_err = report.devices_err;
-    out_report->zigbee_storage_err = report.zigbee_storage_err;
-    out_report->zigbee_fct_err = report.zigbee_fct_err;
+    out_report->wifi_err = gateway_status_to_esp_err(report.wifi_err);
+    out_report->devices_err = gateway_status_to_esp_err(report.devices_err);
+    out_report->zigbee_storage_err = gateway_status_to_esp_err(report.zigbee_storage_err);
+    out_report->zigbee_fct_err = gateway_status_to_esp_err(report.zigbee_fct_err);
     return ESP_OK;
 }
 

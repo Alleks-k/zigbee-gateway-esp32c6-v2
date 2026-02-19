@@ -76,10 +76,10 @@ esp_err_t gateway_wifi_system_get_factory_reset_report(gateway_core_factory_rese
         return err;
     }
 
-    out_report->wifi_err = report.wifi_err;
-    out_report->devices_err = report.devices_err;
-    out_report->zigbee_storage_err = report.zigbee_storage_err;
-    out_report->zigbee_fct_err = report.zigbee_fct_err;
+    out_report->wifi_err = gateway_status_to_esp_err(report.wifi_err);
+    out_report->devices_err = gateway_status_to_esp_err(report.devices_err);
+    out_report->zigbee_storage_err = gateway_status_to_esp_err(report.zigbee_storage_err);
+    out_report->zigbee_fct_err = gateway_status_to_esp_err(report.zigbee_fct_err);
     return ESP_OK;
 }
 
@@ -132,5 +132,5 @@ esp_err_t gateway_wifi_system_get_wifi_state(gateway_wifi_state_t *out_state)
 
 esp_err_t gateway_wifi_system_get_schema_version(int32_t *out_version)
 {
-    return config_service_get_schema_version(out_version);
+    return gateway_status_to_esp_err(config_service_get_schema_version(out_version));
 }

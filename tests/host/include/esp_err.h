@@ -12,6 +12,8 @@ typedef int32_t esp_err_t;
 #define ESP_ERR_NOT_FOUND 0x0104
 #define ESP_ERR_NOT_SUPPORTED 0x0105
 #define ESP_ERR_INVALID_VERSION 0x0106
+#define ESP_ERR_INVALID_STATE 0x0107
+#define ESP_ERR_TIMEOUT 0x0108
 
 static inline const char *esp_err_to_name(esp_err_t err)
 {
@@ -32,6 +34,10 @@ static inline const char *esp_err_to_name(esp_err_t err)
         return "ESP_ERR_NOT_SUPPORTED";
     case ESP_ERR_INVALID_VERSION:
         return "ESP_ERR_INVALID_VERSION";
+    case ESP_ERR_INVALID_STATE:
+        return "ESP_ERR_INVALID_STATE";
+    case ESP_ERR_TIMEOUT:
+        return "ESP_ERR_TIMEOUT";
     default:
         return "ESP_ERR_UNKNOWN";
     }

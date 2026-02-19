@@ -159,23 +159,23 @@ esp_err_t storage_partitions_erase_zigbee_factory(void)
 
 static void test_validate_wifi_credentials_rules(void)
 {
-    assert(config_service_validate_wifi_credentials(NULL, "12345678") == ESP_ERR_INVALID_ARG);
-    assert(config_service_validate_wifi_credentials("ssid", NULL) == ESP_ERR_INVALID_ARG);
-    assert(config_service_validate_wifi_credentials("", "12345678") == ESP_ERR_INVALID_ARG);
-    assert(config_service_validate_wifi_credentials("ssid", "1234567") == ESP_ERR_INVALID_ARG);
-    assert(config_service_validate_wifi_credentials("ssid", "12345678") == ESP_OK);
+    assert(config_service_validate_wifi_credentials(NULL, "12345678") == GATEWAY_STATUS_INVALID_ARG);
+    assert(config_service_validate_wifi_credentials("ssid", NULL) == GATEWAY_STATUS_INVALID_ARG);
+    assert(config_service_validate_wifi_credentials("", "12345678") == GATEWAY_STATUS_INVALID_ARG);
+    assert(config_service_validate_wifi_credentials("ssid", "1234567") == GATEWAY_STATUS_INVALID_ARG);
+    assert(config_service_validate_wifi_credentials("ssid", "12345678") == GATEWAY_STATUS_OK);
 }
 
 static void test_save_wifi_credentials_delegates_only_when_valid(void)
 {
     reset_stub();
-    assert(config_service_save_wifi_credentials("HomeWiFi", "goodpass") == ESP_OK);
+    assert(config_service_save_wifi_credentials("HomeWiFi", "goodpass") == GATEWAY_STATUS_OK);
     assert(g_stub.save_calls == 1);
     assert(strcmp(g_stub.saved_ssid, "HomeWiFi") == 0);
     assert(strcmp(g_stub.saved_password, "goodpass") == 0);
 
     reset_stub();
-    assert(config_service_save_wifi_credentials("HomeWiFi", "short") == ESP_ERR_INVALID_ARG);
+    assert(config_service_save_wifi_credentials("HomeWiFi", "short") == GATEWAY_STATUS_INVALID_ARG);
     assert(g_stub.save_calls == 0);
 }
 
@@ -189,7 +189,7 @@ static void test_load_wifi_credentials_sanitizes_invalid_storage_data(void)
     char ssid[33];
     char password[65];
     bool loaded = true;
-    assert(config_service_load_wifi_credentials(ssid, sizeof(ssid), password, sizeof(password), &loaded) == ESP_OK);
+    assert(config_service_load_wifi_credentials(ssid, sizeof(ssid), password, sizeof(password), &loaded) == GATEWAY_STATUS_OK);
     assert(loaded == false);
     assert(ssid[0] == '\0');
     assert(password[0] == '\0');
@@ -203,16 +203,18 @@ static void test_load_wifi_credentials_passthrough_and_args(void)
     bool loaded = false;
 
     assert(config_service_load_wifi_credentials(NULL, sizeof(ssid), password, sizeof(password), &loaded) ==
-           ESP_ERR_INVALID_ARG);
+           GATEWAY_STATUS_INVALID_ARG);
 
     g_stub.load_ret = ESP_FAIL;
-    assert(config_service_load_wifi_credentials(ssid, sizeof(ssid), password, sizeof(password), &loaded) == ESP_FAIL);
+    assert(config_service_load_wifi_credentials(ssid, sizeof(ssid), password, sizeof(password), &loaded) ==
+           GATEWAY_STATUS_FAIL);
 
     reset_stub();
     g_stub.load_found = true;
     strncpy(g_stub.load_ssid, "Office", sizeof(g_stub.load_ssid) - 1);
     strncpy(g_stub.load_password, "supersecret", sizeof(g_stub.load_password) - 1);
-    assert(config_service_load_wifi_credentials(ssid, sizeof(ssid), password, sizeof(password), &loaded) == ESP_OK);
+    assert(config_service_load_wifi_credentials(ssid, sizeof(ssid), password, sizeof(password), &loaded) ==
+           GATEWAY_STATUS_OK);
     assert(loaded == true);
     assert(strcmp(ssid, "Office") == 0);
     assert(strcmp(password, "supersecret") == 0);
@@ -223,24 +225,24 @@ static void test_schema_and_factory_report(void)
     reset_stub();
     g_stub.schema_found = false;
     g_stub.schema_version = 0;
-    assert(config_service_init_or_migrate() == ESP_OK);
+    assert(config_service_init_or_migrate() == GATEWAY_STATUS_OK);
     assert(g_stub.schema_set_calls == 1);
 
     int32_t version = 0;
-    assert(config_service_get_schema_version(&version) == ESP_OK);
+    assert(config_service_get_schema_version(&version) == GATEWAY_STATUS_OK);
     assert(version == CONFIG_SERVICE_SCHEMA_VERSION_CURRENT);
-    assert(config_service_get_last_factory_reset_report(NULL) == ESP_ERR_INVALID_ARG);
+    assert(config_service_get_last_factory_reset_report(NULL) == GATEWAY_STATUS_INVALID_ARG);
 
     g_stub.clear_wifi_ret = ESP_OK;
     g_stub.clear_devices_ret = ESP_FAIL;
     g_stub.erase_zb_storage_ret = ESP_ERR_NOT_FOUND;
     g_stub.erase_zb_fct_ret = ESP_ERR_INVALID_SIZE;
-    assert(config_service_factory_reset() == ESP_FAIL);
+    assert(config_service_factory_reset() == GATEWAY_STATUS_FAIL);
 
     config_service_factory_reset_report_t out = {0};
-    assert(config_service_get_last_factory_reset_report(&out) == ESP_OK);
-    assert(out.devices_err == ESP_FAIL);
-    assert(out.zigbee_storage_err == ESP_ERR_NOT_FOUND);
+    assert(config_service_get_last_factory_reset_report(&out) == GATEWAY_STATUS_OK);
+    assert(out.devices_err == GATEWAY_STATUS_FAIL);
+    assert(out.zigbee_storage_err == GATEWAY_STATUS_NOT_FOUND);
 }
 
 int main(void)

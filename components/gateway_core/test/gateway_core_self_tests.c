@@ -21,13 +21,13 @@ static void test_service_rename_device_rejects_null_name(void)
 
 static void test_settings_schema_migration_smoke(void)
 {
-    TEST_ASSERT_EQUAL(ESP_OK, config_service_init_or_migrate());
+    TEST_ASSERT_EQUAL(GATEWAY_STATUS_OK, config_service_init_or_migrate());
     int32_t ver = 0;
-    TEST_ASSERT_EQUAL(ESP_OK, config_service_get_schema_version(&ver));
+    TEST_ASSERT_EQUAL(GATEWAY_STATUS_OK, config_service_get_schema_version(&ver));
     TEST_ASSERT_EQUAL_INT(CONFIG_SERVICE_SCHEMA_VERSION_CURRENT, ver);
 
-    TEST_ASSERT_EQUAL(ESP_OK, config_service_init_or_migrate());
-    TEST_ASSERT_EQUAL(ESP_OK, config_service_get_schema_version(&ver));
+    TEST_ASSERT_EQUAL(GATEWAY_STATUS_OK, config_service_init_or_migrate());
+    TEST_ASSERT_EQUAL(GATEWAY_STATUS_OK, config_service_get_schema_version(&ver));
     TEST_ASSERT_EQUAL_INT(CONFIG_SERVICE_SCHEMA_VERSION_CURRENT, ver);
 }
 

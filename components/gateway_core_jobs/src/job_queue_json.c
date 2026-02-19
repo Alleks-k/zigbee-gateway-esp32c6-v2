@@ -7,6 +7,7 @@
 #include "zigbee_service.h"
 
 #include "cJSON.h"
+#include "gateway_status_esp.h"
 
 #include <inttypes.h>
 #include <stdio.h>
@@ -62,13 +63,13 @@ esp_err_t job_queue_json_build_scan_result(char *out, size_t out_size)
 
 esp_err_t job_queue_json_build_factory_reset_result(char *out, size_t out_size)
 {
-    esp_err_t err = config_service_factory_reset();
+    esp_err_t err = gateway_status_to_esp_err(config_service_factory_reset());
     if (err != ESP_OK) {
         return err;
     }
 
     config_service_factory_reset_report_t report = {0};
-    err = config_service_get_last_factory_reset_report(&report);
+    err = gateway_status_to_esp_err(config_service_get_last_factory_reset_report(&report));
     if (err != ESP_OK) {
         return err;
     }
@@ -77,10 +78,10 @@ esp_err_t job_queue_json_build_factory_reset_result(char *out, size_t out_size)
         out, out_size,
         "{\"message\":\"Factory reset completed\",\"details\":{\"wifi\":\"%s\",\"devices\":\"%s\","
         "\"zigbee_storage\":\"%s\",\"zigbee_fct\":\"%s\"}}",
-        esp_err_to_name(report.wifi_err),
-        esp_err_to_name(report.devices_err),
-        esp_err_to_name(report.zigbee_storage_err),
-        esp_err_to_name(report.zigbee_fct_err));
+        esp_err_to_name(gateway_status_to_esp_err(report.wifi_err)),
+        esp_err_to_name(gateway_status_to_esp_err(report.devices_err)),
+        esp_err_to_name(gateway_status_to_esp_err(report.zigbee_storage_err)),
+        esp_err_to_name(gateway_status_to_esp_err(report.zigbee_fct_err)));
     if (written < 0 || (size_t)written >= out_size) {
         return ESP_ERR_NO_MEM;
     }

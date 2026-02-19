@@ -1,5 +1,6 @@
 #include "wifi_service.h"
 #include "config_service.h"
+#include "gateway_status_esp.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -40,5 +41,5 @@ void wifi_service_scan_free(wifi_ap_info_t *list)
 
 esp_err_t wifi_service_save_credentials(const char *ssid, const char *password)
 {
-    return config_service_save_wifi_credentials(ssid, password);
+    return gateway_status_to_esp_err(config_service_save_wifi_credentials(ssid, password));
 }

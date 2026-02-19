@@ -13,7 +13,7 @@ set(gateway_core_priv_include_dirs
 )
 
 set(gateway_core_reqs
-    gateway_core_storage
+    gateway_core_persistence_adapter
     gateway_shared_config
 )
 

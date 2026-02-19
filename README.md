@@ -95,6 +95,7 @@ Self-test build overlay конфігурації: `sdkconfig.selftest`.
 - `components/gateway_app/` — bootstrap/orchestration і Zigbee runtime wiring.
 - `components/gateway_core_facade/` — фасади для web/api: `gateway_device_zigbee_*`, `gateway_wifi_system_*`, `gateway_jobs_*`.
 - `components/gateway_core/` — core business rules/use-cases (`config_service`, `device_service`).
+- `components/gateway_core_persistence_adapter/` — boundary adapter між `gateway_core` і `gateway_core_storage` (map `gateway_status_t` <-> storage backend).
 - `components/gateway_core_state/` — runtime state store (network/wifi/lqi cache).
 - `components/gateway_core_storage/` — persistence layer (NVS KV/repositories/schema/partitions).
 - `components/gateway_core_zigbee|gateway_core_wifi|gateway_core_system|gateway_core_jobs|gateway_core_events/` — доменні та platform adapters.

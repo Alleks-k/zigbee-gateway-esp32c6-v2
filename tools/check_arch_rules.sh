@@ -8,8 +8,7 @@ violations=0
 is_allowed_include_user() {
     local path="$1"
     case "$path" in
-        components/gateway_core/src/device_service_persistence.c|\
-        components/gateway_core/src/config_service.c|\
+        components/gateway_core_persistence_adapter/src/gateway_persistence_adapter.c|\
         components/gateway_core_storage/src/device_repository_nvs.c)
             return 0
             ;;
@@ -26,7 +25,7 @@ is_allowed_device_repo_symbol_user() {
     case "$symbol" in
         device_repository_load|device_repository_save)
             case "$path" in
-                components/gateway_core/src/device_service_persistence.c|\
+                components/gateway_core_persistence_adapter/src/gateway_persistence_adapter.c|\
                 components/gateway_core_storage/src/device_repository_nvs.c)
                     return 0
                     ;;
@@ -34,7 +33,7 @@ is_allowed_device_repo_symbol_user() {
             ;;
         device_repository_clear)
             case "$path" in
-                components/gateway_core/src/config_service.c|\
+                components/gateway_core_persistence_adapter/src/gateway_persistence_adapter.c|\
                 components/gateway_core_storage/src/device_repository_nvs.c)
                     return 0
                     ;;

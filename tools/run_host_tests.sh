@@ -9,9 +9,11 @@ mkdir -p "${BUILD_DIR}"
 cc -std=c11 -Wall -Wextra -Werror \
     -I"${ROOT_DIR}/tests/host/include" \
     -I"${ROOT_DIR}/components/gateway_core/include" \
+    -I"${ROOT_DIR}/components/gateway_core_persistence_adapter/include" \
     -I"${ROOT_DIR}/components/gateway_core_storage/include" \
     -I"${ROOT_DIR}/components/gateway_shared_config/include" \
     "${ROOT_DIR}/tests/host/core_config_service_host_test.c" \
+    "${ROOT_DIR}/components/gateway_core_persistence_adapter/src/gateway_persistence_adapter.c" \
     "${ROOT_DIR}/components/gateway_core/src/config_service.c" \
     -o "${BUILD_DIR}/core_config_service_host_test"
 
@@ -31,9 +33,11 @@ cc -std=c11 -Wall -Wextra -Werror \
 cc -std=c11 -Wall -Wextra -Werror \
     -I"${ROOT_DIR}/tests/host/include" \
     -I"${ROOT_DIR}/components/gateway_core/include" \
+    -I"${ROOT_DIR}/components/gateway_core_persistence_adapter/include" \
     -I"${ROOT_DIR}/components/gateway_core_storage/include" \
     -I"${ROOT_DIR}/components/gateway_shared_config/include" \
     "${ROOT_DIR}/tests/host/factory_reset_policy_host_test.c" \
+    "${ROOT_DIR}/components/gateway_core_persistence_adapter/src/gateway_persistence_adapter.c" \
     "${ROOT_DIR}/components/gateway_core/src/config_service.c" \
     -o "${BUILD_DIR}/factory_reset_policy_host_test"
 

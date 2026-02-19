@@ -19,10 +19,13 @@
   - `gateway_jobs_*`
 - Keeps transport-facing callers away from direct core subcomponent coupling.
 
-### Core Domain + State + Storage
+### Core Domain + State + Persistence
 - `components/gateway_core`
   - Core business rules/services (`config_service`, `device_service`).
   - Returns `gateway_status_t` in stateful core APIs.
+- `components/gateway_core_persistence_adapter`
+  - Adapter boundary between `gateway_core` and storage backend.
+  - Owns translation between core status contract and storage calls.
 - `components/gateway_core_state`
   - In-memory runtime state store (`network`, `wifi`, `lqi` cache).
 - `components/gateway_core_storage`
@@ -68,7 +71,7 @@
 
 1. `gateway_web_api` depends on core only through `gateway_core_facade`.
 2. `gateway_web_*` must not call Zigbee SDK directly.
-3. `gateway_core_storage` is the single owner of app NVS keys/schema.
+3. `gateway_core_storage` is the single owner of app NVS keys/schema; `gateway_core` reaches it only via `gateway_core_persistence_adapter`.
 4. Cross-cutting notifications should go through `gateway_core_events`.
 5. `gateway_net` is adapter/platform runtime; business decisions stay in core services.
 6. Core stateful APIs use `gateway_status_t`; mapping to `esp_err_t` happens at boundaries (facade/app/net/zigbee adapter).

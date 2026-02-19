@@ -1,9 +1,6 @@
 #include "config_service.h"
-#include "config_repository.h"
-#include "device_repository.h"
-#include "storage_schema.h"
-#include "storage_partitions.h"
 #include "gateway_config_types.h"
+#include "gateway_persistence_adapter.h"
 #include "gateway_status_esp.h"
 #include "esp_log.h"
 #include <string.h>
@@ -24,9 +21,9 @@ static gateway_status_t config_schema_get_effective_version(int32_t *out_version
 
     bool found = false;
     int32_t version = 0;
-    esp_err_t err = storage_schema_get_version(&version, &found);
-    if (err != ESP_OK) {
-        return gateway_status_from_esp_err(err);
+    gateway_status_t status = gateway_persistence_schema_get_version(&version, &found);
+    if (status != GATEWAY_STATUS_OK) {
+        return status;
     }
 
     *out_version = found ? version : 0;
@@ -41,13 +38,13 @@ static gateway_status_t config_schema_migrate_v0_to_v1(void)
 
 gateway_status_t config_service_init_or_migrate(void)
 {
-    esp_err_t err = storage_schema_init();
-    if (err != ESP_OK) {
-        return gateway_status_from_esp_err(err);
+    gateway_status_t status = gateway_persistence_schema_init();
+    if (status != GATEWAY_STATUS_OK) {
+        return status;
     }
 
     int32_t version = 0;
-    gateway_status_t status = config_schema_get_effective_version(&version);
+    status = config_schema_get_effective_version(&version);
     if (status != GATEWAY_STATUS_OK) {
         return status;
     }
@@ -77,11 +74,11 @@ gateway_status_t config_service_init_or_migrate(void)
             return status;
         }
 
-        err = storage_schema_set_version(next_version);
-        if (err != ESP_OK) {
+        status = gateway_persistence_schema_set_version(next_version);
+        if (status != GATEWAY_STATUS_OK) {
             ESP_LOGE(TAG, "Failed to persist schema version v%ld: %s",
-                     (long)next_version, esp_err_to_name(err));
-            return gateway_status_from_esp_err(err);
+                     (long)next_version, esp_err_to_name(gateway_status_to_esp_err(status)));
+            return status;
         }
 
         ESP_LOGI(TAG, "Settings schema migrated: v%ld -> v%ld",
@@ -123,7 +120,7 @@ gateway_status_t config_service_save_wifi_credentials(const char *ssid, const ch
         return status;
     }
 
-    return gateway_status_from_esp_err(config_repository_save_wifi_credentials(ssid, password));
+    return gateway_persistence_config_save_wifi_credentials(ssid, password);
 }
 
 gateway_status_t config_service_load_wifi_credentials(char *ssid, size_t ssid_size,
@@ -138,9 +135,8 @@ gateway_status_t config_service_load_wifi_credentials(char *ssid, size_t ssid_si
     ssid[0] = '\0';
     password[0] = '\0';
 
-    esp_err_t err = config_repository_load_wifi_credentials(
+    gateway_status_t status = gateway_persistence_config_load_wifi_credentials(
         ssid, ssid_size, password, password_size, loaded_from_storage);
-    gateway_status_t status = gateway_status_from_esp_err(err);
     if (status != GATEWAY_STATUS_OK || !(*loaded_from_storage)) {
         return status;
     }
@@ -159,20 +155,16 @@ gateway_status_t config_service_load_wifi_credentials(char *ssid, size_t ssid_si
 
 gateway_status_t config_service_factory_reset(void)
 {
-    esp_err_t wifi_err = config_repository_clear_wifi_credentials();
-    esp_err_t devices_err = device_repository_clear();
-    esp_err_t zb_storage_err = storage_partitions_erase_zigbee_storage();
-    esp_err_t zb_fct_err = storage_partitions_erase_zigbee_factory();
-    gateway_status_t wifi_status = gateway_status_from_esp_err(wifi_err);
-    gateway_status_t devices_status = gateway_status_from_esp_err(devices_err);
-    gateway_status_t zb_storage_status = gateway_status_from_esp_err(zb_storage_err);
-    gateway_status_t zb_fct_status = gateway_status_from_esp_err(zb_fct_err);
+    gateway_status_t wifi_status = gateway_persistence_config_clear_wifi_credentials();
+    gateway_status_t devices_status = gateway_persistence_devices_clear();
+    gateway_status_t zb_storage_status = gateway_persistence_partitions_erase_zigbee_storage();
+    gateway_status_t zb_fct_status = gateway_persistence_partitions_erase_zigbee_factory();
 
     ESP_LOGI(TAG, "Factory reset result: wifi=%s, devices=%s, zigbee_storage=%s, zigbee_fct=%s",
-             esp_err_to_name(wifi_err),
-             esp_err_to_name(devices_err),
-             esp_err_to_name(zb_storage_err),
-             esp_err_to_name(zb_fct_err));
+             esp_err_to_name(gateway_status_to_esp_err(wifi_status)),
+             esp_err_to_name(gateway_status_to_esp_err(devices_status)),
+             esp_err_to_name(gateway_status_to_esp_err(zb_storage_status)),
+             esp_err_to_name(gateway_status_to_esp_err(zb_fct_status)));
 
     s_last_factory_reset_report.wifi_err = wifi_status;
     s_last_factory_reset_report.devices_err = devices_status;

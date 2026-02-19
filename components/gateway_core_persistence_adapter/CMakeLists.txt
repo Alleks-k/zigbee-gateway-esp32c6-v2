@@ -1,0 +1,9 @@
+idf_component_register(
+    SRCS
+        "src/gateway_persistence_adapter.c"
+    INCLUDE_DIRS
+        "include"
+    REQUIRES
+        gateway_core_storage
+        gateway_shared_config
+)

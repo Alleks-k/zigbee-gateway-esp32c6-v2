@@ -14,19 +14,22 @@
 
 #include <inttypes.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 static const char *TAG = "JOB_QUEUE";
 
-static SemaphoreHandle_t s_mutex = NULL;
-static QueueHandle_t s_job_q = NULL;
-static TaskHandle_t s_worker = NULL;
-static zgw_job_slot_t s_jobs[ZGW_JOB_MAX];
-static uint32_t s_next_id = 1;
-static zgw_job_metrics_t s_metrics = {0};
-static uint32_t s_latency_samples_ms[64];
-static size_t s_latency_samples_count = 0;
-static size_t s_latency_samples_next = 0;
+typedef struct zgw_job_queue {
+    SemaphoreHandle_t mutex;
+    QueueHandle_t job_q;
+    TaskHandle_t worker;
+    zgw_job_slot_t jobs[ZGW_JOB_MAX];
+    uint32_t next_id;
+    zgw_job_metrics_t metrics;
+    uint32_t latency_samples_ms[64];
+    size_t latency_samples_count;
+    size_t latency_samples_next;
+} zgw_job_queue_t;
 
 const char *job_queue_type_to_string(zgw_job_type_t type)
 {
@@ -51,53 +54,52 @@ const char *job_queue_state_to_string(zgw_job_state_t state)
     }
 }
 
-static void execute_job(uint32_t job_id)
+static void execute_job(job_queue_handle_t handle, uint32_t job_id)
 {
     zgw_job_type_t type = ZGW_JOB_TYPE_WIFI_SCAN;
     uint32_t reboot_delay_ms = 1000;
 
-    xSemaphoreTake(s_mutex, portMAX_DELAY);
-    int idx = job_queue_find_slot_index_by_id(s_jobs, job_id);
-    if (idx < 0 || !s_jobs[idx].used) {
-        xSemaphoreGive(s_mutex);
+    xSemaphoreTake(handle->mutex, portMAX_DELAY);
+    int idx = job_queue_find_slot_index_by_id(handle->jobs, job_id);
+    if (idx < 0 || !handle->jobs[idx].used) {
+        xSemaphoreGive(handle->mutex);
         return;
     }
-    s_jobs[idx].state = ZGW_JOB_STATE_RUNNING;
-    s_jobs[idx].updated_ms = job_queue_now_ms();
-    type = s_jobs[idx].type;
-    reboot_delay_ms = s_jobs[idx].reboot_delay_ms;
-    xSemaphoreGive(s_mutex);
+    handle->jobs[idx].state = ZGW_JOB_STATE_RUNNING;
+    handle->jobs[idx].updated_ms = job_queue_now_ms();
+    type = handle->jobs[idx].type;
+    reboot_delay_ms = handle->jobs[idx].reboot_delay_ms;
+    xSemaphoreGive(handle->mutex);
 
     char result[ZGW_JOB_RESULT_MAX_LEN] = {0};
     esp_err_t exec_err = job_queue_policy_execute(type, reboot_delay_ms, result, sizeof(result));
 
-    xSemaphoreTake(s_mutex, portMAX_DELAY);
-    idx = job_queue_find_slot_index_by_id(s_jobs, job_id);
-    if (idx >= 0 && s_jobs[idx].used) {
+    xSemaphoreTake(handle->mutex, portMAX_DELAY);
+    idx = job_queue_find_slot_index_by_id(handle->jobs, job_id);
+    if (idx >= 0 && handle->jobs[idx].used) {
         uint64_t finished_ms = job_queue_now_ms();
-        s_jobs[idx].err = exec_err;
-        s_jobs[idx].state = (exec_err == ESP_OK) ? ZGW_JOB_STATE_SUCCEEDED : ZGW_JOB_STATE_FAILED;
-        s_jobs[idx].updated_ms = finished_ms;
-        uint64_t latency_ms = (finished_ms >= s_jobs[idx].created_ms) ? (finished_ms - s_jobs[idx].created_ms) : 0;
-        job_queue_push_latency_sample(
-            s_latency_samples_ms, &s_latency_samples_count, &s_latency_samples_next,
-            (latency_ms > UINT32_MAX) ? UINT32_MAX : (uint32_t)latency_ms);
+        handle->jobs[idx].err = exec_err;
+        handle->jobs[idx].state = (exec_err == ESP_OK) ? ZGW_JOB_STATE_SUCCEEDED : ZGW_JOB_STATE_FAILED;
+        handle->jobs[idx].updated_ms = finished_ms;
+        uint64_t latency_ms = (finished_ms >= handle->jobs[idx].created_ms) ? (finished_ms - handle->jobs[idx].created_ms) : 0;
+        job_queue_push_latency_sample(handle->latency_samples_ms, &handle->latency_samples_count, &handle->latency_samples_next,
+                                      (latency_ms > UINT32_MAX) ? UINT32_MAX : (uint32_t)latency_ms);
         if (exec_err == ESP_OK) {
-            s_metrics.completed_total++;
+            handle->metrics.completed_total++;
         } else {
-            s_metrics.failed_total++;
+            handle->metrics.failed_total++;
         }
         if (exec_err == ESP_OK) {
-            job_queue_set_result(&s_jobs[idx], result);
+            job_queue_set_result(&handle->jobs[idx], result);
         } else {
             char fail_json[128];
             int written = snprintf(fail_json, sizeof(fail_json), "{\"error\":\"%s\"}", esp_err_to_name(exec_err));
             if (written > 0 && (size_t)written < sizeof(fail_json)) {
-                job_queue_set_result(&s_jobs[idx], fail_json);
+                job_queue_set_result(&handle->jobs[idx], fail_json);
             }
         }
     }
-    xSemaphoreGive(s_mutex);
+    xSemaphoreGive(handle->mutex);
 
     if (exec_err == ESP_OK && type == ZGW_JOB_TYPE_LQI_REFRESH) {
         esp_err_t post_ret = esp_event_post(GATEWAY_EVENT, GATEWAY_EVENT_LQI_STATE_CHANGED, NULL, 0, 0);
@@ -109,101 +111,142 @@ static void execute_job(uint32_t job_id)
 
 static void job_worker_task(void *arg)
 {
-    (void)arg;
+    job_queue_handle_t handle = (job_queue_handle_t)arg;
+    if (!handle) {
+        vTaskDelete(NULL);
+        return;
+    }
     for (;;) {
         uint32_t id = 0;
-        if (xQueueReceive(s_job_q, &id, portMAX_DELAY) == pdTRUE) {
-            execute_job(id);
+        if (xQueueReceive(handle->job_q, &id, portMAX_DELAY) == pdTRUE) {
+            execute_job(handle, id);
         }
     }
 }
 
-esp_err_t job_queue_init(void)
+esp_err_t job_queue_create(job_queue_handle_t *out_handle)
 {
-    if (s_mutex && s_job_q && s_worker) {
+    if (!out_handle) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    zgw_job_queue_t *handle = (zgw_job_queue_t *)calloc(1, sizeof(*handle));
+    if (!handle) {
+        return ESP_ERR_NO_MEM;
+    }
+    handle->next_id = 1;
+    *out_handle = handle;
+    return ESP_OK;
+}
+
+void job_queue_destroy(job_queue_handle_t handle)
+{
+    if (!handle) {
+        return;
+    }
+
+    if (handle->worker) {
+        vTaskDelete(handle->worker);
+        handle->worker = NULL;
+    }
+    if (handle->job_q) {
+        vQueueDelete(handle->job_q);
+        handle->job_q = NULL;
+    }
+    if (handle->mutex) {
+        vSemaphoreDelete(handle->mutex);
+        handle->mutex = NULL;
+    }
+    free(handle);
+}
+
+esp_err_t job_queue_init_with_handle(job_queue_handle_t handle)
+{
+    if (!handle) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (handle->mutex && handle->job_q && handle->worker) {
         return ESP_OK;
     }
 
-    if (!s_mutex) {
-        s_mutex = xSemaphoreCreateMutex();
-        if (!s_mutex) {
+    if (!handle->mutex) {
+        handle->mutex = xSemaphoreCreateMutex();
+        if (!handle->mutex) {
             return ESP_ERR_NO_MEM;
         }
     }
 
-    if (!s_job_q) {
-        s_job_q = xQueueCreate(ZGW_JOB_MAX, sizeof(uint32_t));
-        if (!s_job_q) {
+    if (!handle->job_q) {
+        handle->job_q = xQueueCreate(ZGW_JOB_MAX, sizeof(uint32_t));
+        if (!handle->job_q) {
             return ESP_ERR_NO_MEM;
         }
     }
 
-    if (!s_worker) {
-        BaseType_t ok = xTaskCreate(job_worker_task, "zgw_jobs", 6144, NULL, 5, &s_worker);
+    if (!handle->worker) {
+        BaseType_t ok = xTaskCreate(job_worker_task, "zgw_jobs", 6144, handle, 5, &handle->worker);
         if (ok != pdPASS) {
-            s_worker = NULL;
+            handle->worker = NULL;
             return ESP_ERR_NO_MEM;
         }
     }
     return ESP_OK;
 }
 
-esp_err_t job_queue_submit(zgw_job_type_t type, uint32_t reboot_delay_ms, uint32_t *out_job_id)
+esp_err_t job_queue_submit_with_handle(job_queue_handle_t handle, zgw_job_type_t type, uint32_t reboot_delay_ms,
+                                       uint32_t *out_job_id)
 {
-    if (!out_job_id) {
+    if (!handle || !out_job_id) {
         return ESP_ERR_INVALID_ARG;
     }
-    esp_err_t err = job_queue_init();
+    esp_err_t err = job_queue_init_with_handle(handle);
     if (err != ESP_OK) {
         return err;
     }
 
-    xSemaphoreTake(s_mutex, portMAX_DELAY);
-    job_queue_prune_completed_jobs(s_jobs, job_queue_now_ms());
-    int inflight_idx = job_queue_find_inflight_slot_index(s_jobs, type, reboot_delay_ms);
+    xSemaphoreTake(handle->mutex, portMAX_DELAY);
+    job_queue_prune_completed_jobs(handle->jobs, job_queue_now_ms());
+    int inflight_idx = job_queue_find_inflight_slot_index(handle->jobs, type, reboot_delay_ms);
     if (inflight_idx >= 0) {
-        uint32_t inflight_id = s_jobs[inflight_idx].id;
-        zgw_job_state_t inflight_state = s_jobs[inflight_idx].state;
-        s_metrics.dedup_reused_total++;
+        uint32_t inflight_id = handle->jobs[inflight_idx].id;
+        zgw_job_state_t inflight_state = handle->jobs[inflight_idx].state;
+        handle->metrics.dedup_reused_total++;
         *out_job_id = inflight_id;
-        xSemaphoreGive(s_mutex);
-        ESP_LOGI(TAG, "Job single-flight reuse id=%" PRIu32 " type=%s state=%s",
-                 inflight_id,
-                 job_queue_type_to_string(type),
+        xSemaphoreGive(handle->mutex);
+        ESP_LOGI(TAG, "Job single-flight reuse id=%" PRIu32 " type=%s state=%s", inflight_id, job_queue_type_to_string(type),
                  job_queue_state_to_string(inflight_state));
         return ESP_OK;
     }
-    int idx = job_queue_alloc_slot_index(s_jobs, TAG);
+    int idx = job_queue_alloc_slot_index(handle->jobs, TAG);
     if (idx < 0) {
-        xSemaphoreGive(s_mutex);
+        xSemaphoreGive(handle->mutex);
         return ESP_ERR_NO_MEM;
     }
 
-    uint32_t id = s_next_id++;
-    if (s_next_id == 0) {
-        s_next_id = 1;
+    uint32_t id = handle->next_id++;
+    if (handle->next_id == 0) {
+        handle->next_id = 1;
     }
 
-    memset(&s_jobs[idx], 0, sizeof(s_jobs[idx]));
-    s_jobs[idx].used = true;
-    s_jobs[idx].id = id;
-    s_jobs[idx].type = type;
-    s_jobs[idx].state = ZGW_JOB_STATE_QUEUED;
-    s_jobs[idx].err = ESP_OK;
-    s_jobs[idx].created_ms = job_queue_now_ms();
-    s_jobs[idx].updated_ms = s_jobs[idx].created_ms;
-    s_jobs[idx].reboot_delay_ms = reboot_delay_ms;
-    s_metrics.submitted_total++;
-    s_metrics.queue_depth_current = job_queue_inflight_depth(s_jobs);
-    if (s_metrics.queue_depth_current > s_metrics.queue_depth_peak) {
-        s_metrics.queue_depth_peak = s_metrics.queue_depth_current;
+    memset(&handle->jobs[idx], 0, sizeof(handle->jobs[idx]));
+    handle->jobs[idx].used = true;
+    handle->jobs[idx].id = id;
+    handle->jobs[idx].type = type;
+    handle->jobs[idx].state = ZGW_JOB_STATE_QUEUED;
+    handle->jobs[idx].err = ESP_OK;
+    handle->jobs[idx].created_ms = job_queue_now_ms();
+    handle->jobs[idx].updated_ms = handle->jobs[idx].created_ms;
+    handle->jobs[idx].reboot_delay_ms = reboot_delay_ms;
+    handle->metrics.submitted_total++;
+    handle->metrics.queue_depth_current = job_queue_inflight_depth(handle->jobs);
+    if (handle->metrics.queue_depth_current > handle->metrics.queue_depth_peak) {
+        handle->metrics.queue_depth_peak = handle->metrics.queue_depth_current;
     }
-    xSemaphoreGive(s_mutex);
+    xSemaphoreGive(handle->mutex);
 
-    if (xQueueSend(s_job_q, &id, 0) != pdTRUE) {
-        xSemaphoreTake(s_mutex, portMAX_DELAY);
-        s_jobs[idx].used = false;
-        xSemaphoreGive(s_mutex);
+    if (xQueueSend(handle->job_q, &id, 0) != pdTRUE) {
+        xSemaphoreTake(handle->mutex, portMAX_DELAY);
+        handle->jobs[idx].used = false;
+        xSemaphoreGive(handle->mutex);
         return ESP_ERR_NO_MEM;
     }
 
@@ -212,48 +255,48 @@ esp_err_t job_queue_submit(zgw_job_type_t type, uint32_t reboot_delay_ms, uint32
     return ESP_OK;
 }
 
-esp_err_t job_queue_get(uint32_t job_id, zgw_job_info_t *out_info)
+esp_err_t job_queue_get_with_handle(job_queue_handle_t handle, uint32_t job_id, zgw_job_info_t *out_info)
 {
-    if (!out_info || job_id == 0) {
+    if (!handle || !out_info || job_id == 0) {
         return ESP_ERR_INVALID_ARG;
     }
-    esp_err_t err = job_queue_init();
+    esp_err_t err = job_queue_init_with_handle(handle);
     if (err != ESP_OK) {
         return err;
     }
 
-    xSemaphoreTake(s_mutex, portMAX_DELAY);
-    int idx = job_queue_find_slot_index_by_id(s_jobs, job_id);
-    if (idx < 0 || !s_jobs[idx].used) {
-        xSemaphoreGive(s_mutex);
+    xSemaphoreTake(handle->mutex, portMAX_DELAY);
+    int idx = job_queue_find_slot_index_by_id(handle->jobs, job_id);
+    if (idx < 0 || !handle->jobs[idx].used) {
+        xSemaphoreGive(handle->mutex);
         return ESP_ERR_NOT_FOUND;
     }
 
-    out_info->id = s_jobs[idx].id;
-    out_info->type = s_jobs[idx].type;
-    out_info->state = s_jobs[idx].state;
-    out_info->err = s_jobs[idx].err;
-    out_info->created_ms = s_jobs[idx].created_ms;
-    out_info->updated_ms = s_jobs[idx].updated_ms;
-    out_info->has_result = s_jobs[idx].has_result;
-    strlcpy(out_info->result_json, s_jobs[idx].result_json, sizeof(out_info->result_json));
-    xSemaphoreGive(s_mutex);
+    out_info->id = handle->jobs[idx].id;
+    out_info->type = handle->jobs[idx].type;
+    out_info->state = handle->jobs[idx].state;
+    out_info->err = handle->jobs[idx].err;
+    out_info->created_ms = handle->jobs[idx].created_ms;
+    out_info->updated_ms = handle->jobs[idx].updated_ms;
+    out_info->has_result = handle->jobs[idx].has_result;
+    strlcpy(out_info->result_json, handle->jobs[idx].result_json, sizeof(out_info->result_json));
+    xSemaphoreGive(handle->mutex);
     return ESP_OK;
 }
 
-esp_err_t job_queue_get_metrics(zgw_job_metrics_t *out_metrics)
+esp_err_t job_queue_get_metrics_with_handle(job_queue_handle_t handle, zgw_job_metrics_t *out_metrics)
 {
-    if (!out_metrics) {
+    if (!handle || !out_metrics) {
         return ESP_ERR_INVALID_ARG;
     }
-    esp_err_t err = job_queue_init();
+    esp_err_t err = job_queue_init_with_handle(handle);
     if (err != ESP_OK) {
         return err;
     }
-    xSemaphoreTake(s_mutex, portMAX_DELAY);
-    s_metrics.queue_depth_current = job_queue_inflight_depth(s_jobs);
-    s_metrics.latency_p95_ms = job_queue_latency_p95(s_latency_samples_ms, s_latency_samples_count);
-    *out_metrics = s_metrics;
-    xSemaphoreGive(s_mutex);
+    xSemaphoreTake(handle->mutex, portMAX_DELAY);
+    handle->metrics.queue_depth_current = job_queue_inflight_depth(handle->jobs);
+    handle->metrics.latency_p95_ms = job_queue_latency_p95(handle->latency_samples_ms, handle->latency_samples_count);
+    *out_metrics = handle->metrics;
+    xSemaphoreGive(handle->mutex);
     return ESP_OK;
 }

@@ -6,6 +6,12 @@
 
 static const char *TAG = "HTTP_ROUTES";
 
+static esp_err_t ws_handler_route(httpd_req_t *req)
+{
+    ws_manager_handle_t handle = (ws_manager_handle_t)req->user_ctx;
+    return ws_handler_with_handle(handle, req);
+}
+
 static bool register_uri_handler_checked(httpd_handle_t srv, const httpd_uri_t *uri)
 {
     esp_err_t ret = httpd_register_uri_handler(srv, uri);
@@ -24,7 +30,7 @@ static bool register_uri_handler_checked(httpd_handle_t srv, const httpd_uri_t *
         (_ok) &= register_uri_handler_checked((_server), &uri_legacy);                                            \
     } while (0)
 
-bool http_routes_register(httpd_handle_t server)
+bool http_routes_register(httpd_handle_t server, ws_manager_handle_t ws_manager)
 {
     bool ok = true;
 
@@ -55,7 +61,13 @@ bool http_routes_register(httpd_handle_t server)
     httpd_uri_t uri_jobs_get_legacy = { .uri = "/api/jobs/*", .method = HTTP_GET, .handler = api_jobs_get_handler };
     ok &= register_uri_handler_checked(server, &uri_jobs_get_legacy);
 
-    httpd_uri_t uri_ws = { .uri = "/ws", .method = HTTP_GET, .handler = ws_handler, .is_websocket = true };
+    httpd_uri_t uri_ws = {
+        .uri = "/ws",
+        .method = HTTP_GET,
+        .handler = ws_handler_route,
+        .user_ctx = ws_manager,
+        .is_websocket = true
+    };
     ok &= register_uri_handler_checked(server, &uri_ws);
 
     httpd_uri_t uri_favicon = { .uri = "/favicon.ico", .method = HTTP_GET, .handler = favicon_handler };

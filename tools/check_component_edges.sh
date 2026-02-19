@@ -156,6 +156,24 @@ check_no_legacy_default_getters() {
     done <<< "${hits}"
 }
 
+check_no_legacy_runtime_singleton_apis() {
+    local hits
+    hits="$(
+        rg -n '\b(job_queue_init|job_queue_submit|job_queue_get|job_queue_get_metrics|ws_manager_init|ws_handler|ws_broadcast_status|ws_httpd_close_fn|ws_manager_get_client_count|ws_manager_set_transport_ops_for_test|ws_manager_reset_transport_ops_for_test)\s*\(' \
+            "${ROOT_DIR}/components" "${ROOT_DIR}/main" "${ROOT_DIR}/tests" \
+            --glob '*.[ch]' || true
+    )"
+
+    if [[ -z "${hits}" ]]; then
+        return
+    fi
+
+    while IFS= read -r hit; do
+        [[ -z "${hit}" ]] && continue
+        report_violation "legacy singleton runtime API is forbidden: ${hit#${ROOT_DIR}/}"
+    done <<< "${hits}"
+}
+
 check_web_api_dependency_rules
 check_no_cmake_include_hacks
 check_no_relative_source_includes
@@ -163,6 +181,7 @@ check_web_api_headers_are_facade_only
 check_core_facade_headers_no_low_level_includes
 check_web_api_no_low_level_idf_includes
 check_no_legacy_default_getters
+check_no_legacy_runtime_singleton_apis
 
 if [[ "${violations}" -ne 0 ]]; then
     echo "Component dependency/include edge check failed."

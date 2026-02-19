@@ -31,6 +31,16 @@ static int s_mock_wifi_scan_free_called = 0;
 static int s_mock_wifi_net_platform_init_called = 0;
 static int s_mock_wifi_sta_connect_called = 0;
 static int s_mock_wifi_fallback_called = 0;
+static job_queue_handle_t s_job_queue = NULL;
+
+static job_queue_handle_t ensure_job_queue(void)
+{
+    if (!s_job_queue) {
+        TEST_ASSERT_EQUAL(ESP_OK, job_queue_create(&s_job_queue));
+    }
+    TEST_ASSERT_EQUAL(ESP_OK, job_queue_init_with_handle(s_job_queue));
+    return s_job_queue;
+}
 
 static esp_err_t mock_send_on_off(uint16_t short_addr, uint8_t endpoint, uint8_t on_off)
 {
@@ -350,9 +360,10 @@ static esp_err_t wait_job_done(uint32_t job_id, uint32_t timeout_ms, zgw_job_inf
     if (!out_info || job_id == 0) {
         return ESP_ERR_INVALID_ARG;
     }
+    job_queue_handle_t queue = ensure_job_queue();
     int64_t start_us = esp_timer_get_time();
     while (((esp_timer_get_time() - start_us) / 1000) < timeout_ms) {
-        esp_err_t err = job_queue_get(job_id, out_info);
+        esp_err_t err = job_queue_get_with_handle(queue, job_id, out_info);
         if (err == ESP_OK &&
             (out_info->state == ZGW_JOB_STATE_SUCCEEDED || out_info->state == ZGW_JOB_STATE_FAILED)) {
             return ESP_OK;
@@ -366,10 +377,11 @@ static void test_e2e_job_queue_reuses_completed_slots_without_saturation_120_cyc
 {
     reset_api_mocks();
     wifi_service_register_scan_impl(mock_wifi_scan_impl, mock_wifi_scan_free_impl);
+    job_queue_handle_t queue = ensure_job_queue();
 
     for (int i = 0; i < 120; i++) {
         uint32_t job_id = 0;
-        TEST_ASSERT_EQUAL(ESP_OK, job_queue_submit(ZGW_JOB_TYPE_WIFI_SCAN, 0, &job_id));
+        TEST_ASSERT_EQUAL(ESP_OK, job_queue_submit_with_handle(queue, ZGW_JOB_TYPE_WIFI_SCAN, 0, &job_id));
         TEST_ASSERT_NOT_EQUAL(0, job_id);
 
         zgw_job_info_t info = {0};
@@ -379,7 +391,7 @@ static void test_e2e_job_queue_reuses_completed_slots_without_saturation_120_cyc
     }
 
     zgw_job_metrics_t metrics = {0};
-    TEST_ASSERT_EQUAL(ESP_OK, job_queue_get_metrics(&metrics));
+    TEST_ASSERT_EQUAL(ESP_OK, job_queue_get_metrics_with_handle(queue, &metrics));
     TEST_ASSERT_GREATER_OR_EQUAL_UINT32(120, metrics.submitted_total);
     TEST_ASSERT_GREATER_OR_EQUAL_UINT32(120, metrics.completed_total);
     TEST_ASSERT_EQUAL_UINT32(0, metrics.queue_depth_current);
@@ -393,12 +405,13 @@ static void test_e2e_job_queue_singleflight_reuses_inflight_id(void)
 {
     reset_api_mocks();
     wifi_service_register_scan_impl(mock_wifi_scan_slow_impl, mock_wifi_scan_free_impl);
+    job_queue_handle_t queue = ensure_job_queue();
 
     uint32_t job_id_1 = 0;
     uint32_t job_id_2 = 0;
-    TEST_ASSERT_EQUAL(ESP_OK, job_queue_submit(ZGW_JOB_TYPE_WIFI_SCAN, 0, &job_id_1));
+    TEST_ASSERT_EQUAL(ESP_OK, job_queue_submit_with_handle(queue, ZGW_JOB_TYPE_WIFI_SCAN, 0, &job_id_1));
     TEST_ASSERT_NOT_EQUAL(0, job_id_1);
-    TEST_ASSERT_EQUAL(ESP_OK, job_queue_submit(ZGW_JOB_TYPE_WIFI_SCAN, 0, &job_id_2));
+    TEST_ASSERT_EQUAL(ESP_OK, job_queue_submit_with_handle(queue, ZGW_JOB_TYPE_WIFI_SCAN, 0, &job_id_2));
     TEST_ASSERT_EQUAL_UINT32(job_id_1, job_id_2);
 
     zgw_job_info_t info = {0};

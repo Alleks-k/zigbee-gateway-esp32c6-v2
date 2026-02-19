@@ -21,30 +21,31 @@
 #define WS_MIN_LQI_BROADCAST_INTERVAL_US (800 * 1000)
 #define WS_BROADCAST_RETRY_US (20 * 1000)
 
-extern int ws_fds[MAX_WS_CLIENTS];
-extern httpd_handle_t s_server;
-extern SemaphoreHandle_t s_ws_mutex;
-extern SemaphoreHandle_t s_ws_broadcast_mutex;
-extern esp_event_handler_instance_t s_list_changed_handler;
-extern esp_event_handler_instance_t s_lqi_changed_handler;
-extern esp_timer_handle_t s_ws_debounce_timer;
-extern esp_timer_handle_t s_ws_periodic_timer;
-extern char s_ws_devices_json_buf[WS_JSON_BUF_SIZE];
-extern char s_last_ws_devices_json[WS_JSON_BUF_SIZE];
-extern size_t s_last_ws_devices_json_len;
-extern int64_t s_last_ws_devices_send_us;
-extern char s_ws_health_json_buf[WS_JSON_BUF_SIZE];
-extern char s_last_ws_health_json[WS_JSON_BUF_SIZE];
-extern size_t s_last_ws_health_json_len;
-extern int64_t s_last_ws_health_send_us;
-extern char s_ws_lqi_json_buf[WS_JSON_BUF_SIZE];
-extern char s_last_ws_lqi_json[WS_JSON_BUF_SIZE];
-extern size_t s_last_ws_lqi_json_len;
-extern int64_t s_last_ws_lqi_send_us;
-extern char s_ws_frame_buf[WS_FRAME_BUF_SIZE];
-extern uint32_t s_ws_seq;
-extern api_ws_runtime_metrics_t s_ws_metrics;
-
+typedef struct ws_manager_ctx {
+    int ws_fds[MAX_WS_CLIENTS];
+    httpd_handle_t server;
+    SemaphoreHandle_t ws_mutex;
+    SemaphoreHandle_t ws_broadcast_mutex;
+    esp_event_handler_instance_t list_changed_handler;
+    esp_event_handler_instance_t lqi_changed_handler;
+    esp_timer_handle_t ws_debounce_timer;
+    esp_timer_handle_t ws_periodic_timer;
+    char ws_devices_json_buf[WS_JSON_BUF_SIZE];
+    char last_ws_devices_json[WS_JSON_BUF_SIZE];
+    size_t last_ws_devices_json_len;
+    int64_t last_ws_devices_send_us;
+    char ws_health_json_buf[WS_JSON_BUF_SIZE];
+    char last_ws_health_json[WS_JSON_BUF_SIZE];
+    size_t last_ws_health_json_len;
+    int64_t last_ws_health_send_us;
+    char ws_lqi_json_buf[WS_JSON_BUF_SIZE];
+    char last_ws_lqi_json[WS_JSON_BUF_SIZE];
+    size_t last_ws_lqi_json_len;
+    int64_t last_ws_lqi_send_us;
+    char ws_frame_buf[WS_FRAME_BUF_SIZE];
+    uint32_t ws_seq;
+    api_ws_runtime_metrics_t ws_metrics;
 #if CONFIG_GATEWAY_SELF_TEST_APP
-extern ws_manager_transport_ops_t s_ws_transport_ops;
+    ws_manager_transport_ops_t ws_transport_ops;
 #endif
+} ws_manager_ctx_t;

@@ -4,6 +4,19 @@
 
 #include "job_queue.h"
 
+static job_queue_handle_t s_job_queue = NULL;
+
+static esp_err_t ensure_job_queue(void)
+{
+    if (!s_job_queue) {
+        esp_err_t err = job_queue_create(&s_job_queue);
+        if (err != ESP_OK) {
+            return err;
+        }
+    }
+    return job_queue_init_with_handle(s_job_queue);
+}
+
 static zgw_job_type_t to_job_type(gateway_core_job_type_t type)
 {
     switch (type) {
@@ -59,8 +72,13 @@ esp_err_t gateway_jobs_get_metrics(gateway_core_job_metrics_t *out_metrics)
         return ESP_ERR_INVALID_ARG;
     }
 
+    esp_err_t err = ensure_job_queue();
+    if (err != ESP_OK) {
+        return err;
+    }
+
     zgw_job_metrics_t metrics = {0};
-    esp_err_t err = job_queue_get_metrics(&metrics);
+    err = job_queue_get_metrics_with_handle(s_job_queue, &metrics);
     if (err != ESP_OK) {
         return err;
     }
@@ -77,7 +95,11 @@ esp_err_t gateway_jobs_get_metrics(gateway_core_job_metrics_t *out_metrics)
 
 esp_err_t gateway_jobs_submit(gateway_core_job_type_t type, uint32_t reboot_delay_ms, uint32_t *out_job_id)
 {
-    return job_queue_submit(to_job_type(type), reboot_delay_ms, out_job_id);
+    esp_err_t err = ensure_job_queue();
+    if (err != ESP_OK) {
+        return err;
+    }
+    return job_queue_submit_with_handle(s_job_queue, to_job_type(type), reboot_delay_ms, out_job_id);
 }
 
 esp_err_t gateway_jobs_get(uint32_t job_id, gateway_core_job_info_t *out_info)
@@ -86,8 +108,13 @@ esp_err_t gateway_jobs_get(uint32_t job_id, gateway_core_job_info_t *out_info)
         return ESP_ERR_INVALID_ARG;
     }
 
+    esp_err_t err = ensure_job_queue();
+    if (err != ESP_OK) {
+        return err;
+    }
+
     zgw_job_info_t info = {0};
-    esp_err_t err = job_queue_get(job_id, &info);
+    err = job_queue_get_with_handle(s_job_queue, job_id, &info);
     if (err != ESP_OK) {
         return err;
     }

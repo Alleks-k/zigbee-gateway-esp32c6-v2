@@ -42,10 +42,15 @@ typedef struct {
     uint32_t latency_p95_ms;
 } zgw_job_metrics_t;
 
-esp_err_t job_queue_init(void);
-esp_err_t job_queue_submit(zgw_job_type_t type, uint32_t reboot_delay_ms, uint32_t *out_job_id);
-esp_err_t job_queue_get(uint32_t job_id, zgw_job_info_t *out_info);
-esp_err_t job_queue_get_metrics(zgw_job_metrics_t *out_metrics);
+typedef struct zgw_job_queue *job_queue_handle_t;
+
+esp_err_t job_queue_create(job_queue_handle_t *out_handle);
+void job_queue_destroy(job_queue_handle_t handle);
+esp_err_t job_queue_init_with_handle(job_queue_handle_t handle);
+esp_err_t job_queue_submit_with_handle(job_queue_handle_t handle, zgw_job_type_t type, uint32_t reboot_delay_ms,
+                                       uint32_t *out_job_id);
+esp_err_t job_queue_get_with_handle(job_queue_handle_t handle, uint32_t job_id, zgw_job_info_t *out_info);
+esp_err_t job_queue_get_metrics_with_handle(job_queue_handle_t handle, zgw_job_metrics_t *out_metrics);
 
 const char *job_queue_type_to_string(zgw_job_type_t type);
 const char *job_queue_state_to_string(zgw_job_state_t state);

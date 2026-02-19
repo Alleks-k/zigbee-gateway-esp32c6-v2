@@ -11,162 +11,235 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 
+#include <stdlib.h>
 #include <string.h>
 
 static const char *TAG = "WS_MANAGER";
 
-int ws_fds[MAX_WS_CLIENTS];
-httpd_handle_t s_server = NULL;
-SemaphoreHandle_t s_ws_mutex = NULL;
-SemaphoreHandle_t s_ws_broadcast_mutex = NULL;
-esp_event_handler_instance_t s_list_changed_handler = NULL;
-esp_event_handler_instance_t s_lqi_changed_handler = NULL;
-esp_timer_handle_t s_ws_debounce_timer = NULL;
-esp_timer_handle_t s_ws_periodic_timer = NULL;
-char s_ws_devices_json_buf[WS_JSON_BUF_SIZE];
-char s_last_ws_devices_json[WS_JSON_BUF_SIZE];
-size_t s_last_ws_devices_json_len = 0;
-int64_t s_last_ws_devices_send_us = 0;
-char s_ws_health_json_buf[WS_JSON_BUF_SIZE];
-char s_last_ws_health_json[WS_JSON_BUF_SIZE];
-size_t s_last_ws_health_json_len = 0;
-int64_t s_last_ws_health_send_us = 0;
-char s_ws_lqi_json_buf[WS_JSON_BUF_SIZE];
-char s_last_ws_lqi_json[WS_JSON_BUF_SIZE];
-size_t s_last_ws_lqi_json_len = 0;
-int64_t s_last_ws_lqi_send_us = 0;
-char s_ws_frame_buf[WS_FRAME_BUF_SIZE];
-uint32_t s_ws_seq = 0;
-api_ws_runtime_metrics_t s_ws_metrics = {0};
+static ws_manager_handle_t s_provider_ws_manager = NULL;
+
+void ws_broadcast_status_with_handle(ws_manager_handle_t handle);
+
+#if CONFIG_GATEWAY_SELF_TEST_APP
+static void ws_manager_reset_transport_to_defaults(ws_manager_handle_t handle)
+{
+    ws_manager_reset_transport_ops_for_test_with_handle(handle);
+}
+#endif
+
+static bool ws_manager_metrics_provider_adapter(api_ws_runtime_metrics_t *out_metrics)
+{
+    return ws_manager_metrics_provider(s_provider_ws_manager, out_metrics);
+}
+
+static uint32_t ws_manager_client_count_provider_adapter(void)
+{
+    return ws_manager_client_count_provider(s_provider_ws_manager);
+}
 
 static void ws_debounce_timer_cb(void *arg)
 {
-    (void)arg;
-    ws_broadcast_status();
+    ws_manager_handle_t handle = (ws_manager_handle_t)arg;
+    ws_broadcast_status_with_handle(handle);
 }
 
 static void ws_periodic_timer_cb(void *arg)
 {
-    (void)arg;
-    ws_broadcast_status();
+    ws_manager_handle_t handle = (ws_manager_handle_t)arg;
+    ws_broadcast_status_with_handle(handle);
 }
 
 static void device_list_changed_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data)
 {
-    (void)arg;
+    ws_manager_handle_t handle = (ws_manager_handle_t)arg;
     (void)event_data;
     if (event_base == GATEWAY_EVENT && event_id == GATEWAY_EVENT_DEVICE_LIST_CHANGED) {
-        ws_broadcast_status();
+        ws_broadcast_status_with_handle(handle);
     }
 }
 
 static void lqi_state_changed_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data)
 {
-    (void)arg;
+    ws_manager_handle_t handle = (ws_manager_handle_t)arg;
     (void)event_data;
     if (event_base == GATEWAY_EVENT && event_id == GATEWAY_EVENT_LQI_STATE_CHANGED) {
-        ws_broadcast_status();
+        ws_broadcast_status_with_handle(handle);
     }
 }
 
-void ws_manager_init(httpd_handle_t server)
+esp_err_t ws_manager_create(ws_manager_handle_t *out_handle)
 {
-    s_server = server;
-    api_usecases_set_ws_client_count_provider(ws_manager_client_count_provider);
-    api_usecases_set_ws_metrics_provider(ws_manager_metrics_provider);
+    if (!out_handle) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    ws_manager_ctx_t *handle = (ws_manager_ctx_t *)calloc(1, sizeof(*handle));
+    if (!handle) {
+        return ESP_ERR_NO_MEM;
+    }
     for (int i = 0; i < MAX_WS_CLIENTS; i++) {
-        ws_fds[i] = -1;
+        handle->ws_fds[i] = -1;
+    }
+#if CONFIG_GATEWAY_SELF_TEST_APP
+    ws_manager_reset_transport_to_defaults(handle);
+#endif
+    *out_handle = handle;
+    return ESP_OK;
+}
+
+void ws_manager_destroy(ws_manager_handle_t handle)
+{
+    if (!handle) {
+        return;
     }
 
-    if (!s_ws_mutex) {
-        s_ws_mutex = xSemaphoreCreateMutex();
-        if (!s_ws_mutex) {
+    if (handle->list_changed_handler) {
+        (void)esp_event_handler_instance_unregister(
+            GATEWAY_EVENT, GATEWAY_EVENT_DEVICE_LIST_CHANGED, handle->list_changed_handler);
+        handle->list_changed_handler = NULL;
+    }
+    if (handle->lqi_changed_handler) {
+        (void)esp_event_handler_instance_unregister(
+            GATEWAY_EVENT, GATEWAY_EVENT_LQI_STATE_CHANGED, handle->lqi_changed_handler);
+        handle->lqi_changed_handler = NULL;
+    }
+
+    if (handle->ws_debounce_timer) {
+        (void)esp_timer_stop(handle->ws_debounce_timer);
+        (void)esp_timer_delete(handle->ws_debounce_timer);
+        handle->ws_debounce_timer = NULL;
+    }
+    if (handle->ws_periodic_timer) {
+        (void)esp_timer_stop(handle->ws_periodic_timer);
+        (void)esp_timer_delete(handle->ws_periodic_timer);
+        handle->ws_periodic_timer = NULL;
+    }
+
+    if (handle->ws_broadcast_mutex) {
+        vSemaphoreDelete(handle->ws_broadcast_mutex);
+        handle->ws_broadcast_mutex = NULL;
+    }
+    if (handle->ws_mutex) {
+        vSemaphoreDelete(handle->ws_mutex);
+        handle->ws_mutex = NULL;
+    }
+
+    if (s_provider_ws_manager == handle) {
+        s_provider_ws_manager = NULL;
+    }
+    free(handle);
+}
+
+void ws_manager_init_with_handle(ws_manager_handle_t handle, httpd_handle_t server)
+{
+    if (!handle) {
+        return;
+    }
+
+    handle->server = server;
+    s_provider_ws_manager = handle;
+    api_usecases_set_ws_client_count_provider(ws_manager_client_count_provider_adapter);
+    api_usecases_set_ws_metrics_provider(ws_manager_metrics_provider_adapter);
+
+    for (int i = 0; i < MAX_WS_CLIENTS; i++) {
+        handle->ws_fds[i] = -1;
+    }
+
+    if (!handle->ws_mutex) {
+        handle->ws_mutex = xSemaphoreCreateMutex();
+        if (!handle->ws_mutex) {
             ESP_LOGE(TAG, "Failed to create WS mutex");
         }
     }
-    if (!s_ws_broadcast_mutex) {
-        s_ws_broadcast_mutex = xSemaphoreCreateMutex();
-        if (!s_ws_broadcast_mutex) {
+    if (!handle->ws_broadcast_mutex) {
+        handle->ws_broadcast_mutex = xSemaphoreCreateMutex();
+        if (!handle->ws_broadcast_mutex) {
             ESP_LOGE(TAG, "Failed to create WS broadcast mutex");
         }
     }
 
-    if (s_list_changed_handler == NULL) {
+    if (handle->list_changed_handler == NULL) {
         esp_err_t ret = esp_event_handler_instance_register(
-            GATEWAY_EVENT, GATEWAY_EVENT_DEVICE_LIST_CHANGED, device_list_changed_handler, NULL, &s_list_changed_handler);
+            GATEWAY_EVENT, GATEWAY_EVENT_DEVICE_LIST_CHANGED, device_list_changed_handler, handle, &handle->list_changed_handler);
         if (ret != ESP_OK) {
             ESP_LOGE(TAG, "Failed to register DEVICE_LIST_CHANGED handler: %s", esp_err_to_name(ret));
         }
     }
-    if (s_lqi_changed_handler == NULL) {
+    if (handle->lqi_changed_handler == NULL) {
         esp_err_t ret = esp_event_handler_instance_register(
-            GATEWAY_EVENT, GATEWAY_EVENT_LQI_STATE_CHANGED, lqi_state_changed_handler, NULL, &s_lqi_changed_handler);
+            GATEWAY_EVENT, GATEWAY_EVENT_LQI_STATE_CHANGED, lqi_state_changed_handler, handle, &handle->lqi_changed_handler);
         if (ret != ESP_OK) {
             ESP_LOGE(TAG, "Failed to register LQI_STATE_CHANGED handler: %s", esp_err_to_name(ret));
         }
     }
 
-    if (s_ws_debounce_timer == NULL) {
+    if (handle->ws_debounce_timer == NULL) {
         const esp_timer_create_args_t timer_args = {
             .callback = ws_debounce_timer_cb,
-            .arg = NULL,
+            .arg = handle,
             .name = "ws_debounce"
         };
-        esp_err_t ret = esp_timer_create(&timer_args, &s_ws_debounce_timer);
+        esp_err_t ret = esp_timer_create(&timer_args, &handle->ws_debounce_timer);
         if (ret != ESP_OK) {
             ESP_LOGE(TAG, "Failed to create WS debounce timer: %s", esp_err_to_name(ret));
         }
     }
 
-    if (s_ws_periodic_timer == NULL) {
+    if (handle->ws_periodic_timer == NULL) {
         const esp_timer_create_args_t timer_args = {
             .callback = ws_periodic_timer_cb,
-            .arg = NULL,
+            .arg = handle,
             .name = "ws_periodic"
         };
-        esp_err_t ret = esp_timer_create(&timer_args, &s_ws_periodic_timer);
+        esp_err_t ret = esp_timer_create(&timer_args, &handle->ws_periodic_timer);
         if (ret != ESP_OK) {
             ESP_LOGE(TAG, "Failed to create WS periodic timer: %s", esp_err_to_name(ret));
         }
     }
 
-    s_last_ws_devices_json_len = 0;
-    s_last_ws_devices_send_us = 0;
-    s_last_ws_health_json_len = 0;
-    s_last_ws_health_send_us = 0;
-    s_last_ws_lqi_json_len = 0;
-    s_last_ws_lqi_send_us = 0;
-    s_ws_seq = 0;
-    memset(&s_ws_metrics, 0, sizeof(s_ws_metrics));
+    handle->last_ws_devices_json_len = 0;
+    handle->last_ws_devices_send_us = 0;
+    handle->last_ws_health_json_len = 0;
+    handle->last_ws_health_send_us = 0;
+    handle->last_ws_lqi_json_len = 0;
+    handle->last_ws_lqi_send_us = 0;
+    handle->ws_seq = 0;
+    memset(&handle->ws_metrics, 0, sizeof(handle->ws_metrics));
 }
 
-void ws_httpd_close_fn(httpd_handle_t hd, int sockfd)
+void ws_httpd_close_fn_with_handle(ws_manager_handle_t handle, httpd_handle_t hd, int sockfd)
 {
+    if (!handle) {
+        return;
+    }
     (void)hd;
-    ws_manager_remove_fd_internal(sockfd);
-    ws_manager_transport_close_socket(sockfd);
+    ws_manager_remove_fd_internal(handle, sockfd);
+    ws_manager_transport_close_socket(handle, sockfd);
 }
 
-esp_err_t ws_handler(httpd_req_t *req)
+esp_err_t ws_handler_with_handle(ws_manager_handle_t handle, httpd_req_t *req)
 {
+    if (!handle || !req) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
     if (req->method == HTTP_GET) {
         ESP_LOGI(TAG, "Handshake done, new WS connection");
-        int fd = ws_manager_transport_req_to_sockfd(req);
-        bool added = ws_manager_add_fd(fd);
+        int fd = ws_manager_transport_req_to_sockfd(handle, req);
+        bool added = ws_manager_add_fd(handle, fd);
         if (!added) {
             ESP_LOGW(TAG, "WS client rejected: max clients reached (%d)", MAX_WS_CLIENTS);
             gateway_error_ring_add("ws", (int32_t)ESP_ERR_NO_MEM, "client rejected: max clients");
-            (void)ws_manager_transport_resp_set_status(req, "503 Service Unavailable");
-            (void)ws_manager_transport_resp_send(req, "WS clients limit reached", HTTPD_RESP_USE_STRLEN);
+            (void)ws_manager_transport_resp_set_status(handle, req, "503 Service Unavailable");
+            (void)ws_manager_transport_resp_send(handle, req, "WS clients limit reached", HTTPD_RESP_USE_STRLEN);
             return ESP_FAIL;
         }
 
-        ws_manager_note_connection();
-        if (s_ws_periodic_timer) {
-            (void)esp_timer_stop(s_ws_periodic_timer);
-            (void)esp_timer_start_periodic(s_ws_periodic_timer, 1000 * 1000);
+        ws_manager_note_connection(handle);
+        if (handle->ws_periodic_timer) {
+            (void)esp_timer_stop(handle->ws_periodic_timer);
+            (void)esp_timer_start_periodic(handle->ws_periodic_timer, 1000 * 1000);
         }
-        ws_broadcast_status();
+        ws_broadcast_status_with_handle(handle);
         return ESP_OK;
     }
 
@@ -174,15 +247,15 @@ esp_err_t ws_handler(httpd_req_t *req)
     memset(&ws_pkt, 0, sizeof(httpd_ws_frame_t));
     ws_pkt.type = HTTPD_WS_TYPE_TEXT;
 
-    esp_err_t ret = ws_manager_transport_recv_frame(req, &ws_pkt, 0);
+    esp_err_t ret = ws_manager_transport_recv_frame(handle, req, &ws_pkt, 0);
     if (ret != ESP_OK) {
         gateway_error_ring_add("ws", (int32_t)ret, "recv_frame failed");
         return ret;
     }
 
     if (ws_pkt.type == HTTPD_WS_TYPE_CLOSE) {
-        int fd = ws_manager_transport_req_to_sockfd(req);
-        ws_manager_remove_fd_internal(fd);
+        int fd = ws_manager_transport_req_to_sockfd(handle, req);
+        ws_manager_remove_fd_internal(handle, fd);
     }
     return ESP_OK;
 }

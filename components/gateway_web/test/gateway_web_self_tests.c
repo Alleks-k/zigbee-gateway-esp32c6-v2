@@ -401,6 +401,7 @@ static void test_ws_lqi_update_envelope_smoke(void)
 }
 
 #if CONFIG_GATEWAY_SELF_TEST_APP
+static ws_manager_handle_t s_ws_manager_handle = NULL;
 static int s_ws_test_active_fd = 0;
 static int s_ws_test_send_calls = 0;
 static int s_ws_test_fail_fd = -1;
@@ -410,6 +411,22 @@ static int s_ws_stress_send_calls = 0;
 static int s_ws_stress_send_fd_301 = 0;
 static int s_ws_stress_send_fd_302 = 0;
 static int s_ws_stress_send_fd_303 = 0;
+
+static ws_manager_handle_t ws_test_create_manager(void)
+{
+    TEST_ASSERT_EQUAL(ESP_OK, ws_manager_create(&s_ws_manager_handle));
+    TEST_ASSERT_NOT_NULL(s_ws_manager_handle);
+    ws_manager_init_with_handle(s_ws_manager_handle, (httpd_handle_t)0x1);
+    return s_ws_manager_handle;
+}
+
+static void ws_test_destroy_manager(void)
+{
+    if (s_ws_manager_handle) {
+        ws_manager_destroy(s_ws_manager_handle);
+        s_ws_manager_handle = NULL;
+    }
+}
 
 static void ws_seed_large_device_snapshot(uint32_t iter)
 {
@@ -507,31 +524,31 @@ static void test_ws_runtime_socket_lifecycle_disconnect_reconnect_backpressure(v
         .resp_send = ws_test_resp_send,
         .close_socket = ws_test_close_socket,
     };
-    ws_manager_set_transport_ops_for_test(&ops);
-
-    ws_manager_init((httpd_handle_t)0x1);
+    ws_manager_handle_t ws = ws_test_create_manager();
+    ws_manager_set_transport_ops_for_test_with_handle(ws, &ops);
 
     httpd_req_t req = {0};
     req.method = HTTP_GET;
-    TEST_ASSERT_EQUAL(ESP_OK, ws_handler(&req));
-    TEST_ASSERT_EQUAL_INT(1, ws_manager_get_client_count());
+    TEST_ASSERT_EQUAL(ESP_OK, ws_handler_with_handle(ws, &req));
+    TEST_ASSERT_EQUAL_INT(1, ws_manager_get_client_count_with_handle(ws));
 
     usleep(130000);
     s_ws_test_fail_fd = s_ws_test_active_fd;
-    ws_broadcast_status();
-    TEST_ASSERT_EQUAL_INT(0, ws_manager_get_client_count());
+    ws_broadcast_status_with_handle(ws);
+    TEST_ASSERT_EQUAL_INT(0, ws_manager_get_client_count_with_handle(ws));
     TEST_ASSERT_GREATER_THAN_INT(0, s_ws_test_send_calls);
 
     s_ws_test_active_fd = 202;
     s_ws_test_fail_fd = -1;
-    TEST_ASSERT_EQUAL(ESP_OK, ws_handler(&req));
-    TEST_ASSERT_EQUAL_INT(1, ws_manager_get_client_count());
+    TEST_ASSERT_EQUAL(ESP_OK, ws_handler_with_handle(ws, &req));
+    TEST_ASSERT_EQUAL_INT(1, ws_manager_get_client_count_with_handle(ws));
 
-    ws_httpd_close_fn(NULL, s_ws_test_active_fd);
-    TEST_ASSERT_EQUAL_INT(0, ws_manager_get_client_count());
+    ws_httpd_close_fn_with_handle(ws, NULL, s_ws_test_active_fd);
+    TEST_ASSERT_EQUAL_INT(0, ws_manager_get_client_count_with_handle(ws));
     TEST_ASSERT_EQUAL_INT(1, s_ws_test_close_calls);
 
-    ws_manager_reset_transport_ops_for_test();
+    ws_manager_reset_transport_ops_for_test_with_handle(ws);
+    ws_test_destroy_manager();
 }
 
 static void test_ws_runtime_backpressure_stress_prunes_clients_and_stays_responsive(void)
@@ -550,33 +567,34 @@ static void test_ws_runtime_backpressure_stress_prunes_clients_and_stays_respons
         .resp_send = ws_test_resp_send,
         .close_socket = ws_test_close_socket,
     };
-    ws_manager_set_transport_ops_for_test(&ops);
-    ws_manager_init((httpd_handle_t)0x1);
+    ws_manager_handle_t ws = ws_test_create_manager();
+    ws_manager_set_transport_ops_for_test_with_handle(ws, &ops);
 
     httpd_req_t req = {0};
     req.method = HTTP_GET;
 
     s_ws_test_active_fd = 301;
-    TEST_ASSERT_EQUAL(ESP_OK, ws_handler(&req));
+    TEST_ASSERT_EQUAL(ESP_OK, ws_handler_with_handle(ws, &req));
     s_ws_test_active_fd = 302;
-    TEST_ASSERT_EQUAL(ESP_OK, ws_handler(&req));
+    TEST_ASSERT_EQUAL(ESP_OK, ws_handler_with_handle(ws, &req));
     s_ws_test_active_fd = 303;
-    TEST_ASSERT_EQUAL(ESP_OK, ws_handler(&req));
-    TEST_ASSERT_EQUAL_INT(3, ws_manager_get_client_count());
+    TEST_ASSERT_EQUAL(ESP_OK, ws_handler_with_handle(ws, &req));
+    TEST_ASSERT_EQUAL_INT(3, ws_manager_get_client_count_with_handle(ws));
 
     for (int i = 0; i < 28; i++) {
         ws_seed_large_device_snapshot((uint32_t)i);
-        ws_broadcast_status();
+        ws_broadcast_status_with_handle(ws);
         usleep(130000);
     }
 
     TEST_ASSERT_GREATER_THAN_INT(20, s_ws_stress_send_calls);
     TEST_ASSERT_GREATER_THAN_INT(8, s_ws_stress_send_fd_302);
     TEST_ASSERT_GREATER_THAN_INT(16, s_ws_stress_send_fd_303);
-    TEST_ASSERT_EQUAL_INT(1, ws_manager_get_client_count());
+    TEST_ASSERT_EQUAL_INT(1, ws_manager_get_client_count_with_handle(ws));
 
     s_ws_test_stress_mode = false;
-    ws_manager_reset_transport_ops_for_test();
+    ws_manager_reset_transport_ops_for_test_with_handle(ws);
+    ws_test_destroy_manager();
 }
 #endif
 
@@ -645,32 +663,32 @@ static void test_ws_runtime_socket_lifecycle_real_stack_disconnect_reconnect_bac
     TEST_ASSERT_TRUE(fd1 >= 0);
     TEST_ASSERT_TRUE(ws_send_handshake_and_wait_101(fd1));
     usleep(120000);
-    TEST_ASSERT_EQUAL_INT(1, ws_manager_get_client_count());
+    TEST_ASSERT_EQUAL_INT(1, web_server_get_ws_client_count());
 
     TEST_ASSERT_TRUE(ws_send_client_close_frame(fd1));
     usleep(120000);
     close(fd1);
     usleep(120000);
-    TEST_ASSERT_EQUAL_INT(0, ws_manager_get_client_count());
+    TEST_ASSERT_EQUAL_INT(0, web_server_get_ws_client_count());
 
     int fd2 = ws_connect_localhost();
     TEST_ASSERT_TRUE(fd2 >= 0);
     TEST_ASSERT_TRUE(ws_send_handshake_and_wait_101(fd2));
     usleep(120000);
-    TEST_ASSERT_EQUAL_INT(1, ws_manager_get_client_count());
+    TEST_ASSERT_EQUAL_INT(1, web_server_get_ws_client_count());
 
     // Abrupt disconnect (no WS close) + broadcast => send failure path should prune client.
     close(fd2);
     usleep(120000);
-    ws_broadcast_status();
+    web_server_broadcast_ws_status();
     usleep(120000);
-    TEST_ASSERT_EQUAL_INT(0, ws_manager_get_client_count());
+    TEST_ASSERT_EQUAL_INT(0, web_server_get_ws_client_count());
 
     int fd3 = ws_connect_localhost();
     TEST_ASSERT_TRUE(fd3 >= 0);
     TEST_ASSERT_TRUE(ws_send_handshake_and_wait_101(fd3));
     usleep(120000);
-    TEST_ASSERT_EQUAL_INT(1, ws_manager_get_client_count());
+    TEST_ASSERT_EQUAL_INT(1, web_server_get_ws_client_count());
     close(fd3);
     usleep(120000);
 

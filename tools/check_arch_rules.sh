@@ -5,51 +5,21 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 violations=0
 
-is_allowed_include_user() {
-    local path="$1"
-    case "$path" in
-        components/gateway_core_persistence_adapter/src/gateway_persistence_adapter.c|\
-        components/gateway_core_storage/src/device_repository_nvs.c)
-            return 0
-            ;;
-        *)
-            return 1
-            ;;
-    esac
-}
+check_core_no_repository_headers() {
+    local core_dir="${ROOT_DIR}/components/gateway_core"
+    local hits
+    hits="$(
+        rg -n '#include\s+"(device_repository\.h|config_repository\.h|storage_kv\.h|storage_schema\.h|storage_partitions\.h)"' \
+            "${core_dir}/src" "${core_dir}/include" --glob '*.[ch]' || true
+    )"
 
-is_allowed_device_repo_symbol_user() {
-    local symbol="$1"
-    local path="$2"
-
-    case "$symbol" in
-        device_repository_load|device_repository_save)
-            case "$path" in
-                components/gateway_core_persistence_adapter/src/gateway_persistence_adapter.c|\
-                components/gateway_core_storage/src/device_repository_nvs.c)
-                    return 0
-                    ;;
-            esac
-            ;;
-        device_repository_clear)
-            case "$path" in
-                components/gateway_core_persistence_adapter/src/gateway_persistence_adapter.c|\
-                components/gateway_core_storage/src/device_repository_nvs.c)
-                    return 0
-                    ;;
-            esac
-            ;;
-        device_repository_*)
-            # Any future repository API symbol is storage-owned by default.
-            case "$path" in
-                components/gateway_core_storage/src/device_repository_nvs.c)
-                    return 0
-                    ;;
-            esac
-            ;;
-    esac
-
-    return 1
+    if [[ -n "${hits}" ]]; then
+        while IFS= read -r hit; do
+            local rel="${hit#${ROOT_DIR}/}"
+            echo "ARCH-RULE VIOLATION (gateway_core must not include repository/storage headers): ${rel}"
+            violations=1
+        done <<< "${hits}"
+    fi
 }
 
 check_device_repository_header_usage() {
@@ -62,10 +32,15 @@ check_device_repository_header_usage() {
     while IFS= read -r hit; do
         local rel="${hit#${ROOT_DIR}/}"
         local path="${rel%%:*}"
-        if ! is_allowed_include_user "${path}"; then
-            echo "ARCH-RULE VIOLATION (include device_repository.h outside policy files): ${rel}"
-            violations=1
-        fi
+        case "${path}" in
+            components/gateway_core_persistence_adapter/src/gateway_persistence_adapter.c|\
+            components/gateway_core_storage/src/device_repository_nvs.c)
+                ;;
+            *)
+                echo "ARCH-RULE VIOLATION (include device_repository.h outside ownership files): ${rel}"
+                violations=1
+                ;;
+        esac
     done <<< "${hits}"
 }
 
@@ -80,14 +55,33 @@ check_device_repository_symbol_ownership() {
         local rel="${hit#${ROOT_DIR}/}"
         local path="${rel%%:*}"
         local symbol="${rel##*:}"
-
-        if ! is_allowed_device_repo_symbol_user "${symbol}" "${path}"; then
-            echo "ARCH-RULE VIOLATION (${symbol} used outside ownership policy): ${rel}"
-            violations=1
-        fi
+        case "${symbol}" in
+            device_repository_load|device_repository_save|device_repository_clear)
+                case "${path}" in
+                    components/gateway_core_persistence_adapter/src/gateway_persistence_adapter.c|\
+                    components/gateway_core_storage/src/device_repository_nvs.c)
+                        ;;
+                    *)
+                        echo "ARCH-RULE VIOLATION (${symbol} used outside ownership files): ${rel}"
+                        violations=1
+                        ;;
+                esac
+                ;;
+            device_repository_*)
+                case "${path}" in
+                    components/gateway_core_storage/src/device_repository_nvs.c)
+                        ;;
+                    *)
+                        echo "ARCH-RULE VIOLATION (${symbol} is storage-owned by default): ${rel}"
+                        violations=1
+                        ;;
+                esac
+                ;;
+        esac
     done <<< "${hits}"
 }
 
+check_core_no_repository_headers
 check_device_repository_header_usage
 check_device_repository_symbol_ownership
 

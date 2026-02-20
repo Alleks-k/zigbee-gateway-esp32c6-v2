@@ -11,9 +11,15 @@
 
 static const char *TAG = "API_HANDLERS";
 
+static api_usecases_handle_t req_usecases(httpd_req_t *req)
+{
+    return req ? (api_usecases_handle_t)req->user_ctx : NULL;
+}
+
 esp_err_t api_permit_join_handler(httpd_req_t *req)
 {
-    esp_err_t ret = api_usecase_permit_join(60);
+    api_usecases_handle_t usecases = req_usecases(req);
+    esp_err_t ret = api_usecase_permit_join(usecases, 60);
     if (ret != ESP_OK) {
         return http_error_send_esp(req, ret, "Failed to open network");
     }
@@ -23,13 +29,14 @@ esp_err_t api_permit_join_handler(httpd_req_t *req)
 
 esp_err_t api_control_handler(httpd_req_t *req)
 {
+    api_usecases_handle_t usecases = req_usecases(req);
     api_control_request_t in = {0};
     if (api_parse_control_request(req, &in) != ESP_OK) {
         return http_error_send_esp(req, ESP_ERR_INVALID_ARG, "Missing parameters");
     }
 
     ESP_LOGI(TAG, "Web Control: addr=0x%04x, ep=%d, cmd=%d", in.addr, in.ep, in.cmd);
-    esp_err_t err = api_usecase_control(&in);
+    esp_err_t err = api_usecase_control(usecases, &in);
     if (err != ESP_OK) {
         return http_error_send_esp(req, err, "Failed to send command");
     }
@@ -38,12 +45,13 @@ esp_err_t api_control_handler(httpd_req_t *req)
 
 esp_err_t api_delete_device_handler(httpd_req_t *req)
 {
+    api_usecases_handle_t usecases = req_usecases(req);
     api_delete_request_t in = {0};
     if (api_parse_delete_request(req, &in) != ESP_OK) {
         return http_error_send_esp(req, ESP_ERR_INVALID_ARG, "Invalid JSON");
     }
 
-    if (api_usecase_delete_device(in.short_addr) != ESP_OK) {
+    if (api_usecase_delete_device(usecases, in.short_addr) != ESP_OK) {
         return http_error_send_esp(req, ESP_FAIL, "Delete failed");
     }
     return http_success_send(req, "Device deleted");
@@ -51,12 +59,13 @@ esp_err_t api_delete_device_handler(httpd_req_t *req)
 
 esp_err_t api_rename_device_handler(httpd_req_t *req)
 {
+    api_usecases_handle_t usecases = req_usecases(req);
     api_rename_request_t in = {0};
     if (api_parse_rename_request(req, &in) != ESP_OK) {
         return http_error_send_esp(req, ESP_ERR_INVALID_ARG, "Invalid JSON");
     }
 
-    if (api_usecase_rename_device(in.short_addr, in.name) != ESP_OK) {
+    if (api_usecase_rename_device(usecases, in.short_addr, in.name) != ESP_OK) {
         return http_error_send_esp(req, ESP_FAIL, "Rename failed");
     }
     return http_success_send(req, "Device renamed");
@@ -64,9 +73,10 @@ esp_err_t api_rename_device_handler(httpd_req_t *req)
 
 esp_err_t api_wifi_scan_handler(httpd_req_t *req)
 {
+    api_usecases_handle_t usecases = req_usecases(req);
     wifi_ap_info_t *list = NULL;
     size_t count = 0;
-    esp_err_t err = api_usecase_wifi_scan(&list, &count);
+    esp_err_t err = api_usecase_wifi_scan(usecases, &list, &count);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "WiFi scan failed in service: %s", esp_err_to_name(err));
         return http_error_send_esp(req, err, "Scan failed");
@@ -78,13 +88,13 @@ esp_err_t api_wifi_scan_handler(httpd_req_t *req)
 
     cJSON *root = cJSON_CreateArray();
     if (!root) {
-        api_usecase_wifi_scan_free(list);
+        api_usecase_wifi_scan_free(usecases, list);
         return http_error_send_esp(req, ESP_ERR_NO_MEM, "Failed to allocate scan response");
     }
     for (size_t i = 0; i < count; i++) {
         cJSON *item = cJSON_CreateObject();
         if (!item) {
-            api_usecase_wifi_scan_free(list);
+            api_usecase_wifi_scan_free(usecases, list);
             cJSON_Delete(root);
             return http_error_send_esp(req, ESP_ERR_NO_MEM, "Failed to allocate scan entry");
         }
@@ -94,7 +104,7 @@ esp_err_t api_wifi_scan_handler(httpd_req_t *req)
         cJSON_AddItemToArray(root, item);
     }
 
-    api_usecase_wifi_scan_free(list);
+    api_usecase_wifi_scan_free(usecases, list);
     char *json_str = cJSON_PrintUnformatted(root);
     cJSON_Delete(root);
     if (!json_str) {
@@ -111,7 +121,8 @@ esp_err_t api_wifi_scan_handler(httpd_req_t *req)
 
 esp_err_t api_reboot_handler(httpd_req_t *req)
 {
-    if (api_usecase_schedule_reboot(1000) != ESP_OK) {
+    api_usecases_handle_t usecases = req_usecases(req);
+    if (api_usecase_schedule_reboot(usecases, 1000) != ESP_OK) {
         return http_error_send_esp(req, ESP_FAIL, "Failed to schedule reboot");
     }
     return http_success_send(req, "Rebooting...");
@@ -119,13 +130,14 @@ esp_err_t api_reboot_handler(httpd_req_t *req)
 
 esp_err_t api_factory_reset_handler(httpd_req_t *req)
 {
-    esp_err_t err = api_usecase_factory_reset();
+    api_usecases_handle_t usecases = req_usecases(req);
+    esp_err_t err = api_usecase_factory_reset(usecases);
     if (err != ESP_OK) {
         return http_error_send_esp(req, err, "Factory reset failed");
     }
 
     api_factory_reset_report_t report = {0};
-    err = api_usecase_get_factory_reset_report(&report);
+    err = api_usecase_get_factory_reset_report(usecases, &report);
     if (err != ESP_OK) {
         return http_error_send_esp(req, err, "Factory reset status unavailable");
     }
@@ -150,12 +162,13 @@ esp_err_t api_factory_reset_handler(httpd_req_t *req)
 
 esp_err_t api_wifi_save_handler(httpd_req_t *req)
 {
+    api_usecases_handle_t usecases = req_usecases(req);
     api_wifi_save_request_t in = {0};
     if (api_parse_wifi_save_request(req, &in) != ESP_OK) {
         return http_error_send_esp(req, ESP_ERR_INVALID_ARG, "Invalid JSON");
     }
 
-    esp_err_t err = api_usecase_wifi_save(&in);
+    esp_err_t err = api_usecase_wifi_save(usecases, &in);
     if (err == ESP_OK) {
         return http_success_send(req, "Saved. Restarting...");
     }

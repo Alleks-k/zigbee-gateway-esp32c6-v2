@@ -83,31 +83,48 @@ typedef struct {
     api_ws_runtime_metrics_t ws_metrics;
 } api_health_snapshot_t;
 
-typedef uint32_t (*api_ws_client_count_provider_t)(void);
-typedef bool (*api_ws_metrics_provider_t)(api_ws_runtime_metrics_t *out_metrics);
+typedef struct api_usecases api_usecases_t;
+typedef api_usecases_t *api_usecases_handle_t;
 
-void api_usecases_set_service_ops(const api_service_ops_t *ops);
-void api_usecases_set_ws_client_count_provider(api_ws_client_count_provider_t provider);
-void api_usecases_set_ws_metrics_provider(api_ws_metrics_provider_t provider);
-void api_usecases_set_wifi_system_handle(gateway_wifi_system_handle_t handle);
-void api_usecases_set_jobs_handle(gateway_jobs_handle_t handle);
+typedef uint32_t (*api_ws_client_count_provider_t)(void *ctx);
+typedef bool (*api_ws_metrics_provider_t)(void *ctx, api_ws_runtime_metrics_t *out_metrics);
 
-esp_err_t api_usecase_control(const api_control_request_t *in);
-esp_err_t api_usecase_wifi_save(const api_wifi_save_request_t *in);
-esp_err_t api_usecase_factory_reset(void);
-esp_err_t api_usecase_get_network_status(zigbee_network_status_t *out_status);
-int api_usecase_get_devices_snapshot(zb_device_t *out_devices, int max_devices);
-int api_usecase_get_neighbor_lqi_snapshot(zigbee_neighbor_lqi_t *out_neighbors, int max_neighbors);
-esp_err_t api_usecase_get_cached_lqi_snapshot(zigbee_neighbor_lqi_t *out_neighbors, int max_neighbors, int *out_count,
-                                              zigbee_lqi_source_t *out_source, uint64_t *out_updated_ms);
-esp_err_t api_usecase_permit_join(uint8_t duration_seconds);
-esp_err_t api_usecase_delete_device(uint16_t short_addr);
-esp_err_t api_usecase_rename_device(uint16_t short_addr, const char *name);
-esp_err_t api_usecase_wifi_scan(wifi_ap_info_t **out_list, size_t *out_count);
-void api_usecase_wifi_scan_free(wifi_ap_info_t *list);
-esp_err_t api_usecase_schedule_reboot(uint32_t delay_ms);
-esp_err_t api_usecase_get_factory_reset_report(api_factory_reset_report_t *out_report);
-esp_err_t api_usecase_collect_telemetry(api_system_telemetry_t *out);
-esp_err_t api_usecase_collect_health_snapshot(api_health_snapshot_t *out);
-esp_err_t api_usecase_jobs_submit(gateway_core_job_type_t type, uint32_t reboot_delay_ms, uint32_t *out_job_id);
-esp_err_t api_usecase_jobs_get(uint32_t job_id, gateway_core_job_info_t *out_info);
+typedef struct {
+    const api_service_ops_t *service_ops;
+    gateway_wifi_system_handle_t wifi_system;
+    gateway_jobs_handle_t jobs;
+    api_ws_client_count_provider_t ws_client_count_provider;
+    api_ws_metrics_provider_t ws_metrics_provider;
+    void *ws_provider_ctx;
+} api_usecases_init_params_t;
+
+esp_err_t api_usecases_create(const api_usecases_init_params_t *params, api_usecases_handle_t *out_handle);
+void api_usecases_destroy(api_usecases_handle_t handle);
+
+void api_usecases_set_service_ops_with_handle(api_usecases_handle_t handle, const api_service_ops_t *ops);
+void api_usecases_set_runtime_handles(api_usecases_handle_t handle, gateway_wifi_system_handle_t wifi_system,
+                                      gateway_jobs_handle_t jobs);
+void api_usecases_set_ws_providers(api_usecases_handle_t handle, api_ws_client_count_provider_t count_provider,
+                                   api_ws_metrics_provider_t metrics_provider, void *provider_ctx);
+
+esp_err_t api_usecase_control(api_usecases_handle_t handle, const api_control_request_t *in);
+esp_err_t api_usecase_wifi_save(api_usecases_handle_t handle, const api_wifi_save_request_t *in);
+esp_err_t api_usecase_factory_reset(api_usecases_handle_t handle);
+esp_err_t api_usecase_get_network_status(api_usecases_handle_t handle, zigbee_network_status_t *out_status);
+int api_usecase_get_devices_snapshot(api_usecases_handle_t handle, zb_device_t *out_devices, int max_devices);
+int api_usecase_get_neighbor_lqi_snapshot(api_usecases_handle_t handle, zigbee_neighbor_lqi_t *out_neighbors, int max_neighbors);
+esp_err_t api_usecase_get_cached_lqi_snapshot(api_usecases_handle_t handle, zigbee_neighbor_lqi_t *out_neighbors,
+                                              int max_neighbors, int *out_count, zigbee_lqi_source_t *out_source,
+                                              uint64_t *out_updated_ms);
+esp_err_t api_usecase_permit_join(api_usecases_handle_t handle, uint8_t duration_seconds);
+esp_err_t api_usecase_delete_device(api_usecases_handle_t handle, uint16_t short_addr);
+esp_err_t api_usecase_rename_device(api_usecases_handle_t handle, uint16_t short_addr, const char *name);
+esp_err_t api_usecase_wifi_scan(api_usecases_handle_t handle, wifi_ap_info_t **out_list, size_t *out_count);
+void api_usecase_wifi_scan_free(api_usecases_handle_t handle, wifi_ap_info_t *list);
+esp_err_t api_usecase_schedule_reboot(api_usecases_handle_t handle, uint32_t delay_ms);
+esp_err_t api_usecase_get_factory_reset_report(api_usecases_handle_t handle, api_factory_reset_report_t *out_report);
+esp_err_t api_usecase_collect_telemetry(api_usecases_handle_t handle, api_system_telemetry_t *out);
+esp_err_t api_usecase_collect_health_snapshot(api_usecases_handle_t handle, api_health_snapshot_t *out);
+esp_err_t api_usecase_jobs_submit(api_usecases_handle_t handle, gateway_core_job_type_t type, uint32_t reboot_delay_ms,
+                                  uint32_t *out_job_id);
+esp_err_t api_usecase_jobs_get(api_usecases_handle_t handle, uint32_t job_id, gateway_core_job_info_t *out_info);

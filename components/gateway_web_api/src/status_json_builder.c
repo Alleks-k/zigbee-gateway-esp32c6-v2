@@ -70,10 +70,10 @@ static bool append_json_escaped(char **cursor, size_t *remaining, const char *sr
     return true;
 }
 
-static esp_err_t append_devices_array(char **cursor, size_t *remaining)
+static esp_err_t append_devices_array(api_usecases_handle_t usecases, char **cursor, size_t *remaining)
 {
     zb_device_t snapshot[MAX_DEVICES];
-    int count = api_usecase_get_devices_snapshot(snapshot, MAX_DEVICES);
+    int count = api_usecase_get_devices_snapshot(usecases, snapshot, MAX_DEVICES);
     for (int i = 0; i < count; i++) {
         if (i > 0 && !append_literal(cursor, remaining, ",")) {
             return ESP_ERR_NO_MEM;
@@ -90,9 +90,9 @@ static esp_err_t append_devices_array(char **cursor, size_t *remaining)
     return ESP_OK;
 }
 
-esp_err_t build_status_json_compact(char *out, size_t out_size, size_t *out_len)
+esp_err_t build_status_json_compact(api_usecases_handle_t usecases, char *out, size_t out_size, size_t *out_len)
 {
-    if (!out || out_size < 2) {
+    if (!usecases || !out || out_size < 2) {
         return ESP_ERR_INVALID_ARG;
     }
 
@@ -100,7 +100,7 @@ esp_err_t build_status_json_compact(char *out, size_t out_size, size_t *out_len)
     size_t remaining = out_size;
 
     zigbee_network_status_t status = {0};
-    if (api_usecase_get_network_status(&status) != ESP_OK) {
+    if (api_usecase_get_network_status(usecases, &status) != ESP_OK) {
         return ESP_FAIL;
     }
 
@@ -123,7 +123,7 @@ esp_err_t build_status_json_compact(char *out, size_t out_size, size_t *out_len)
         return ESP_ERR_NO_MEM;
     }
 
-    esp_err_t dev_ret = append_devices_array(&cursor, &remaining);
+    esp_err_t dev_ret = append_devices_array(usecases, &cursor, &remaining);
     if (dev_ret != ESP_OK) {
         return dev_ret;
     }
@@ -138,9 +138,9 @@ esp_err_t build_status_json_compact(char *out, size_t out_size, size_t *out_len)
     return ESP_OK;
 }
 
-esp_err_t build_devices_json_compact(char *out, size_t out_size, size_t *out_len)
+esp_err_t build_devices_json_compact(api_usecases_handle_t usecases, char *out, size_t out_size, size_t *out_len)
 {
-    if (!out || out_size < 2) {
+    if (!usecases || !out || out_size < 2) {
         return ESP_ERR_INVALID_ARG;
     }
 
@@ -151,7 +151,7 @@ esp_err_t build_devices_json_compact(char *out, size_t out_size, size_t *out_len
         return ESP_ERR_NO_MEM;
     }
 
-    esp_err_t dev_ret = append_devices_array(&cursor, &remaining);
+    esp_err_t dev_ret = append_devices_array(usecases, &cursor, &remaining);
     if (dev_ret != ESP_OK) {
         return dev_ret;
     }
@@ -166,8 +166,11 @@ esp_err_t build_devices_json_compact(char *out, size_t out_size, size_t *out_len
     return ESP_OK;
 }
 
-char *create_status_json(void)
+char *create_status_json(api_usecases_handle_t usecases)
 {
+    if (!usecases) {
+        return NULL;
+    }
     size_t cap = 1024;
     for (int i = 0; i < 4; i++) {
         char *buf = (char *)malloc(cap);
@@ -175,7 +178,7 @@ char *create_status_json(void)
             return NULL;
         }
         size_t out_len = 0;
-        esp_err_t ret = build_status_json_compact(buf, cap, &out_len);
+        esp_err_t ret = build_status_json_compact(usecases, buf, cap, &out_len);
         if (ret == ESP_OK) {
             (void)out_len;
             return buf;
@@ -188,4 +191,3 @@ char *create_status_json(void)
     }
     return NULL;
 }
-

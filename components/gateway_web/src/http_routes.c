@@ -22,15 +22,15 @@ static bool register_uri_handler_checked(httpd_handle_t srv, const httpd_uri_t *
     return true;
 }
 
-#define REGISTER_API_ROUTE_BOTH(_server, _suffix, _method, _handler, _ok)                                       \
+#define REGISTER_API_ROUTE_BOTH(_server, _suffix, _method, _handler, _usecases, _ok)                            \
     do {                                                                                                          \
-        httpd_uri_t uri_v1 = { .uri = "/api/v1" _suffix, .method = _method, .handler = _handler };              \
+        httpd_uri_t uri_v1 = { .uri = "/api/v1" _suffix, .method = _method, .handler = _handler, .user_ctx = _usecases }; \
         (_ok) &= register_uri_handler_checked((_server), &uri_v1);                                                \
-        httpd_uri_t uri_legacy = { .uri = "/api" _suffix, .method = _method, .handler = _handler };             \
+        httpd_uri_t uri_legacy = { .uri = "/api" _suffix, .method = _method, .handler = _handler, .user_ctx = _usecases }; \
         (_ok) &= register_uri_handler_checked((_server), &uri_legacy);                                            \
     } while (0)
 
-bool http_routes_register(httpd_handle_t server, ws_manager_handle_t ws_manager)
+bool http_routes_register(httpd_handle_t server, ws_manager_handle_t ws_manager, api_usecases_handle_t usecases)
 {
     bool ok = true;
 
@@ -43,22 +43,26 @@ bool http_routes_register(httpd_handle_t server, ws_manager_handle_t ws_manager)
     httpd_uri_t uri_js = { .uri = "/script.js", .method = HTTP_GET, .handler = js_handler };
     ok &= register_uri_handler_checked(server, &uri_js);
 
-    REGISTER_API_ROUTE_BOTH(server, "/status", HTTP_GET, api_status_handler, ok);
-    REGISTER_API_ROUTE_BOTH(server, "/lqi", HTTP_GET, api_lqi_handler, ok);
-    REGISTER_API_ROUTE_BOTH(server, "/health", HTTP_GET, api_health_handler, ok);
-    REGISTER_API_ROUTE_BOTH(server, "/permit_join", HTTP_POST, api_permit_join_handler, ok);
-    REGISTER_API_ROUTE_BOTH(server, "/control", HTTP_POST, api_control_handler, ok);
-    REGISTER_API_ROUTE_BOTH(server, "/delete", HTTP_POST, api_delete_device_handler, ok);
-    REGISTER_API_ROUTE_BOTH(server, "/rename", HTTP_POST, api_rename_device_handler, ok);
-    REGISTER_API_ROUTE_BOTH(server, "/wifi/scan", HTTP_GET, api_wifi_scan_handler, ok);
-    REGISTER_API_ROUTE_BOTH(server, "/settings/wifi", HTTP_POST, api_wifi_save_handler, ok);
-    REGISTER_API_ROUTE_BOTH(server, "/reboot", HTTP_POST, api_reboot_handler, ok);
-    REGISTER_API_ROUTE_BOTH(server, "/factory_reset", HTTP_POST, api_factory_reset_handler, ok);
-    REGISTER_API_ROUTE_BOTH(server, "/jobs", HTTP_POST, api_jobs_submit_handler, ok);
+    REGISTER_API_ROUTE_BOTH(server, "/status", HTTP_GET, api_status_handler, usecases, ok);
+    REGISTER_API_ROUTE_BOTH(server, "/lqi", HTTP_GET, api_lqi_handler, usecases, ok);
+    REGISTER_API_ROUTE_BOTH(server, "/health", HTTP_GET, api_health_handler, usecases, ok);
+    REGISTER_API_ROUTE_BOTH(server, "/permit_join", HTTP_POST, api_permit_join_handler, usecases, ok);
+    REGISTER_API_ROUTE_BOTH(server, "/control", HTTP_POST, api_control_handler, usecases, ok);
+    REGISTER_API_ROUTE_BOTH(server, "/delete", HTTP_POST, api_delete_device_handler, usecases, ok);
+    REGISTER_API_ROUTE_BOTH(server, "/rename", HTTP_POST, api_rename_device_handler, usecases, ok);
+    REGISTER_API_ROUTE_BOTH(server, "/wifi/scan", HTTP_GET, api_wifi_scan_handler, usecases, ok);
+    REGISTER_API_ROUTE_BOTH(server, "/settings/wifi", HTTP_POST, api_wifi_save_handler, usecases, ok);
+    REGISTER_API_ROUTE_BOTH(server, "/reboot", HTTP_POST, api_reboot_handler, usecases, ok);
+    REGISTER_API_ROUTE_BOTH(server, "/factory_reset", HTTP_POST, api_factory_reset_handler, usecases, ok);
+    REGISTER_API_ROUTE_BOTH(server, "/jobs", HTTP_POST, api_jobs_submit_handler, usecases, ok);
 
-    httpd_uri_t uri_jobs_get_v1 = { .uri = "/api/v1/jobs/*", .method = HTTP_GET, .handler = api_jobs_get_handler };
+    httpd_uri_t uri_jobs_get_v1 = {
+        .uri = "/api/v1/jobs/*", .method = HTTP_GET, .handler = api_jobs_get_handler, .user_ctx = usecases
+    };
     ok &= register_uri_handler_checked(server, &uri_jobs_get_v1);
-    httpd_uri_t uri_jobs_get_legacy = { .uri = "/api/jobs/*", .method = HTTP_GET, .handler = api_jobs_get_handler };
+    httpd_uri_t uri_jobs_get_legacy = {
+        .uri = "/api/jobs/*", .method = HTTP_GET, .handler = api_jobs_get_handler, .user_ctx = usecases
+    };
     ok &= register_uri_handler_checked(server, &uri_jobs_get_legacy);
 
     httpd_uri_t uri_ws = {

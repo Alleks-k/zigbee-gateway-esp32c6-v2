@@ -141,14 +141,14 @@ static esp_err_t append_error_ring_array(char **cursor, size_t *remaining)
     return ESP_OK;
 }
 
-esp_err_t build_health_json_compact(char *out, size_t out_size, size_t *out_len)
+esp_err_t build_health_json_compact(api_usecases_handle_t usecases, char *out, size_t out_size, size_t *out_len)
 {
-    if (!out || out_size < 2) {
+    if (!usecases || !out || out_size < 2) {
         return ESP_ERR_INVALID_ARG;
     }
 
     api_health_snapshot_t hs = {0};
-    esp_err_t hs_ret = api_usecase_collect_health_snapshot(&hs);
+    esp_err_t hs_ret = api_usecase_collect_health_snapshot(usecases, &hs);
     if (hs_ret != ESP_OK) {
         return hs_ret;
     }

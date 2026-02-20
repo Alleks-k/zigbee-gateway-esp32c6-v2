@@ -17,7 +17,7 @@ static const char *TAG = "WS_POLICY";
 
 void ws_broadcast_status_with_handle(ws_manager_handle_t handle)
 {
-    if (!handle || !handle->server) {
+    if (!handle || !handle->server || !handle->api_usecases) {
         return;
     }
     if (handle->ws_broadcast_mutex && xSemaphoreTake(handle->ws_broadcast_mutex, 0) != pdTRUE) {
@@ -31,7 +31,8 @@ void ws_broadcast_status_with_handle(ws_manager_handle_t handle)
 
     bool release_broadcast_lock = (handle->ws_broadcast_mutex != NULL);
     size_t json_len = 0;
-    esp_err_t build_ret = build_devices_json_compact(handle->ws_devices_json_buf, sizeof(handle->ws_devices_json_buf), &json_len);
+    esp_err_t build_ret = build_devices_json_compact(
+        handle->api_usecases, handle->ws_devices_json_buf, sizeof(handle->ws_devices_json_buf), &json_len);
     if (build_ret != ESP_OK) {
         ESP_LOGW(TAG, "Failed to build WS delta JSON payload: %s", esp_err_to_name(build_ret));
         goto out;
@@ -78,7 +79,8 @@ void ws_broadcast_status_with_handle(ws_manager_handle_t handle)
 
     if ((now_us - handle->last_ws_health_send_us) >= WS_MIN_HEALTH_BROADCAST_INTERVAL_US) {
         size_t health_len = 0;
-        esp_err_t health_ret = build_health_json_compact(handle->ws_health_json_buf, sizeof(handle->ws_health_json_buf), &health_len);
+        esp_err_t health_ret = build_health_json_compact(
+            handle->api_usecases, handle->ws_health_json_buf, sizeof(handle->ws_health_json_buf), &health_len);
         if (health_ret == ESP_OK) {
             bool same_health = (health_len == handle->last_ws_health_json_len) &&
                                (health_len > 0) &&
@@ -102,7 +104,8 @@ void ws_broadcast_status_with_handle(ws_manager_handle_t handle)
 
     if ((now_us - handle->last_ws_lqi_send_us) >= WS_MIN_LQI_BROADCAST_INTERVAL_US) {
         size_t lqi_len = 0;
-        esp_err_t lqi_ret = build_lqi_json_compact(handle->ws_lqi_json_buf, sizeof(handle->ws_lqi_json_buf), &lqi_len);
+        esp_err_t lqi_ret = build_lqi_json_compact(
+            handle->api_usecases, handle->ws_lqi_json_buf, sizeof(handle->ws_lqi_json_buf), &lqi_len);
         if (lqi_ret == ESP_OK) {
             bool same_lqi = (lqi_len == handle->last_ws_lqi_json_len) &&
                             (lqi_len > 0) &&

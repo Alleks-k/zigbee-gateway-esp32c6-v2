@@ -24,6 +24,7 @@
 typedef struct ws_manager_ctx {
     int ws_fds[MAX_WS_CLIENTS];
     httpd_handle_t server;
+    api_usecases_handle_t api_usecases;
     SemaphoreHandle_t ws_mutex;
     SemaphoreHandle_t ws_broadcast_mutex;
     esp_event_handler_instance_t list_changed_handler;

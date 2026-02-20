@@ -32,6 +32,11 @@ static int s_mock_wifi_net_platform_init_called = 0;
 static int s_mock_wifi_sta_connect_called = 0;
 static int s_mock_wifi_fallback_called = 0;
 static job_queue_handle_t s_job_queue = NULL;
+static api_usecases_handle_t s_api_usecases = NULL;
+static int s_api_wifi_ctx = 0;
+static int s_api_jobs_ctx = 0;
+static gateway_wifi_system_handle_t s_api_wifi_handle = (gateway_wifi_system_handle_t)&s_api_wifi_ctx;
+static gateway_jobs_handle_t s_api_jobs_handle = (gateway_jobs_handle_t)&s_api_jobs_ctx;
 
 static job_queue_handle_t ensure_job_queue(void)
 {
@@ -157,6 +162,21 @@ static void reset_api_mocks(void)
     s_mock_wifi_net_platform_init_called = 0;
     s_mock_wifi_sta_connect_called = 0;
     s_mock_wifi_fallback_called = 0;
+    if (!s_api_usecases) {
+        api_usecases_init_params_t params = {
+            .service_ops = NULL,
+            .wifi_system = s_api_wifi_handle,
+            .jobs = s_api_jobs_handle,
+            .ws_client_count_provider = NULL,
+            .ws_metrics_provider = NULL,
+            .ws_provider_ctx = NULL,
+        };
+        TEST_ASSERT_EQUAL(ESP_OK, api_usecases_create(&params, &s_api_usecases));
+    } else {
+        api_usecases_set_runtime_handles(s_api_usecases, s_api_wifi_handle, s_api_jobs_handle);
+    }
+    api_usecases_set_service_ops_with_handle(s_api_usecases, NULL);
+    api_usecases_set_ws_providers(s_api_usecases, NULL, NULL, NULL);
 }
 
 static api_service_ops_t make_mock_ops(void)
@@ -181,16 +201,16 @@ static void test_e2e_control_contract_and_usecase(void)
 
     reset_api_mocks();
     const api_service_ops_t mock_ops = make_mock_ops();
-    api_usecases_set_service_ops(&mock_ops);
+    api_usecases_set_service_ops_with_handle(s_api_usecases, &mock_ops);
 
-    esp_err_t ret = api_usecase_control(&req);
+    esp_err_t ret = api_usecase_control(s_api_usecases, &req);
     TEST_ASSERT_EQUAL(ESP_OK, ret);
     TEST_ASSERT_EQUAL_INT(1, s_mock_send_on_off_called);
     TEST_ASSERT_EQUAL_UINT16(18842, s_mock_send_on_off_addr);
     TEST_ASSERT_EQUAL_UINT8(1, s_mock_send_on_off_ep);
     TEST_ASSERT_EQUAL_UINT8(1, s_mock_send_on_off_cmd);
 
-    api_usecases_set_service_ops(NULL);
+    api_usecases_set_service_ops_with_handle(s_api_usecases, NULL);
 }
 
 static void test_e2e_endpoint_control_invalid_json_rejected(void)
@@ -212,12 +232,12 @@ static void test_e2e_endpoint_control_service_error_propagates(void)
     reset_api_mocks();
     api_service_ops_t mock_ops = make_mock_ops();
     mock_ops.send_on_off = NULL;
-    api_usecases_set_service_ops(&mock_ops);
+    api_usecases_set_service_ops_with_handle(s_api_usecases, &mock_ops);
 
-    esp_err_t ret = api_usecase_control(&req);
+    esp_err_t ret = api_usecase_control(s_api_usecases, &req);
     TEST_ASSERT_EQUAL(ESP_ERR_INVALID_ARG, ret);
 
-    api_usecases_set_service_ops(NULL);
+    api_usecases_set_service_ops_with_handle(s_api_usecases, NULL);
 }
 
 static void test_e2e_wifi_settings_contract_and_usecase(void)
@@ -230,9 +250,9 @@ static void test_e2e_wifi_settings_contract_and_usecase(void)
 
     reset_api_mocks();
     const api_service_ops_t mock_ops = make_mock_ops();
-    api_usecases_set_service_ops(&mock_ops);
+    api_usecases_set_service_ops_with_handle(s_api_usecases, &mock_ops);
 
-    esp_err_t ret = api_usecase_wifi_save(&req);
+    esp_err_t ret = api_usecase_wifi_save(s_api_usecases, &req);
     TEST_ASSERT_EQUAL(ESP_OK, ret);
     TEST_ASSERT_EQUAL_INT(1, s_mock_wifi_save_called);
     TEST_ASSERT_EQUAL_STRING("TestNet", s_mock_wifi_ssid);
@@ -240,7 +260,7 @@ static void test_e2e_wifi_settings_contract_and_usecase(void)
     TEST_ASSERT_EQUAL_INT(1, s_mock_schedule_reboot_called);
     TEST_ASSERT_EQUAL_UINT32(1000, s_mock_schedule_reboot_delay);
 
-    api_usecases_set_service_ops(NULL);
+    api_usecases_set_service_ops_with_handle(s_api_usecases, NULL);
 }
 
 static void test_e2e_endpoint_wifi_settings_invalid_json_rejected(void)
@@ -262,14 +282,14 @@ static void test_e2e_endpoint_wifi_settings_reboot_failure_propagates(void)
     reset_api_mocks();
     s_mock_schedule_reboot_ret = ESP_FAIL;
     const api_service_ops_t mock_ops = make_mock_ops();
-    api_usecases_set_service_ops(&mock_ops);
+    api_usecases_set_service_ops_with_handle(s_api_usecases, &mock_ops);
 
-    esp_err_t ret = api_usecase_wifi_save(&req);
+    esp_err_t ret = api_usecase_wifi_save(s_api_usecases, &req);
     TEST_ASSERT_EQUAL(ESP_FAIL, ret);
     TEST_ASSERT_EQUAL_INT(1, s_mock_wifi_save_called);
     TEST_ASSERT_EQUAL_INT(1, s_mock_schedule_reboot_called);
 
-    api_usecases_set_service_ops(NULL);
+    api_usecases_set_service_ops_with_handle(s_api_usecases, NULL);
 }
 
 static void test_e2e_factory_reset_usecase_mock(void)
@@ -277,14 +297,14 @@ static void test_e2e_factory_reset_usecase_mock(void)
     reset_api_mocks();
     s_mock_factory_reset_ret = ESP_FAIL;
     const api_service_ops_t mock_ops = make_mock_ops();
-    api_usecases_set_service_ops(&mock_ops);
+    api_usecases_set_service_ops_with_handle(s_api_usecases, &mock_ops);
 
-    esp_err_t ret = api_usecase_factory_reset();
+    esp_err_t ret = api_usecase_factory_reset(s_api_usecases);
     TEST_ASSERT_EQUAL(ESP_FAIL, ret);
     TEST_ASSERT_EQUAL_INT(1, s_mock_factory_reset_called);
     TEST_ASSERT_EQUAL_UINT32(1000, s_mock_factory_reset_delay);
 
-    api_usecases_set_service_ops(NULL);
+    api_usecases_set_service_ops_with_handle(s_api_usecases, NULL);
 }
 
 static void test_e2e_endpoint_factory_reset_success(void)
@@ -292,14 +312,14 @@ static void test_e2e_endpoint_factory_reset_success(void)
     reset_api_mocks();
     s_mock_factory_reset_ret = ESP_OK;
     const api_service_ops_t mock_ops = make_mock_ops();
-    api_usecases_set_service_ops(&mock_ops);
+    api_usecases_set_service_ops_with_handle(s_api_usecases, &mock_ops);
 
-    esp_err_t ret = api_usecase_factory_reset();
+    esp_err_t ret = api_usecase_factory_reset(s_api_usecases);
     TEST_ASSERT_EQUAL(ESP_OK, ret);
     TEST_ASSERT_EQUAL_INT(1, s_mock_factory_reset_called);
     TEST_ASSERT_EQUAL_UINT32(1000, s_mock_factory_reset_delay);
 
-    api_usecases_set_service_ops(NULL);
+    api_usecases_set_service_ops_with_handle(s_api_usecases, NULL);
 }
 
 static void test_e2e_wifi_scan_contract_and_usecase(void)
@@ -309,7 +329,7 @@ static void test_e2e_wifi_scan_contract_and_usecase(void)
 
     wifi_ap_info_t *list = NULL;
     size_t count = 0;
-    esp_err_t ret = api_usecase_wifi_scan(&list, &count);
+    esp_err_t ret = api_usecase_wifi_scan(s_api_usecases, &list, &count);
     TEST_ASSERT_EQUAL(ESP_OK, ret);
     TEST_ASSERT_EQUAL_INT(1, s_mock_wifi_scan_called);
     TEST_ASSERT_EQUAL_UINT32(2, (uint32_t)count);
@@ -319,7 +339,7 @@ static void test_e2e_wifi_scan_contract_and_usecase(void)
     TEST_ASSERT_EQUAL_INT(3, list[0].auth);
     TEST_ASSERT_EQUAL_STRING("TestNet-B", list[1].ssid);
 
-    api_usecase_wifi_scan_free(list);
+    api_usecase_wifi_scan_free(s_api_usecases, list);
     TEST_ASSERT_EQUAL_INT(1, s_mock_wifi_scan_free_called);
 
     wifi_service_register_scan_impl(NULL, NULL);

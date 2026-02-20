@@ -1,193 +1,262 @@
 #include "api_usecases.h"
 
+#include <stdlib.h>
 #include <string.h>
 
-static gateway_wifi_system_handle_t s_wifi_system = NULL;
-static gateway_jobs_handle_t s_jobs = NULL;
-
-static esp_err_t require_wifi_system_handle(void)
-{
-    return s_wifi_system ? ESP_OK : ESP_ERR_INVALID_STATE;
-}
-
-static esp_err_t require_jobs_handle(void)
-{
-    return s_jobs ? ESP_OK : ESP_ERR_INVALID_STATE;
-}
-
-static esp_err_t real_send_on_off(uint16_t short_addr, uint8_t endpoint, uint8_t on_off)
-{
-    return gateway_device_zigbee_send_on_off(short_addr, endpoint, on_off);
-}
-
-static esp_err_t real_wifi_save_credentials(const char *ssid, const char *password)
-{
-    if (!s_wifi_system) {
-        return ESP_ERR_INVALID_STATE;
-    }
-    return gateway_wifi_system_save_credentials(s_wifi_system, ssid, password);
-}
-
-static esp_err_t real_schedule_reboot(uint32_t delay_ms)
-{
-    if (!s_wifi_system) {
-        return ESP_ERR_INVALID_STATE;
-    }
-    return gateway_wifi_system_schedule_reboot(s_wifi_system, delay_ms);
-}
-
-static esp_err_t real_factory_reset_and_reboot(uint32_t reboot_delay_ms)
-{
-    if (!s_wifi_system) {
-        return ESP_ERR_INVALID_STATE;
-    }
-    return gateway_wifi_system_factory_reset_and_reboot(s_wifi_system, reboot_delay_ms);
-}
-
-static const api_service_ops_t s_real_ops = {
-    .send_on_off = real_send_on_off,
-    .wifi_save_credentials = real_wifi_save_credentials,
-    .schedule_reboot = real_schedule_reboot,
-    .factory_reset_and_reboot = real_factory_reset_and_reboot,
+struct api_usecases {
+    const api_service_ops_t *service_ops;
+    gateway_wifi_system_handle_t wifi_system;
+    gateway_jobs_handle_t jobs;
+    api_ws_client_count_provider_t ws_client_count_provider;
+    api_ws_metrics_provider_t ws_metrics_provider;
+    void *ws_provider_ctx;
 };
 
-static const api_service_ops_t *s_ops = &s_real_ops;
-static api_ws_client_count_provider_t s_ws_client_count_provider = NULL;
-static api_ws_metrics_provider_t s_ws_metrics_provider = NULL;
-
-void api_usecases_set_service_ops(const api_service_ops_t *ops)
+esp_err_t api_usecases_create(const api_usecases_init_params_t *params, api_usecases_handle_t *out_handle)
 {
-    s_ops = ops ? ops : &s_real_ops;
-}
-
-void api_usecases_set_ws_client_count_provider(api_ws_client_count_provider_t provider)
-{
-    s_ws_client_count_provider = provider;
-}
-
-void api_usecases_set_ws_metrics_provider(api_ws_metrics_provider_t provider)
-{
-    s_ws_metrics_provider = provider;
-}
-
-void api_usecases_set_wifi_system_handle(gateway_wifi_system_handle_t handle)
-{
-    s_wifi_system = handle;
-}
-
-void api_usecases_set_jobs_handle(gateway_jobs_handle_t handle)
-{
-    s_jobs = handle;
-}
-
-esp_err_t api_usecase_control(const api_control_request_t *in)
-{
-    if (!in || !s_ops || !s_ops->send_on_off) {
-        return ESP_ERR_INVALID_ARG;
-    }
-    return s_ops->send_on_off(in->addr, in->ep, in->cmd);
-}
-
-esp_err_t api_usecase_wifi_save(const api_wifi_save_request_t *in)
-{
-    if (!in || !s_ops || !s_ops->wifi_save_credentials || !s_ops->schedule_reboot) {
+    if (!out_handle) {
         return ESP_ERR_INVALID_ARG;
     }
 
-    esp_err_t err = s_ops->wifi_save_credentials(in->ssid, in->password);
+    api_usecases_t *handle = (api_usecases_t *)calloc(1, sizeof(*handle));
+    if (!handle) {
+        return ESP_ERR_NO_MEM;
+    }
+
+    if (params) {
+        handle->service_ops = params->service_ops;
+        handle->wifi_system = params->wifi_system;
+        handle->jobs = params->jobs;
+        handle->ws_client_count_provider = params->ws_client_count_provider;
+        handle->ws_metrics_provider = params->ws_metrics_provider;
+        handle->ws_provider_ctx = params->ws_provider_ctx;
+    }
+
+    *out_handle = handle;
+    return ESP_OK;
+}
+
+void api_usecases_destroy(api_usecases_handle_t handle)
+{
+    free(handle);
+}
+
+void api_usecases_set_service_ops_with_handle(api_usecases_handle_t handle, const api_service_ops_t *ops)
+{
+    if (!handle) {
+        return;
+    }
+    handle->service_ops = ops;
+}
+
+void api_usecases_set_runtime_handles(api_usecases_handle_t handle, gateway_wifi_system_handle_t wifi_system,
+                                      gateway_jobs_handle_t jobs)
+{
+    if (!handle) {
+        return;
+    }
+    handle->wifi_system = wifi_system;
+    handle->jobs = jobs;
+}
+
+void api_usecases_set_ws_providers(api_usecases_handle_t handle, api_ws_client_count_provider_t count_provider,
+                                   api_ws_metrics_provider_t metrics_provider, void *provider_ctx)
+{
+    if (!handle) {
+        return;
+    }
+    handle->ws_client_count_provider = count_provider;
+    handle->ws_metrics_provider = metrics_provider;
+    handle->ws_provider_ctx = provider_ctx;
+}
+
+static esp_err_t require_handle(api_usecases_handle_t handle)
+{
+    return handle ? ESP_OK : ESP_ERR_INVALID_ARG;
+}
+
+static esp_err_t require_wifi_system(api_usecases_handle_t handle)
+{
+    if (!handle) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    return handle->wifi_system ? ESP_OK : ESP_ERR_INVALID_STATE;
+}
+
+static esp_err_t require_jobs(api_usecases_handle_t handle)
+{
+    if (!handle) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    return handle->jobs ? ESP_OK : ESP_ERR_INVALID_STATE;
+}
+
+esp_err_t api_usecase_control(api_usecases_handle_t handle, const api_control_request_t *in)
+{
+    esp_err_t ret = require_handle(handle);
+    if (ret != ESP_OK || !in) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    if (handle->service_ops) {
+        if (!handle->service_ops->send_on_off) {
+            return ESP_ERR_INVALID_ARG;
+        }
+        return handle->service_ops->send_on_off(in->addr, in->ep, in->cmd);
+    }
+
+    return gateway_device_zigbee_send_on_off(in->addr, in->ep, in->cmd);
+}
+
+esp_err_t api_usecase_wifi_save(api_usecases_handle_t handle, const api_wifi_save_request_t *in)
+{
+    if (!handle || !in) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    if (handle->service_ops) {
+        if (!handle->service_ops->wifi_save_credentials || !handle->service_ops->schedule_reboot) {
+            return ESP_ERR_INVALID_ARG;
+        }
+        esp_err_t err = handle->service_ops->wifi_save_credentials(in->ssid, in->password);
+        if (err != ESP_OK) {
+            return err;
+        }
+        return handle->service_ops->schedule_reboot(1000);
+    }
+
+    esp_err_t err = require_wifi_system(handle);
     if (err != ESP_OK) {
         return err;
     }
-    return s_ops->schedule_reboot(1000);
-}
-
-esp_err_t api_usecase_factory_reset(void)
-{
-    if (!s_ops || !s_ops->factory_reset_and_reboot) {
-        return ESP_ERR_INVALID_ARG;
+    err = gateway_wifi_system_save_credentials(handle->wifi_system, in->ssid, in->password);
+    if (err != ESP_OK) {
+        return err;
     }
-    return s_ops->factory_reset_and_reboot(1000);
+    return gateway_wifi_system_schedule_reboot(handle->wifi_system, 1000);
 }
 
-esp_err_t api_usecase_get_network_status(zigbee_network_status_t *out_status)
+esp_err_t api_usecase_factory_reset(api_usecases_handle_t handle)
 {
-    if (!out_status) {
+    esp_err_t ret = require_handle(handle);
+    if (ret != ESP_OK) {
+        return ret;
+    }
+
+    if (handle->service_ops) {
+        if (!handle->service_ops->factory_reset_and_reboot) {
+            return ESP_ERR_INVALID_ARG;
+        }
+        return handle->service_ops->factory_reset_and_reboot(1000);
+    }
+
+    ret = require_wifi_system(handle);
+    if (ret != ESP_OK) {
+        return ret;
+    }
+    return gateway_wifi_system_factory_reset_and_reboot(handle->wifi_system, 1000);
+}
+
+esp_err_t api_usecase_get_network_status(api_usecases_handle_t handle, zigbee_network_status_t *out_status)
+{
+    esp_err_t ret = require_handle(handle);
+    if (ret != ESP_OK || !out_status) {
         return ESP_ERR_INVALID_ARG;
     }
     return gateway_device_zigbee_get_network_status(out_status);
 }
 
-int api_usecase_get_devices_snapshot(zb_device_t *out_devices, int max_devices)
+int api_usecase_get_devices_snapshot(api_usecases_handle_t handle, zb_device_t *out_devices, int max_devices)
 {
+    if (!handle) {
+        return 0;
+    }
     return gateway_device_zigbee_get_devices_snapshot(out_devices, max_devices);
 }
 
-int api_usecase_get_neighbor_lqi_snapshot(zigbee_neighbor_lqi_t *out_neighbors, int max_neighbors)
+int api_usecase_get_neighbor_lqi_snapshot(api_usecases_handle_t handle, zigbee_neighbor_lqi_t *out_neighbors, int max_neighbors)
 {
+    if (!handle) {
+        return 0;
+    }
     return gateway_device_zigbee_get_neighbor_lqi_snapshot(out_neighbors, max_neighbors);
 }
 
-esp_err_t api_usecase_get_cached_lqi_snapshot(zigbee_neighbor_lqi_t *out_neighbors, int max_neighbors, int *out_count,
-                                              zigbee_lqi_source_t *out_source, uint64_t *out_updated_ms)
+esp_err_t api_usecase_get_cached_lqi_snapshot(api_usecases_handle_t handle, zigbee_neighbor_lqi_t *out_neighbors,
+                                              int max_neighbors, int *out_count, zigbee_lqi_source_t *out_source,
+                                              uint64_t *out_updated_ms)
 {
+    esp_err_t ret = require_handle(handle);
+    if (ret != ESP_OK) {
+        return ret;
+    }
     return gateway_device_zigbee_get_cached_lqi_snapshot(out_neighbors, max_neighbors, out_count, out_source, out_updated_ms);
 }
 
-esp_err_t api_usecase_permit_join(uint8_t duration_seconds)
+esp_err_t api_usecase_permit_join(api_usecases_handle_t handle, uint8_t duration_seconds)
 {
+    esp_err_t ret = require_handle(handle);
+    if (ret != ESP_OK) {
+        return ret;
+    }
     return gateway_device_zigbee_permit_join(duration_seconds);
 }
 
-esp_err_t api_usecase_delete_device(uint16_t short_addr)
+esp_err_t api_usecase_delete_device(api_usecases_handle_t handle, uint16_t short_addr)
 {
+    esp_err_t ret = require_handle(handle);
+    if (ret != ESP_OK) {
+        return ret;
+    }
     return gateway_device_zigbee_delete_device(short_addr);
 }
 
-esp_err_t api_usecase_rename_device(uint16_t short_addr, const char *name)
+esp_err_t api_usecase_rename_device(api_usecases_handle_t handle, uint16_t short_addr, const char *name)
 {
-    if (!name) {
+    esp_err_t ret = require_handle(handle);
+    if (ret != ESP_OK || !name) {
         return ESP_ERR_INVALID_ARG;
     }
     return gateway_device_zigbee_rename_device(short_addr, name);
 }
 
-esp_err_t api_usecase_wifi_scan(wifi_ap_info_t **out_list, size_t *out_count)
+esp_err_t api_usecase_wifi_scan(api_usecases_handle_t handle, wifi_ap_info_t **out_list, size_t *out_count)
 {
-    esp_err_t err = require_wifi_system_handle();
-    if (err != ESP_OK) {
-        return err;
+    esp_err_t ret = require_wifi_system(handle);
+    if (ret != ESP_OK) {
+        return ret;
     }
-    return gateway_wifi_system_scan(s_wifi_system, out_list, out_count);
+    return gateway_wifi_system_scan(handle->wifi_system, out_list, out_count);
 }
 
-void api_usecase_wifi_scan_free(wifi_ap_info_t *list)
+void api_usecase_wifi_scan_free(api_usecases_handle_t handle, wifi_ap_info_t *list)
 {
-    gateway_wifi_system_scan_free(s_wifi_system, list);
-}
-
-esp_err_t api_usecase_schedule_reboot(uint32_t delay_ms)
-{
-    esp_err_t err = require_wifi_system_handle();
-    if (err != ESP_OK) {
-        return err;
+    if (!handle || !handle->wifi_system) {
+        return;
     }
-    return gateway_wifi_system_schedule_reboot(s_wifi_system, delay_ms);
+    gateway_wifi_system_scan_free(handle->wifi_system, list);
 }
 
-esp_err_t api_usecase_get_factory_reset_report(api_factory_reset_report_t *out_report)
+esp_err_t api_usecase_schedule_reboot(api_usecases_handle_t handle, uint32_t delay_ms)
 {
-    if (!out_report) {
+    esp_err_t ret = require_wifi_system(handle);
+    if (ret != ESP_OK) {
+        return ret;
+    }
+    return gateway_wifi_system_schedule_reboot(handle->wifi_system, delay_ms);
+}
+
+esp_err_t api_usecase_get_factory_reset_report(api_usecases_handle_t handle, api_factory_reset_report_t *out_report)
+{
+    esp_err_t ret = require_wifi_system(handle);
+    if (ret != ESP_OK || !out_report) {
         return ESP_ERR_INVALID_ARG;
-    }
-    esp_err_t err = require_wifi_system_handle();
-    if (err != ESP_OK) {
-        return err;
     }
 
     gateway_core_factory_reset_report_t report = {0};
-    err = gateway_wifi_system_get_factory_reset_report(s_wifi_system, &report);
-    if (err != ESP_OK) {
-        return err;
+    ret = gateway_wifi_system_get_factory_reset_report(handle->wifi_system, &report);
+    if (ret != ESP_OK) {
+        return ret;
     }
     out_report->wifi_err = report.wifi_err;
     out_report->devices_err = report.devices_err;
@@ -211,21 +280,19 @@ static api_system_wifi_link_quality_t to_api_wifi_link_quality(gateway_core_wifi
     }
 }
 
-esp_err_t api_usecase_collect_telemetry(api_system_telemetry_t *out)
+esp_err_t api_usecase_collect_telemetry(api_usecases_handle_t handle, api_system_telemetry_t *out)
 {
-    if (!out) {
+    esp_err_t ret = require_wifi_system(handle);
+    if (ret != ESP_OK || !out) {
         return ESP_ERR_INVALID_ARG;
-    }
-    esp_err_t err = require_wifi_system_handle();
-    if (err != ESP_OK) {
-        return err;
     }
 
     gateway_core_telemetry_t telemetry = {0};
-    err = gateway_wifi_system_collect_telemetry(s_wifi_system, &telemetry);
-    if (err != ESP_OK) {
-        return err;
+    ret = gateway_wifi_system_collect_telemetry(handle->wifi_system, &telemetry);
+    if (ret != ESP_OK) {
+        return ret;
     }
+
     memset(out, 0, sizeof(*out));
     out->uptime_ms = telemetry.uptime_ms;
     out->heap_free = telemetry.heap_free;
@@ -243,21 +310,19 @@ esp_err_t api_usecase_collect_telemetry(api_system_telemetry_t *out)
     return ESP_OK;
 }
 
-esp_err_t api_usecase_collect_health_snapshot(api_health_snapshot_t *out)
+esp_err_t api_usecase_collect_health_snapshot(api_usecases_handle_t handle, api_health_snapshot_t *out)
 {
-    if (!out) {
+    esp_err_t ret = require_handle(handle);
+    if (ret != ESP_OK || !out) {
         return ESP_ERR_INVALID_ARG;
     }
+
     memset(out, 0, sizeof(*out));
 
     gateway_network_state_t gw_state = {0};
-    esp_err_t err = require_wifi_system_handle();
-    if (err != ESP_OK) {
-        return err;
-    }
-    err = gateway_wifi_system_get_network_state(s_wifi_system, &gw_state);
-    if (err != ESP_OK) {
-        return err;
+    ret = gateway_wifi_system_get_network_state(handle->wifi_system, &gw_state);
+    if (ret != ESP_OK) {
+        return ret;
     }
     out->zigbee_started = gw_state.zigbee_started;
     out->zigbee_factory_new = gw_state.factory_new;
@@ -266,9 +331,9 @@ esp_err_t api_usecase_collect_health_snapshot(api_health_snapshot_t *out)
     out->zigbee_short_addr = gw_state.short_addr;
 
     gateway_wifi_state_t wifi_state = {0};
-    err = gateway_wifi_system_get_wifi_state(s_wifi_system, &wifi_state);
-    if (err != ESP_OK) {
-        return err;
+    ret = gateway_wifi_system_get_wifi_state(handle->wifi_system, &wifi_state);
+    if (ret != ESP_OK) {
+        return ret;
     }
     out->wifi_sta_connected = wifi_state.sta_connected;
     out->wifi_fallback_ap_active = wifi_state.fallback_ap_active;
@@ -276,52 +341,53 @@ esp_err_t api_usecase_collect_health_snapshot(api_health_snapshot_t *out)
     strlcpy(out->wifi_active_ssid, wifi_state.active_ssid, sizeof(out->wifi_active_ssid));
 
     int32_t schema_version = 0;
-    err = gateway_wifi_system_get_schema_version(s_wifi_system, &schema_version);
-    out->nvs_ok = (err == ESP_OK);
-    out->nvs_schema_version = (err == ESP_OK) ? schema_version : -1;
+    ret = gateway_wifi_system_get_schema_version(handle->wifi_system, &schema_version);
+    out->nvs_ok = (ret == ESP_OK);
+    out->nvs_schema_version = (ret == ESP_OK) ? schema_version : -1;
 
-    out->ws_clients = s_ws_client_count_provider ? s_ws_client_count_provider() : 0;
+    out->ws_clients = handle->ws_client_count_provider ? handle->ws_client_count_provider(handle->ws_provider_ctx) : 0;
 
-    err = api_usecase_collect_telemetry(&out->telemetry);
-    if (err != ESP_OK) {
-        return err;
+    ret = api_usecase_collect_telemetry(handle, &out->telemetry);
+    if (ret != ESP_OK) {
+        return ret;
     }
 
     gateway_core_job_metrics_t job_metrics = {0};
-    err = require_jobs_handle();
-    if (err == ESP_OK) {
-        err = gateway_jobs_get_metrics(s_jobs, &job_metrics);
+    if (handle->jobs) {
+        ret = gateway_jobs_get_metrics(handle->jobs, &job_metrics);
+        if (ret == ESP_OK) {
+            out->jobs_metrics.submitted_total = job_metrics.submitted_total;
+            out->jobs_metrics.dedup_reused_total = job_metrics.dedup_reused_total;
+            out->jobs_metrics.completed_total = job_metrics.completed_total;
+            out->jobs_metrics.failed_total = job_metrics.failed_total;
+            out->jobs_metrics.queue_depth_current = job_metrics.queue_depth_current;
+            out->jobs_metrics.queue_depth_peak = job_metrics.queue_depth_peak;
+            out->jobs_metrics.latency_p95_ms = job_metrics.latency_p95_ms;
+        }
     }
-    if (err == ESP_OK) {
-        out->jobs_metrics.submitted_total = job_metrics.submitted_total;
-        out->jobs_metrics.dedup_reused_total = job_metrics.dedup_reused_total;
-        out->jobs_metrics.completed_total = job_metrics.completed_total;
-        out->jobs_metrics.failed_total = job_metrics.failed_total;
-        out->jobs_metrics.queue_depth_current = job_metrics.queue_depth_current;
-        out->jobs_metrics.queue_depth_peak = job_metrics.queue_depth_peak;
-        out->jobs_metrics.latency_p95_ms = job_metrics.latency_p95_ms;
-    }
-    if (s_ws_metrics_provider) {
-        (void)s_ws_metrics_provider(&out->ws_metrics);
+
+    if (handle->ws_metrics_provider) {
+        (void)handle->ws_metrics_provider(handle->ws_provider_ctx, &out->ws_metrics);
     }
 
     return ESP_OK;
 }
 
-esp_err_t api_usecase_jobs_submit(gateway_core_job_type_t type, uint32_t reboot_delay_ms, uint32_t *out_job_id)
+esp_err_t api_usecase_jobs_submit(api_usecases_handle_t handle, gateway_core_job_type_t type, uint32_t reboot_delay_ms,
+                                  uint32_t *out_job_id)
 {
-    esp_err_t err = require_jobs_handle();
-    if (err != ESP_OK) {
-        return err;
+    esp_err_t ret = require_jobs(handle);
+    if (ret != ESP_OK) {
+        return ret;
     }
-    return gateway_jobs_submit(s_jobs, type, reboot_delay_ms, out_job_id);
+    return gateway_jobs_submit(handle->jobs, type, reboot_delay_ms, out_job_id);
 }
 
-esp_err_t api_usecase_jobs_get(uint32_t job_id, gateway_core_job_info_t *out_info)
+esp_err_t api_usecase_jobs_get(api_usecases_handle_t handle, uint32_t job_id, gateway_core_job_info_t *out_info)
 {
-    esp_err_t err = require_jobs_handle();
-    if (err != ESP_OK) {
-        return err;
+    esp_err_t ret = require_jobs(handle);
+    if (ret != ESP_OK) {
+        return ret;
     }
-    return gateway_jobs_get(s_jobs, job_id, out_info);
+    return gateway_jobs_get(handle->jobs, job_id, out_info);
 }

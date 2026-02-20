@@ -30,6 +30,7 @@ static gateway_state_handle_t s_gateway_state = NULL;
 static zigbee_service_handle_t s_zigbee_service = NULL;
 static gateway_wifi_system_handle_t s_wifi_system = NULL;
 static gateway_jobs_handle_t s_jobs = NULL;
+static api_usecases_handle_t s_api_usecases = NULL;
 static bool s_runtime_bound = false;
 
 static gateway_status_t web_selftest_device_repo_load(void *ctx,
@@ -90,8 +91,20 @@ static void ensure_stateful_handles(void)
         TEST_ASSERT_EQUAL(ESP_OK, gateway_wifi_system_create(&wifi_system_params, &s_wifi_system));
         TEST_ASSERT_EQUAL(ESP_OK, gateway_jobs_create(&jobs_params, &s_jobs));
         TEST_ASSERT_EQUAL(ESP_OK, gateway_jobs_set_zigbee_service(s_jobs, s_zigbee_service));
-        api_usecases_set_wifi_system_handle(s_wifi_system);
-        api_usecases_set_jobs_handle(s_jobs);
+        if (!s_api_usecases) {
+            api_usecases_init_params_t params = {
+                .service_ops = NULL,
+                .wifi_system = s_wifi_system,
+                .jobs = s_jobs,
+                .ws_client_count_provider = NULL,
+                .ws_metrics_provider = NULL,
+                .ws_provider_ctx = NULL,
+            };
+            TEST_ASSERT_EQUAL(ESP_OK, api_usecases_create(&params, &s_api_usecases));
+        } else {
+            api_usecases_set_runtime_handles(s_api_usecases, s_wifi_system, s_jobs);
+        }
+        api_usecases_set_service_ops_with_handle(s_api_usecases, NULL);
         TEST_ASSERT_EQUAL(ESP_OK, wifi_init_bind_state(s_gateway_state));
         s_runtime_bound = true;
     }
@@ -131,25 +144,28 @@ static void test_seed_devices(const zb_device_t *devices, int count, bool reset_
 
 static void test_devices_json_builder_small_buffer_fails(void)
 {
+    ensure_stateful_handles();
     char buf[16];
     size_t out_len = 0;
-    esp_err_t ret = build_devices_json_compact(buf, sizeof(buf), &out_len);
+    esp_err_t ret = build_devices_json_compact(s_api_usecases, buf, sizeof(buf), &out_len);
     TEST_ASSERT_EQUAL(ESP_ERR_NO_MEM, ret);
 }
 
 static void test_status_json_builder_small_buffer_fails(void)
 {
+    ensure_stateful_handles();
     char buf[24];
     size_t out_len = 0;
-    esp_err_t ret = build_status_json_compact(buf, sizeof(buf), &out_len);
+    esp_err_t ret = build_status_json_compact(s_api_usecases, buf, sizeof(buf), &out_len);
     TEST_ASSERT_EQUAL(ESP_ERR_NO_MEM, ret);
 }
 
 static void test_devices_json_builder_ok(void)
 {
+    ensure_stateful_handles();
     char buf[1024];
     size_t out_len = 0;
-    esp_err_t ret = build_devices_json_compact(buf, sizeof(buf), &out_len);
+    esp_err_t ret = build_devices_json_compact(s_api_usecases, buf, sizeof(buf), &out_len);
     TEST_ASSERT_EQUAL(ESP_OK, ret);
     TEST_ASSERT_GREATER_THAN_UINT32(0, (uint32_t)out_len);
     TEST_ASSERT_NOT_NULL(strstr(buf, "\"devices\""));
@@ -157,9 +173,10 @@ static void test_devices_json_builder_ok(void)
 
 static void test_status_json_builder_ok(void)
 {
+    ensure_stateful_handles();
     char buf[1536];
     size_t out_len = 0;
-    esp_err_t ret = build_status_json_compact(buf, sizeof(buf), &out_len);
+    esp_err_t ret = build_status_json_compact(s_api_usecases, buf, sizeof(buf), &out_len);
     TEST_ASSERT_EQUAL(ESP_OK, ret);
     TEST_ASSERT_GREATER_THAN_UINT32(0, (uint32_t)out_len);
     TEST_ASSERT_NOT_NULL(strstr(buf, "\"pan_id\""));
@@ -170,6 +187,7 @@ static void test_status_json_builder_ok(void)
 
 static void test_health_json_builder_with_large_error_ring_truncates_and_stays_valid(void)
 {
+    ensure_stateful_handles();
     for (int i = 0; i < 10; i++) {
         char msg[48];
         snprintf(msg, sizeof(msg), "selftest error %d", i);
@@ -178,7 +196,7 @@ static void test_health_json_builder_with_large_error_ring_truncates_and_stays_v
 
     char buf[4096];
     size_t out_len = 0;
-    esp_err_t ret = build_health_json_compact(buf, sizeof(buf), &out_len);
+    esp_err_t ret = build_health_json_compact(s_api_usecases, buf, sizeof(buf), &out_len);
     TEST_ASSERT_EQUAL(ESP_OK, ret);
     TEST_ASSERT_GREATER_THAN_UINT32(0, (uint32_t)out_len);
 
@@ -231,7 +249,7 @@ static void test_lqi_json_mapper_uses_cached_snapshot_contract(void)
 
     char buf[2048];
     size_t out_len = 0;
-    esp_err_t ret = build_lqi_json_compact(buf, sizeof(buf), &out_len);
+    esp_err_t ret = build_lqi_json_compact(s_api_usecases, buf, sizeof(buf), &out_len);
     TEST_ASSERT_EQUAL(ESP_OK, ret);
     TEST_ASSERT_GREATER_THAN_UINT32(0, (uint32_t)out_len);
 
@@ -286,7 +304,7 @@ static void test_health_snapshot_usecase_contract(void)
     TEST_ASSERT_EQUAL(GATEWAY_STATUS_OK, gateway_state_set_wifi(s_gateway_state, &wifi));
 
     api_health_snapshot_t snap = {0};
-    esp_err_t ret = api_usecase_collect_health_snapshot(&snap);
+    esp_err_t ret = api_usecase_collect_health_snapshot(s_api_usecases, &snap);
     TEST_ASSERT_EQUAL(ESP_OK, ret);
 
     TEST_ASSERT_TRUE(snap.zigbee_started);
@@ -300,9 +318,10 @@ static void test_health_snapshot_usecase_contract(void)
 
 static void test_health_json_wifi_active_ssid_is_canonical(void)
 {
+    ensure_stateful_handles();
     char buf[4096];
     size_t out_len = 0;
-    esp_err_t ret = build_health_json_compact(buf, sizeof(buf), &out_len);
+    esp_err_t ret = build_health_json_compact(s_api_usecases, buf, sizeof(buf), &out_len);
     TEST_ASSERT_EQUAL(ESP_OK, ret);
 
     cJSON *root = cJSON_ParseWithLength(buf, out_len);
@@ -353,8 +372,9 @@ static void test_contract_boundaries_rename(void)
 
 static void test_factory_reset_report_smoke(void)
 {
+    ensure_stateful_handles();
     api_factory_reset_report_t report = {0};
-    TEST_ASSERT_EQUAL(ESP_OK, api_usecase_get_factory_reset_report(&report));
+    TEST_ASSERT_EQUAL(ESP_OK, api_usecase_get_factory_reset_report(s_api_usecases, &report));
     TEST_ASSERT_EQUAL(ESP_ERR_INVALID_STATE, report.wifi_err);
     TEST_ASSERT_EQUAL(ESP_ERR_INVALID_STATE, report.devices_err);
     TEST_ASSERT_EQUAL(ESP_ERR_INVALID_STATE, report.zigbee_storage_err);
@@ -457,9 +477,10 @@ static int s_ws_stress_send_fd_303 = 0;
 
 static ws_manager_handle_t ws_test_create_manager(void)
 {
+    ensure_stateful_handles();
     TEST_ASSERT_EQUAL(ESP_OK, ws_manager_create(&s_ws_manager_handle));
     TEST_ASSERT_NOT_NULL(s_ws_manager_handle);
-    ws_manager_init_with_handle(s_ws_manager_handle, (httpd_handle_t)0x1);
+    ws_manager_init_with_handle(s_ws_manager_handle, (httpd_handle_t)0x1, s_api_usecases);
     return s_ws_manager_handle;
 }
 
@@ -698,8 +719,9 @@ static bool ws_send_client_close_frame(int fd)
 
 static void test_ws_runtime_socket_lifecycle_real_stack_disconnect_reconnect_backpressure(void)
 {
+    ensure_stateful_handles();
     stop_web_server();
-    start_web_server();
+    start_web_server(s_api_usecases);
     usleep(120000);
 
     int fd1 = ws_connect_localhost();

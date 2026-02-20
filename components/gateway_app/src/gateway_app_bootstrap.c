@@ -27,6 +27,7 @@
 
 static const char *TAG = "GATEWAY_APP";
 static esp_event_handler_instance_t s_device_announce_handler = NULL;
+static api_usecases_handle_t s_api_usecases = NULL;
 
 static gateway_status_t gateway_app_device_repo_load(void *ctx,
                                                       gateway_device_record_t *devices,
@@ -139,6 +140,7 @@ void gateway_app_start(void)
     gateway_runtime_context_t runtime_ctx = {0};
     gateway_wifi_system_init_params_t wifi_system_params = {0};
     gateway_jobs_init_params_t jobs_params = {0};
+    api_usecases_init_params_t api_usecases_params = {0};
     device_service_init_params_t device_service_params = {
         .lock_port = NULL,
         .repo_port = &s_gateway_app_device_repo_port,
@@ -166,8 +168,14 @@ void gateway_app_start(void)
     wifi_system_params.gateway_state_handle = gateway_state;
     ESP_ERROR_CHECK(gateway_wifi_system_create(&wifi_system_params, &wifi_system));
     ESP_ERROR_CHECK(gateway_jobs_create(&jobs_params, &jobs));
-    api_usecases_set_wifi_system_handle(wifi_system);
-    api_usecases_set_jobs_handle(jobs);
+    if (!s_api_usecases) {
+        api_usecases_params.wifi_system = wifi_system;
+        api_usecases_params.jobs = jobs;
+        ESP_ERROR_CHECK(api_usecases_create(&api_usecases_params, &s_api_usecases));
+    } else {
+        api_usecases_set_runtime_handles(s_api_usecases, wifi_system, jobs);
+    }
+    api_usecases_set_service_ops_with_handle(s_api_usecases, NULL);
     ESP_ERROR_CHECK(wifi_init_bind_state(gateway_state));
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
@@ -187,7 +195,7 @@ void gateway_app_start(void)
     };
     ESP_ERROR_CHECK(esp_vfs_spiffs_register(&www_conf));
 
-    start_web_server();
+    start_web_server(s_api_usecases);
 
     gateway_wifi_state_t wifi_state = {0};
     esp_err_t state_ret = gateway_status_to_esp_err(gateway_state_get_wifi(gateway_state, &wifi_state));

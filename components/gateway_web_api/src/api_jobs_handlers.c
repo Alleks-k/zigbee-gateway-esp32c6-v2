@@ -75,8 +75,14 @@ static esp_err_t parse_job_id_from_uri(const char *uri, uint32_t *out_id)
     return ESP_OK;
 }
 
+static api_usecases_handle_t req_usecases(httpd_req_t *req)
+{
+    return req ? (api_usecases_handle_t)req->user_ctx : NULL;
+}
+
 esp_err_t api_jobs_submit_handler(httpd_req_t *req)
 {
+    api_usecases_handle_t usecases = req_usecases(req);
     api_job_submit_request_t in = {0};
     esp_err_t err = api_parse_job_submit_request(req, &in);
     if (err != ESP_OK) {
@@ -85,14 +91,14 @@ esp_err_t api_jobs_submit_handler(httpd_req_t *req)
 
     gateway_core_job_type_t type = parse_job_type(in.type);
     uint32_t job_id = 0;
-    err = api_usecase_jobs_submit(type, in.reboot_delay_ms, &job_id);
+    err = api_usecase_jobs_submit(usecases, type, in.reboot_delay_ms, &job_id);
     if (err != ESP_OK) {
         return http_error_send_esp(req, err, "Failed to queue job");
     }
 
     gateway_core_job_info_t info = {0};
     const char *state = "queued";
-    err = api_usecase_jobs_get(job_id, &info);
+    err = api_usecase_jobs_get(usecases, job_id, &info);
     if (err == ESP_OK) {
         state = gateway_jobs_state_to_string(info.state);
     }
@@ -109,6 +115,7 @@ esp_err_t api_jobs_submit_handler(httpd_req_t *req)
 
 esp_err_t api_jobs_get_handler(httpd_req_t *req)
 {
+    api_usecases_handle_t usecases = req_usecases(req);
     uint32_t job_id = 0;
     esp_err_t err = parse_job_id_from_uri(req->uri, &job_id);
     if (err != ESP_OK) {
@@ -120,7 +127,7 @@ esp_err_t api_jobs_get_handler(httpd_req_t *req)
         return http_error_send_esp(req, ESP_ERR_NO_MEM, "Out of memory");
     }
 
-    err = api_usecase_jobs_get(job_id, info);
+    err = api_usecase_jobs_get(usecases, job_id, info);
     if (err != ESP_OK) {
         free(info);
         return http_error_send_esp(req, err, "Job not found");

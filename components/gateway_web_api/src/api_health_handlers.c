@@ -4,8 +4,14 @@
 
 #include <stdlib.h>
 
+static api_usecases_handle_t req_usecases(httpd_req_t *req)
+{
+    return req ? (api_usecases_handle_t)req->user_ctx : NULL;
+}
+
 esp_err_t api_health_handler(httpd_req_t *req)
 {
+    api_usecases_handle_t usecases = req_usecases(req);
     size_t needed = 768;
     for (int i = 0; i < 4; i++) {
         char *health_json = (char *)malloc(needed);
@@ -14,7 +20,7 @@ esp_err_t api_health_handler(httpd_req_t *req)
         }
 
         size_t health_len = 0;
-        esp_err_t ret = build_health_json_compact(health_json, needed, &health_len);
+        esp_err_t ret = build_health_json_compact(usecases, health_json, needed, &health_len);
         if (ret == ESP_OK) {
             esp_err_t send_ret = http_success_send_data_json(req, health_json);
             free(health_json);
@@ -33,4 +39,3 @@ esp_err_t api_health_handler(httpd_req_t *req)
 
     return http_error_send(req, 503, "no_memory", "Health payload too large");
 }
-

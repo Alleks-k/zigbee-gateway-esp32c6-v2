@@ -16,8 +16,6 @@
 
 static const char *TAG = "WS_MANAGER";
 
-static ws_manager_handle_t s_provider_ws_manager = NULL;
-
 void ws_broadcast_status_with_handle(ws_manager_handle_t handle);
 
 #if CONFIG_GATEWAY_SELF_TEST_APP
@@ -27,14 +25,14 @@ static void ws_manager_reset_transport_to_defaults(ws_manager_handle_t handle)
 }
 #endif
 
-static bool ws_manager_metrics_provider_adapter(api_ws_runtime_metrics_t *out_metrics)
+static bool ws_manager_metrics_provider_adapter(void *ctx, api_ws_runtime_metrics_t *out_metrics)
 {
-    return ws_manager_metrics_provider(s_provider_ws_manager, out_metrics);
+    return ws_manager_metrics_provider((ws_manager_handle_t)ctx, out_metrics);
 }
 
-static uint32_t ws_manager_client_count_provider_adapter(void)
+static uint32_t ws_manager_client_count_provider_adapter(void *ctx)
 {
-    return ws_manager_client_count_provider(s_provider_ws_manager);
+    return ws_manager_client_count_provider((ws_manager_handle_t)ctx);
 }
 
 static void ws_debounce_timer_cb(void *arg)
@@ -123,22 +121,27 @@ void ws_manager_destroy(ws_manager_handle_t handle)
         handle->ws_mutex = NULL;
     }
 
-    if (s_provider_ws_manager == handle) {
-        s_provider_ws_manager = NULL;
+    if (handle->api_usecases) {
+        api_usecases_set_ws_providers(handle->api_usecases, NULL, NULL, NULL);
+        handle->api_usecases = NULL;
     }
     free(handle);
 }
 
-void ws_manager_init_with_handle(ws_manager_handle_t handle, httpd_handle_t server)
+void ws_manager_init_with_handle(ws_manager_handle_t handle, httpd_handle_t server, api_usecases_handle_t usecases)
 {
     if (!handle) {
         return;
     }
 
     handle->server = server;
-    s_provider_ws_manager = handle;
-    api_usecases_set_ws_client_count_provider(ws_manager_client_count_provider_adapter);
-    api_usecases_set_ws_metrics_provider(ws_manager_metrics_provider_adapter);
+    handle->api_usecases = usecases;
+    if (handle->api_usecases) {
+        api_usecases_set_ws_providers(handle->api_usecases,
+                                      ws_manager_client_count_provider_adapter,
+                                      ws_manager_metrics_provider_adapter,
+                                      handle);
+    }
 
     for (int i = 0; i < MAX_WS_CLIENTS; i++) {
         handle->ws_fds[i] = -1;

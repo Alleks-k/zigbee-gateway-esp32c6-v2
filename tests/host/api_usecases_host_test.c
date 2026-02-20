@@ -41,6 +41,7 @@ static int g_wifi_system_ctx = 0;
 static int g_jobs_ctx = 0;
 static gateway_wifi_system_handle_t g_wifi_system_handle = (gateway_wifi_system_handle_t)&g_wifi_system_ctx;
 static gateway_jobs_handle_t g_jobs_handle = (gateway_jobs_handle_t)&g_jobs_ctx;
+static api_usecases_handle_t g_api_usecases = NULL;
 
 size_t strlcpy(char *dst, const char *src, size_t dst_size)
 {
@@ -66,8 +67,21 @@ static void reset_stub(void)
     g_stub.facade_factory_reset_report.devices_err = ESP_OK;
     g_stub.facade_factory_reset_report.zigbee_storage_err = ESP_OK;
     g_stub.facade_factory_reset_report.zigbee_fct_err = ESP_OK;
-    api_usecases_set_wifi_system_handle(g_wifi_system_handle);
-    api_usecases_set_jobs_handle(g_jobs_handle);
+    if (!g_api_usecases) {
+        api_usecases_init_params_t params = {
+            .service_ops = NULL,
+            .wifi_system = g_wifi_system_handle,
+            .jobs = g_jobs_handle,
+            .ws_client_count_provider = NULL,
+            .ws_metrics_provider = NULL,
+            .ws_provider_ctx = NULL,
+        };
+        assert(api_usecases_create(&params, &g_api_usecases) == ESP_OK);
+    } else {
+        api_usecases_set_runtime_handles(g_api_usecases, g_wifi_system_handle, g_jobs_handle);
+    }
+    api_usecases_set_service_ops_with_handle(g_api_usecases, NULL);
+    api_usecases_set_ws_providers(g_api_usecases, NULL, NULL, NULL);
 }
 
 static esp_err_t injected_send_on_off(uint16_t short_addr, uint8_t endpoint, uint8_t on_off)
@@ -338,22 +352,22 @@ static void test_usecase_control_with_injected_ops(void)
         .schedule_reboot = injected_schedule_reboot,
         .factory_reset_and_reboot = injected_factory_reset_and_reboot,
     };
-    api_usecases_set_service_ops(&ops);
+    api_usecases_set_service_ops_with_handle(g_api_usecases, &ops);
 
     api_control_request_t req = {
         .addr = 0x1234,
         .ep = 2,
         .cmd = 1,
     };
-    assert(api_usecase_control(&req) == ESP_OK);
+    assert(api_usecase_control(g_api_usecases, &req) == ESP_OK);
     assert(g_stub.inj_send_calls == 1);
     assert(g_stub.inj_send_short_addr == 0x1234);
     assert(g_stub.inj_send_endpoint == 2);
     assert(g_stub.inj_send_on_off == 1);
 
     g_stub.inj_send_ret = ESP_FAIL;
-    assert(api_usecase_control(&req) == ESP_FAIL);
-    assert(api_usecase_control(NULL) == ESP_ERR_INVALID_ARG);
+    assert(api_usecase_control(g_api_usecases, &req) == ESP_FAIL);
+    assert(api_usecase_control(NULL, &req) == ESP_ERR_INVALID_ARG);
 }
 
 static void test_usecase_wifi_save_mapping(void)
@@ -365,13 +379,13 @@ static void test_usecase_wifi_save_mapping(void)
         .schedule_reboot = injected_schedule_reboot,
         .factory_reset_and_reboot = injected_factory_reset_and_reboot,
     };
-    api_usecases_set_service_ops(&ops);
+    api_usecases_set_service_ops_with_handle(g_api_usecases, &ops);
 
     api_wifi_save_request_t req = {0};
     strlcpy(req.ssid, "HomeWiFi", sizeof(req.ssid));
     strlcpy(req.password, "verysecret", sizeof(req.password));
 
-    assert(api_usecase_wifi_save(&req) == ESP_OK);
+    assert(api_usecase_wifi_save(g_api_usecases, &req) == ESP_OK);
     assert(g_stub.inj_wifi_save_calls == 1);
     assert(strcmp(g_stub.inj_wifi_ssid, "HomeWiFi") == 0);
     assert(strcmp(g_stub.inj_wifi_password, "verysecret") == 0);
@@ -379,9 +393,9 @@ static void test_usecase_wifi_save_mapping(void)
     assert(g_stub.inj_schedule_reboot_delay_ms == 1000);
 
     reset_stub();
-    api_usecases_set_service_ops(&ops);
+    api_usecases_set_service_ops_with_handle(g_api_usecases, &ops);
     g_stub.inj_wifi_save_ret = ESP_FAIL;
-    assert(api_usecase_wifi_save(&req) == ESP_FAIL);
+    assert(api_usecase_wifi_save(g_api_usecases, &req) == ESP_FAIL);
     assert(g_stub.inj_schedule_reboot_calls == 0);
 }
 
@@ -394,10 +408,10 @@ static void test_usecase_factory_reset_mapping(void)
         .schedule_reboot = injected_schedule_reboot,
         .factory_reset_and_reboot = injected_factory_reset_and_reboot,
     };
-    api_usecases_set_service_ops(&ops);
+    api_usecases_set_service_ops_with_handle(g_api_usecases, &ops);
 
     g_stub.inj_factory_reset_ret = ESP_ERR_NOT_SUPPORTED;
-    assert(api_usecase_factory_reset() == ESP_ERR_NOT_SUPPORTED);
+    assert(api_usecase_factory_reset(g_api_usecases) == ESP_ERR_NOT_SUPPORTED);
     assert(g_stub.inj_factory_reset_calls == 1);
     assert(g_stub.inj_factory_reset_delay_ms == 1000);
 }
@@ -405,7 +419,7 @@ static void test_usecase_factory_reset_mapping(void)
 static void test_default_ops_fallback_uses_facade(void)
 {
     reset_stub();
-    api_usecases_set_service_ops(NULL);
+    api_usecases_set_service_ops_with_handle(g_api_usecases, NULL);
 
     g_stub.facade_send_ret = ESP_ERR_INVALID_ARG;
     api_control_request_t req = {
@@ -413,7 +427,7 @@ static void test_default_ops_fallback_uses_facade(void)
         .ep = 3,
         .cmd = 0,
     };
-    assert(api_usecase_control(&req) == ESP_ERR_INVALID_ARG);
+    assert(api_usecase_control(g_api_usecases, &req) == ESP_ERR_INVALID_ARG);
     assert(g_stub.facade_send_calls == 1);
     assert(g_stub.facade_send_short_addr == 0x2222);
     assert(g_stub.facade_send_endpoint == 3);
@@ -429,12 +443,12 @@ static void test_factory_report_mapping(void)
     g_stub.facade_factory_reset_report.zigbee_fct_err = ESP_ERR_NOT_SUPPORTED;
 
     api_factory_reset_report_t out = {0};
-    assert(api_usecase_get_factory_reset_report(&out) == ESP_OK);
+    assert(api_usecase_get_factory_reset_report(g_api_usecases, &out) == ESP_OK);
     assert(out.wifi_err == ESP_FAIL);
     assert(out.devices_err == ESP_ERR_NOT_FOUND);
     assert(out.zigbee_storage_err == ESP_ERR_INVALID_SIZE);
     assert(out.zigbee_fct_err == ESP_ERR_NOT_SUPPORTED);
-    assert(api_usecase_get_factory_reset_report(NULL) == ESP_ERR_INVALID_ARG);
+    assert(api_usecase_get_factory_reset_report(g_api_usecases, NULL) == ESP_ERR_INVALID_ARG);
 }
 
 int main(void)
@@ -445,6 +459,8 @@ int main(void)
     test_usecase_factory_reset_mapping();
     test_default_ops_fallback_uses_facade();
     test_factory_report_mapping();
+    api_usecases_destroy(g_api_usecases);
+    g_api_usecases = NULL;
     printf("Host tests passed: api_usecases_host_test\n");
     return 0;
 }

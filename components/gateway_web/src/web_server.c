@@ -18,9 +18,13 @@ static void web_server_close_fn(httpd_handle_t hd, int sockfd)
     ws_httpd_close_fn_with_handle(s_ws_manager, hd, sockfd);
 }
 
-void start_web_server(void)
+void start_web_server(api_usecases_handle_t usecases)
 {
     server = NULL;
+    if (!usecases) {
+        ESP_LOGE(TAG, "API usecases handle is required");
+        return;
+    }
     if (!s_ws_manager) {
         if (ws_manager_create(&s_ws_manager) != ESP_OK) {
             ESP_LOGE(TAG, "Failed to create WS manager");
@@ -39,8 +43,8 @@ void start_web_server(void)
 
     ESP_LOGI(TAG, "Starting Web Server on port %d", httpd_config.server_port);
     if (httpd_start(&server, &httpd_config) == ESP_OK) {
-        ws_manager_init_with_handle(s_ws_manager, server);
-        if (!http_routes_register(server, s_ws_manager)) {
+        ws_manager_init_with_handle(s_ws_manager, server, usecases);
+        if (!http_routes_register(server, s_ws_manager, usecases)) {
             ESP_LOGE(TAG, "Web server init failed: one or more URI handlers were not registered");
             httpd_stop(server);
             server = NULL;

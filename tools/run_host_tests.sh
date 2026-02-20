@@ -33,6 +33,18 @@ cc -std=c11 -Wall -Wextra -Werror \
 cc -std=c11 -Wall -Wextra -Werror \
     -I"${ROOT_DIR}/tests/host/include" \
     -I"${ROOT_DIR}/components/gateway_core/include" \
+    -I"${ROOT_DIR}/components/gateway_shared_config/include" \
+    "${ROOT_DIR}/tests/host/device_service_persistence_host_test.c" \
+    "${ROOT_DIR}/components/gateway_core/src/device_service.c" \
+    "${ROOT_DIR}/components/gateway_core/src/device_service_persistence.c" \
+    "${ROOT_DIR}/components/gateway_core/src/device_service_rules.c" \
+    -o "${BUILD_DIR}/device_service_persistence_host_test"
+
+"${BUILD_DIR}/device_service_persistence_host_test"
+
+cc -std=c11 -Wall -Wextra -Werror \
+    -I"${ROOT_DIR}/tests/host/include" \
+    -I"${ROOT_DIR}/components/gateway_core/include" \
     -I"${ROOT_DIR}/components/gateway_core_persistence_adapter/include" \
     -I"${ROOT_DIR}/components/gateway_core_storage/include" \
     -I"${ROOT_DIR}/components/gateway_shared_config/include" \

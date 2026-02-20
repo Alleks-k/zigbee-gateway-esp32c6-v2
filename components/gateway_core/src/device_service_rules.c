@@ -22,6 +22,9 @@ device_service_rules_result_t device_service_rules_upsert(
 
     for (int i = 0; i < *device_count; i++) {
         if (devices[i].short_addr == short_addr) {
+            if (memcmp(devices[i].ieee_addr, ieee_addr, sizeof(devices[i].ieee_addr)) == 0) {
+                return DEVICE_SERVICE_RULES_RESULT_NO_CHANGE;
+            }
             memcpy(devices[i].ieee_addr, ieee_addr, sizeof(devices[i].ieee_addr));
             return DEVICE_SERVICE_RULES_RESULT_UPDATED;
         }
@@ -52,6 +55,9 @@ bool device_service_rules_rename(
 
     for (int i = 0; i < device_count; i++) {
         if (devices[i].short_addr == short_addr) {
+            if (strcmp(devices[i].name, new_name) == 0) {
+                return false;
+            }
             strncpy(devices[i].name, new_name, sizeof(devices[i].name) - 1);
             devices[i].name[sizeof(devices[i].name) - 1] = '\0';
             return true;

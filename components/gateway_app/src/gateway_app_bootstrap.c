@@ -62,7 +62,11 @@ static void gateway_app_device_announce_event_handler(void *arg,
     }
 
     gateway_device_announce_event_t *evt = (gateway_device_announce_event_t *)event_data;
-    device_service_add_with_ieee(device_service, evt->short_addr, evt->ieee_addr);
+    gateway_status_t status = device_service_add_with_ieee(device_service, evt->short_addr, evt->ieee_addr);
+    if (status != GATEWAY_STATUS_OK) {
+        ESP_LOGW(TAG, "Failed to persist announced device 0x%04x: %s",
+                 evt->short_addr, esp_err_to_name(gateway_status_to_esp_err(status)));
+    }
 }
 
 static void gateway_app_detach_device_events(void)

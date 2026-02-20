@@ -2,6 +2,7 @@
 
 #include "esp_log.h"
 #include "esp_zigbee_gateway.h"
+#include "gateway_status_esp.h"
 #include "gateway_zigbee_runtime_internal.h"
 
 static const char *TAG = "ZIGBEE_RUNTIME";
@@ -17,8 +18,7 @@ static esp_err_t zigbee_runtime_delete_device(uint16_t short_addr)
     if (!s_device_service) {
         return ESP_ERR_INVALID_STATE;
     }
-    device_service_delete(s_device_service, short_addr);
-    return ESP_OK;
+    return gateway_status_to_esp_err(device_service_delete(s_device_service, short_addr));
 }
 
 static esp_err_t zigbee_runtime_rename_device(uint16_t short_addr, const char *new_name)
@@ -29,8 +29,7 @@ static esp_err_t zigbee_runtime_rename_device(uint16_t short_addr, const char *n
     if (!s_device_service) {
         return ESP_ERR_INVALID_STATE;
     }
-    device_service_update_name(s_device_service, short_addr, new_name);
-    return ESP_OK;
+    return gateway_status_to_esp_err(device_service_update_name(s_device_service, short_addr, new_name));
 }
 
 static const zigbee_service_runtime_ops_t s_zigbee_runtime_ops = {

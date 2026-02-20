@@ -119,10 +119,10 @@ gateway_status_t device_service_init(device_service_handle_t handle)
         return lock_ret;
     }
     device_service_lock_acquire(handle);
-    (void)device_service_storage_load_locked(handle);
+    gateway_status_t load_ret = device_service_storage_load_locked(handle);
     device_service_lock_release(handle);
 
-    return GATEWAY_STATUS_OK;
+    return load_ret;
 }
 
 gateway_status_t device_service_set_notifier(device_service_handle_t handle, const device_service_notifier_t *notifier)
@@ -144,72 +144,164 @@ gateway_status_t device_service_set_notifier(device_service_handle_t handle, con
     return GATEWAY_STATUS_OK;
 }
 
-void device_service_add_with_ieee(device_service_handle_t handle, uint16_t addr, gateway_ieee_addr_t ieee)
+static void device_service_restore_snapshot(device_service_handle_t handle, const zb_device_t *snapshot, int snapshot_count)
 {
-    if (!handle) {
+    if (!handle || !snapshot || snapshot_count < 0 || snapshot_count > MAX_DEVICES) {
         return;
     }
 
+    memcpy(handle->devices, snapshot, sizeof(zb_device_t) * MAX_DEVICES);
+    handle->device_count = snapshot_count;
+}
+
+gateway_status_t device_service_add_with_ieee(device_service_handle_t handle, uint16_t addr, gateway_ieee_addr_t ieee)
+{
+    if (!handle || !ieee) {
+        return GATEWAY_STATUS_INVALID_ARG;
+    }
+
+    gateway_status_t lock_ret = device_service_lock_ensure(handle);
+    if (lock_ret != GATEWAY_STATUS_OK) {
+        return lock_ret;
+    }
+
+    zb_device_t snapshot[MAX_DEVICES] = {0};
+    int snapshot_count = 0;
+    bool changed = false;
+    gateway_status_t ret = GATEWAY_STATUS_OK;
+
     device_service_lock_acquire(handle);
+
+    snapshot_count = handle->device_count;
+    memcpy(snapshot, handle->devices, sizeof(snapshot));
 
     device_service_rules_result_t upsert_result = device_service_rules_upsert(
         handle->devices, &handle->device_count, MAX_DEVICES, addr, ieee, s_default_device_name_prefix);
-    if (upsert_result == DEVICE_SERVICE_RULES_RESULT_UPDATED) {
-        device_service_lock_release(handle);
-        return;
-    }
-
-    if (upsert_result == DEVICE_SERVICE_RULES_RESULT_ADDED) {
-        (void)device_service_storage_save_locked(handle);
+    switch (upsert_result) {
+    case DEVICE_SERVICE_RULES_RESULT_ADDED:
+    case DEVICE_SERVICE_RULES_RESULT_UPDATED:
+        changed = true;
+        ret = device_service_storage_save_locked(handle);
+        if (ret != GATEWAY_STATUS_OK) {
+            device_service_restore_snapshot(handle, snapshot, snapshot_count);
+            changed = false;
+        }
+        break;
+    case DEVICE_SERVICE_RULES_RESULT_NO_CHANGE:
+        ret = GATEWAY_STATUS_OK;
+        break;
+    case DEVICE_SERVICE_RULES_RESULT_LIMIT_REACHED:
+        ret = GATEWAY_STATUS_NO_MEM;
+        break;
+    case DEVICE_SERVICE_RULES_RESULT_INVALID_ARG:
+    default:
+        ret = GATEWAY_STATUS_INVALID_ARG;
+        break;
     }
 
     device_service_lock_release(handle);
-    device_service_notify_list_changed(handle);
+
+    if (ret == GATEWAY_STATUS_OK && changed) {
+        device_service_notify_list_changed(handle);
+    }
+    return ret;
 }
 
-void device_service_update_name(device_service_handle_t handle, uint16_t addr, const char *new_name)
+gateway_status_t device_service_update_name(device_service_handle_t handle, uint16_t addr, const char *new_name)
 {
     if (!handle || !new_name) {
-        return;
+        return GATEWAY_STATUS_INVALID_ARG;
     }
-    bool renamed = false;
+
+    gateway_status_t lock_ret = device_service_lock_ensure(handle);
+    if (lock_ret != GATEWAY_STATUS_OK) {
+        return lock_ret;
+    }
+
+    zb_device_t snapshot[MAX_DEVICES] = {0};
+    int snapshot_count = 0;
+    gateway_status_t ret = GATEWAY_STATUS_OK;
 
     device_service_lock_acquire(handle);
 
-    renamed = device_service_rules_rename(handle->devices, handle->device_count, addr, new_name);
+    int idx = device_service_rules_find_index_by_short_addr(handle->devices, handle->device_count, addr);
+    if (idx < 0) {
+        device_service_lock_release(handle);
+        return GATEWAY_STATUS_NOT_FOUND;
+    }
+    if (strcmp(handle->devices[idx].name, new_name) == 0) {
+        device_service_lock_release(handle);
+        return GATEWAY_STATUS_OK;
+    }
+
+    snapshot_count = handle->device_count;
+    memcpy(snapshot, handle->devices, sizeof(snapshot));
+
+    bool renamed = device_service_rules_rename(handle->devices, handle->device_count, addr, new_name);
     if (renamed) {
-        (void)device_service_storage_save_locked(handle);
+        ret = device_service_storage_save_locked(handle);
+        if (ret != GATEWAY_STATUS_OK) {
+            device_service_restore_snapshot(handle, snapshot, snapshot_count);
+        }
+    } else {
+        ret = GATEWAY_STATUS_FAIL;
     }
 
     device_service_lock_release(handle);
-    device_service_notify_list_changed(handle);
+
+    if (ret == GATEWAY_STATUS_OK && renamed) {
+        device_service_notify_list_changed(handle);
+    }
+    return ret;
 }
 
-void device_service_delete(device_service_handle_t handle, uint16_t addr)
+gateway_status_t device_service_delete(device_service_handle_t handle, uint16_t addr)
 {
     if (!handle) {
-        return;
+        return GATEWAY_STATUS_INVALID_ARG;
     }
 
+    gateway_status_t lock_ret = device_service_lock_ensure(handle);
+    if (lock_ret != GATEWAY_STATUS_OK) {
+        return lock_ret;
+    }
+
+    zb_device_t snapshot[MAX_DEVICES] = {0};
+    int snapshot_count = 0;
+    gateway_status_t ret = GATEWAY_STATUS_OK;
+    gateway_device_record_t deleted_device = {0};
     bool deleted = false;
-    uint16_t deleted_short_addr = 0;
-    gateway_ieee_addr_t deleted_ieee = {0};
 
     device_service_lock_acquire(handle);
 
-    zb_device_t deleted_device = {0};
+    int idx = device_service_rules_find_index_by_short_addr(handle->devices, handle->device_count, addr);
+    if (idx < 0) {
+        device_service_lock_release(handle);
+        return GATEWAY_STATUS_NOT_FOUND;
+    }
+
+    snapshot_count = handle->device_count;
+    memcpy(snapshot, handle->devices, sizeof(snapshot));
+    deleted_device = handle->devices[idx];
+
     deleted = device_service_rules_delete_by_short_addr(handle->devices, &handle->device_count, addr, &deleted_device);
     if (deleted) {
-        deleted_short_addr = deleted_device.short_addr;
-        memcpy(deleted_ieee, deleted_device.ieee_addr, sizeof(deleted_ieee));
-        (void)device_service_storage_save_locked(handle);
+        ret = device_service_storage_save_locked(handle);
+        if (ret != GATEWAY_STATUS_OK) {
+            device_service_restore_snapshot(handle, snapshot, snapshot_count);
+            deleted = false;
+        }
+    } else {
+        ret = GATEWAY_STATUS_FAIL;
     }
 
     device_service_lock_release(handle);
-    if (deleted) {
-        device_service_notify_delete_request(handle, deleted_short_addr, deleted_ieee);
+
+    if (ret == GATEWAY_STATUS_OK && deleted) {
+        device_service_notify_delete_request(handle, deleted_device.short_addr, deleted_device.ieee_addr);
+        device_service_notify_list_changed(handle);
     }
-    device_service_notify_list_changed(handle);
+    return ret;
 }
 
 int device_service_get_snapshot(device_service_handle_t handle, zb_device_t *out, size_t max_items)

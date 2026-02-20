@@ -12,8 +12,6 @@ typedef struct {
     char message[96];
 } gateway_error_entry_t;
 
-typedef uint64_t (*gateway_error_ring_now_ms_provider_t)(void);
-
-void gateway_error_ring_set_now_ms_provider(gateway_error_ring_now_ms_provider_t provider);
+uint64_t gateway_error_ring_now_ms_hook(void);
 void gateway_error_ring_add(const char *source, int32_t code, const char *message);
 size_t gateway_error_ring_snapshot(gateway_error_entry_t *out, size_t max_items);

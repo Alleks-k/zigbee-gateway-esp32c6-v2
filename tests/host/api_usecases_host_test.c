@@ -37,8 +37,10 @@ typedef struct {
 } api_usecases_stub_t;
 
 static api_usecases_stub_t g_stub;
+static int g_zigbee_ctx = 0;
 static int g_wifi_system_ctx = 0;
 static int g_jobs_ctx = 0;
+static zigbee_service_handle_t g_zigbee_handle = (zigbee_service_handle_t)&g_zigbee_ctx;
 static gateway_wifi_system_handle_t g_wifi_system_handle = (gateway_wifi_system_handle_t)&g_wifi_system_ctx;
 static gateway_jobs_handle_t g_jobs_handle = (gateway_jobs_handle_t)&g_jobs_ctx;
 static api_usecases_handle_t g_api_usecases = NULL;
@@ -70,6 +72,7 @@ static void reset_stub(void)
     if (!g_api_usecases) {
         api_usecases_init_params_t params = {
             .service_ops = NULL,
+            .zigbee_service = g_zigbee_handle,
             .wifi_system = g_wifi_system_handle,
             .jobs = g_jobs_handle,
             .ws_client_count_provider = NULL,
@@ -78,7 +81,7 @@ static void reset_stub(void)
         };
         assert(api_usecases_create(&params, &g_api_usecases) == ESP_OK);
     } else {
-        api_usecases_set_runtime_handles(g_api_usecases, g_wifi_system_handle, g_jobs_handle);
+        api_usecases_set_runtime_handles(g_api_usecases, g_zigbee_handle, g_wifi_system_handle, g_jobs_handle);
     }
     api_usecases_set_service_ops_with_handle(g_api_usecases, NULL);
     api_usecases_set_ws_providers(g_api_usecases, NULL, NULL, NULL);
@@ -115,8 +118,10 @@ static esp_err_t injected_factory_reset_and_reboot(uint32_t reboot_delay_ms)
     return g_stub.inj_factory_reset_ret;
 }
 
-esp_err_t gateway_device_zigbee_send_on_off(uint16_t short_addr, uint8_t endpoint, uint8_t on_off)
+esp_err_t gateway_device_zigbee_send_on_off(zigbee_service_handle_t handle, uint16_t short_addr, uint8_t endpoint,
+                                            uint8_t on_off)
 {
+    (void)handle;
     g_stub.facade_send_calls++;
     g_stub.facade_send_short_addr = short_addr;
     g_stub.facade_send_endpoint = endpoint;
@@ -161,8 +166,9 @@ esp_err_t gateway_wifi_system_factory_reset_and_reboot(gateway_wifi_system_handl
     return ESP_OK;
 }
 
-esp_err_t gateway_device_zigbee_get_network_status(zigbee_network_status_t *out_status)
+esp_err_t gateway_device_zigbee_get_network_status(zigbee_service_handle_t handle, zigbee_network_status_t *out_status)
 {
+    (void)handle;
     if (!out_status) {
         return ESP_ERR_INVALID_ARG;
     }
@@ -170,23 +176,28 @@ esp_err_t gateway_device_zigbee_get_network_status(zigbee_network_status_t *out_
     return ESP_OK;
 }
 
-int gateway_device_zigbee_get_devices_snapshot(zb_device_t *out_devices, int max_devices)
+int gateway_device_zigbee_get_devices_snapshot(zigbee_service_handle_t handle, zb_device_t *out_devices, int max_devices)
 {
+    (void)handle;
     (void)out_devices;
     (void)max_devices;
     return 0;
 }
 
-int gateway_device_zigbee_get_neighbor_lqi_snapshot(zigbee_neighbor_lqi_t *out_neighbors, int max_neighbors)
+int gateway_device_zigbee_get_neighbor_lqi_snapshot(zigbee_service_handle_t handle, zigbee_neighbor_lqi_t *out_neighbors,
+                                                    int max_neighbors)
 {
+    (void)handle;
     (void)out_neighbors;
     (void)max_neighbors;
     return 0;
 }
 
-esp_err_t gateway_device_zigbee_get_cached_lqi_snapshot(zigbee_neighbor_lqi_t *out_neighbors, int max_neighbors, int *out_count,
-                                                      zigbee_lqi_source_t *out_source, uint64_t *out_updated_ms)
+esp_err_t gateway_device_zigbee_get_cached_lqi_snapshot(zigbee_service_handle_t handle, zigbee_neighbor_lqi_t *out_neighbors,
+                                                        int max_neighbors, int *out_count, zigbee_lqi_source_t *out_source,
+                                                        uint64_t *out_updated_ms)
 {
+    (void)handle;
     (void)out_neighbors;
     (void)max_neighbors;
     if (out_count) {
@@ -201,20 +212,23 @@ esp_err_t gateway_device_zigbee_get_cached_lqi_snapshot(zigbee_neighbor_lqi_t *o
     return ESP_OK;
 }
 
-esp_err_t gateway_device_zigbee_permit_join(uint8_t duration_seconds)
+esp_err_t gateway_device_zigbee_permit_join(zigbee_service_handle_t handle, uint8_t duration_seconds)
 {
+    (void)handle;
     (void)duration_seconds;
     return ESP_OK;
 }
 
-esp_err_t gateway_device_zigbee_delete_device(uint16_t short_addr)
+esp_err_t gateway_device_zigbee_delete_device(zigbee_service_handle_t handle, uint16_t short_addr)
 {
+    (void)handle;
     (void)short_addr;
     return ESP_OK;
 }
 
-esp_err_t gateway_device_zigbee_rename_device(uint16_t short_addr, const char *name)
+esp_err_t gateway_device_zigbee_rename_device(zigbee_service_handle_t handle, uint16_t short_addr, const char *name)
 {
+    (void)handle;
     (void)short_addr;
     (void)name;
     return ESP_OK;

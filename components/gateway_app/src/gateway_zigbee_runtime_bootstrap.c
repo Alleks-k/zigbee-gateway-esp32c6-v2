@@ -9,7 +9,6 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "gateway_events.h"
-#include "gateway_device_zigbee_facade.h"
 #include "gateway_zigbee_runtime.h"
 #include "gateway_zigbee_runtime_internal.h"
 #include "rcp_tool.h"
@@ -103,10 +102,6 @@ esp_err_t gateway_zigbee_runtime_prepare(const gateway_runtime_context_t *ctx)
     if (ret != ESP_OK) {
         return ret;
     }
-    ret = gateway_device_zigbee_bind_service(s_zigbee_service);
-    if (ret != ESP_OK) {
-        return ret;
-    }
     gateway_state_publish(false, false);
 
     if (s_delete_req_handler == NULL) {
@@ -132,8 +127,6 @@ void gateway_zigbee_runtime_teardown(void)
             GATEWAY_EVENT, GATEWAY_EVENT_DEVICE_DELETE_REQUEST, s_delete_req_handler);
         s_delete_req_handler = NULL;
     }
-
-    (void)gateway_device_zigbee_bind_service(NULL);
 
     if (s_zigbee_service) {
         zigbee_service_destroy(s_zigbee_service);

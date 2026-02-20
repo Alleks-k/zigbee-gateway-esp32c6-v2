@@ -134,6 +134,9 @@ esp_err_t gateway_app_runtime_create(gateway_app_runtime_handles_t *out_handles)
         goto fail;
     }
 
+    api_usecases_set_runtime_handles(out_handles->api_usecases, out_handles->zigbee_service, out_handles->wifi_system,
+                                     out_handles->jobs);
+
     ret = gateway_jobs_set_zigbee_service(out_handles->jobs, out_handles->zigbee_service);
     if (ret != ESP_OK) {
         goto fail;

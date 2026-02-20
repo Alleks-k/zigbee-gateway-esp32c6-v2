@@ -174,6 +174,28 @@ check_no_legacy_runtime_singleton_apis() {
     done <<< "${hits}"
 }
 
+check_no_mutable_runtime_singletons() {
+    local hits
+    hits="$(
+        rg -n '^\s*static\s+[^()]*\bs_[A-Za-z0-9_]*(handle|service|state|queue|provider)[A-Za-z0-9_]*\b' \
+            "${ROOT_DIR}/components/gateway_core_facade/src" \
+            "${ROOT_DIR}/components/gateway_core_zigbee/src" \
+            "${ROOT_DIR}/components/gateway_web_api/src" \
+            "${ROOT_DIR}/components/gateway_web_ws/src" \
+            --glob '*.c' || true
+    )"
+
+    if [[ -z "${hits}" ]]; then
+        return
+    fi
+
+    while IFS= read -r hit; do
+        [[ -z "${hit}" ]] && continue
+        local rel="${hit#${ROOT_DIR}/}"
+        report_violation "mutable runtime singleton/global detected: ${rel}"
+    done <<< "${hits}"
+}
+
 check_web_api_dependency_rules
 check_no_cmake_include_hacks
 check_no_relative_source_includes
@@ -182,6 +204,7 @@ check_core_facade_headers_no_low_level_includes
 check_web_api_no_low_level_idf_includes
 check_no_legacy_default_getters
 check_no_legacy_runtime_singleton_apis
+check_no_mutable_runtime_singletons
 
 if [[ "${violations}" -ne 0 ]]; then
     echo "Component dependency/include edge check failed."

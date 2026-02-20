@@ -91,6 +91,7 @@ typedef bool (*api_ws_metrics_provider_t)(void *ctx, api_ws_runtime_metrics_t *o
 
 typedef struct {
     const api_service_ops_t *service_ops;
+    zigbee_service_handle_t zigbee_service;
     gateway_wifi_system_handle_t wifi_system;
     gateway_jobs_handle_t jobs;
     api_ws_client_count_provider_t ws_client_count_provider;
@@ -102,8 +103,8 @@ esp_err_t api_usecases_create(const api_usecases_init_params_t *params, api_usec
 void api_usecases_destroy(api_usecases_handle_t handle);
 
 void api_usecases_set_service_ops_with_handle(api_usecases_handle_t handle, const api_service_ops_t *ops);
-void api_usecases_set_runtime_handles(api_usecases_handle_t handle, gateway_wifi_system_handle_t wifi_system,
-                                      gateway_jobs_handle_t jobs);
+void api_usecases_set_runtime_handles(api_usecases_handle_t handle, zigbee_service_handle_t zigbee_service,
+                                      gateway_wifi_system_handle_t wifi_system, gateway_jobs_handle_t jobs);
 void api_usecases_set_ws_providers(api_usecases_handle_t handle, api_ws_client_count_provider_t count_provider,
                                    api_ws_metrics_provider_t metrics_provider, void *provider_ctx);
 

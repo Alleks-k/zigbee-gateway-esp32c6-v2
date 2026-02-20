@@ -27,7 +27,12 @@ static uint64_t gateway_app_now_ms_provider(void)
     return (uint64_t)(esp_timer_get_time() / 1000);
 }
 
-static bool gateway_app_http_error_map_provider(esp_err_t err, int *out_http_status, const char **out_error_code)
+uint64_t gateway_error_ring_now_ms_hook(void)
+{
+    return gateway_app_now_ms_provider();
+}
+
+bool http_error_map_provider_hook(esp_err_t err, int *out_http_status, const char **out_error_code)
 {
     if (!out_http_status || !out_error_code) {
         return false;
@@ -91,8 +96,6 @@ void gateway_app_start(void)
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
 
-    gateway_error_ring_set_now_ms_provider(gateway_app_now_ms_provider);
-    http_error_set_map_provider(gateway_app_http_error_map_provider);
     ESP_ERROR_CHECK(gateway_status_to_esp_err(config_service_init_or_migrate()));
 
     gateway_app_detach_device_events();

@@ -7,8 +7,12 @@ static gateway_error_entry_t s_ring[GATEWAY_ERROR_RING_CAPACITY];
 static size_t s_ring_head = 0;
 static size_t s_ring_count = 0;
 static atomic_flag s_ring_lock = ATOMIC_FLAG_INIT;
-static gateway_error_ring_now_ms_provider_t s_now_ms_provider = NULL;
 static uint64_t s_fallback_now_ms = 0;
+
+__attribute__((weak)) uint64_t gateway_error_ring_now_ms_hook(void)
+{
+    return 0;
+}
 
 static void ring_lock(void)
 {
@@ -23,17 +27,11 @@ static void ring_unlock(void)
 
 static uint64_t now_ms_locked(void)
 {
-    if (s_now_ms_provider) {
-        return s_now_ms_provider();
+    const uint64_t now = gateway_error_ring_now_ms_hook();
+    if (now != 0) {
+        return now;
     }
     return ++s_fallback_now_ms;
-}
-
-void gateway_error_ring_set_now_ms_provider(gateway_error_ring_now_ms_provider_t provider)
-{
-    ring_lock();
-    s_now_ms_provider = provider;
-    ring_unlock();
 }
 
 void gateway_error_ring_add(const char *source, int32_t code, const char *message)

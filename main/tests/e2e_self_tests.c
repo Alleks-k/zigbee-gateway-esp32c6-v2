@@ -33,8 +33,10 @@ static int s_mock_wifi_sta_connect_called = 0;
 static int s_mock_wifi_fallback_called = 0;
 static job_queue_handle_t s_job_queue = NULL;
 static api_usecases_handle_t s_api_usecases = NULL;
+static int s_api_zigbee_ctx = 0;
 static int s_api_wifi_ctx = 0;
 static int s_api_jobs_ctx = 0;
+static zigbee_service_handle_t s_api_zigbee_handle = (zigbee_service_handle_t)&s_api_zigbee_ctx;
 static gateway_wifi_system_handle_t s_api_wifi_handle = (gateway_wifi_system_handle_t)&s_api_wifi_ctx;
 static gateway_jobs_handle_t s_api_jobs_handle = (gateway_jobs_handle_t)&s_api_jobs_ctx;
 
@@ -165,6 +167,7 @@ static void reset_api_mocks(void)
     if (!s_api_usecases) {
         api_usecases_init_params_t params = {
             .service_ops = NULL,
+            .zigbee_service = s_api_zigbee_handle,
             .wifi_system = s_api_wifi_handle,
             .jobs = s_api_jobs_handle,
             .ws_client_count_provider = NULL,
@@ -173,7 +176,7 @@ static void reset_api_mocks(void)
         };
         TEST_ASSERT_EQUAL(ESP_OK, api_usecases_create(&params, &s_api_usecases));
     } else {
-        api_usecases_set_runtime_handles(s_api_usecases, s_api_wifi_handle, s_api_jobs_handle);
+        api_usecases_set_runtime_handles(s_api_usecases, s_api_zigbee_handle, s_api_wifi_handle, s_api_jobs_handle);
     }
     api_usecases_set_service_ops_with_handle(s_api_usecases, NULL);
     api_usecases_set_ws_providers(s_api_usecases, NULL, NULL, NULL);

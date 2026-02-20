@@ -58,4 +58,40 @@ cc -std=c11 -Wall -Wextra -Werror \
 
 "${BUILD_DIR}/api_usecases_host_test"
 
+cc -std=c11 -Wall -Wextra -Werror \
+    -I"${ROOT_DIR}/tests/host/include" \
+    -I"${ROOT_DIR}/components/gateway_web_api/include" \
+    -I"${ROOT_DIR}/components/gateway_core_facade/include" \
+    -I"${ROOT_DIR}/components/gateway_core_state/include" \
+    -I"${ROOT_DIR}/components/gateway_core/include" \
+    -I"${ROOT_DIR}/components/gateway_shared_config/include" \
+    "${ROOT_DIR}/tests/host/api_usecases_ctx_host_test.c" \
+    -o "${BUILD_DIR}/api_usecases_ctx_host_test"
+
+"${BUILD_DIR}/api_usecases_ctx_host_test"
+
+cc -std=c11 -Wall -Wextra -Werror \
+    -I"${ROOT_DIR}/tests/host/include" \
+    -I"${ROOT_DIR}/components/gateway_core_zigbee/include" \
+    -I"${ROOT_DIR}/components/gateway_core/include" \
+    -I"${ROOT_DIR}/components/gateway_core_state/include" \
+    -I"${ROOT_DIR}/components/gateway_shared_config/include" \
+    "${ROOT_DIR}/tests/host/zigbee_service_ctx_host_test.c" \
+    -o "${BUILD_DIR}/zigbee_service_ctx_host_test"
+
+"${BUILD_DIR}/zigbee_service_ctx_host_test"
+
+cc -std=c11 -Wall -Wextra -Werror \
+    -I"${ROOT_DIR}/tests/host/include" \
+    -I"${ROOT_DIR}/components/gateway_web_ws/include" \
+    -I"${ROOT_DIR}/components/gateway_web_api/include" \
+    -I"${ROOT_DIR}/components/gateway_core_facade/include" \
+    -I"${ROOT_DIR}/components/gateway_core_state/include" \
+    -I"${ROOT_DIR}/components/gateway_core/include" \
+    -I"${ROOT_DIR}/components/gateway_shared_config/include" \
+    "${ROOT_DIR}/tests/host/ws_manager_ctx_contract_host_test.c" \
+    -o "${BUILD_DIR}/ws_manager_ctx_contract_host_test"
+
+"${BUILD_DIR}/ws_manager_ctx_contract_host_test"
+
 echo "All host tests passed."

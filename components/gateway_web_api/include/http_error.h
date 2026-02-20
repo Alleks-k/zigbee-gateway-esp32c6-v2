@@ -7,7 +7,7 @@
 
 typedef bool (*http_error_map_provider_t)(esp_err_t err, int *out_http_status, const char **out_error_code);
 
-void http_error_set_map_provider(http_error_map_provider_t provider);
+bool http_error_map_provider_hook(esp_err_t err, int *out_http_status, const char **out_error_code);
 esp_err_t http_error_send(httpd_req_t *req, int http_status, const char *code, const char *message);
 esp_err_t http_error_send_esp(httpd_req_t *req, esp_err_t err, const char *message);
 esp_err_t http_success_send(httpd_req_t *req, const char *message);

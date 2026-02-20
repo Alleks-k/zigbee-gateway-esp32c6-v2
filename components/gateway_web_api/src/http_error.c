@@ -3,7 +3,13 @@
 #include <stdio.h>
 #include <string.h>
 
-static http_error_map_provider_t s_error_map_provider = NULL;
+__attribute__((weak)) bool http_error_map_provider_hook(esp_err_t err, int *out_http_status, const char **out_error_code)
+{
+    (void)err;
+    (void)out_http_status;
+    (void)out_error_code;
+    return false;
+}
 
 static const char *http_status_text(int code)
 {
@@ -49,15 +55,10 @@ static bool map_error_default(esp_err_t err, int *out_http_status, const char **
 
 static bool map_error(esp_err_t err, int *out_http_status, const char **out_error_code)
 {
-    if (s_error_map_provider && s_error_map_provider(err, out_http_status, out_error_code)) {
+    if (http_error_map_provider_hook(err, out_http_status, out_error_code)) {
         return true;
     }
     return map_error_default(err, out_http_status, out_error_code);
-}
-
-void http_error_set_map_provider(http_error_map_provider_t provider)
-{
-    s_error_map_provider = provider;
 }
 
 esp_err_t http_error_send(httpd_req_t *req, int http_status, const char *code, const char *message)

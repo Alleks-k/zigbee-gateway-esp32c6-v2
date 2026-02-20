@@ -9,7 +9,6 @@
 #include "device_service.h"
 #include "device_service_lock_freertos_port.h"
 #include "gateway_status.h"
-#include "gateway_device_zigbee_facade.h"
 #include "gateway_persistence_adapter.h"
 #include "gateway_wifi_system_facade.h"
 #include "state_store.h"
@@ -87,13 +86,13 @@ static void ensure_stateful_handles(void)
         gateway_jobs_init_params_t jobs_params = {0};
 
         TEST_ASSERT_EQUAL(ESP_OK, zigbee_service_create(&zigbee_service_params, &s_zigbee_service));
-        TEST_ASSERT_EQUAL(ESP_OK, gateway_device_zigbee_bind_service(s_zigbee_service));
         TEST_ASSERT_EQUAL(ESP_OK, gateway_wifi_system_create(&wifi_system_params, &s_wifi_system));
         TEST_ASSERT_EQUAL(ESP_OK, gateway_jobs_create(&jobs_params, &s_jobs));
         TEST_ASSERT_EQUAL(ESP_OK, gateway_jobs_set_zigbee_service(s_jobs, s_zigbee_service));
         if (!s_api_usecases) {
             api_usecases_init_params_t params = {
                 .service_ops = NULL,
+                .zigbee_service = s_zigbee_service,
                 .wifi_system = s_wifi_system,
                 .jobs = s_jobs,
                 .ws_client_count_provider = NULL,
@@ -102,7 +101,7 @@ static void ensure_stateful_handles(void)
             };
             TEST_ASSERT_EQUAL(ESP_OK, api_usecases_create(&params, &s_api_usecases));
         } else {
-            api_usecases_set_runtime_handles(s_api_usecases, s_wifi_system, s_jobs);
+            api_usecases_set_runtime_handles(s_api_usecases, s_zigbee_service, s_wifi_system, s_jobs);
         }
         api_usecases_set_service_ops_with_handle(s_api_usecases, NULL);
         TEST_ASSERT_EQUAL(ESP_OK, wifi_init_bind_state(s_gateway_state));

@@ -5,6 +5,7 @@
 
 struct api_usecases {
     const api_service_ops_t *service_ops;
+    zigbee_service_handle_t zigbee_service;
     gateway_wifi_system_handle_t wifi_system;
     gateway_jobs_handle_t jobs;
     api_ws_client_count_provider_t ws_client_count_provider;
@@ -25,6 +26,7 @@ esp_err_t api_usecases_create(const api_usecases_init_params_t *params, api_usec
 
     if (params) {
         handle->service_ops = params->service_ops;
+        handle->zigbee_service = params->zigbee_service;
         handle->wifi_system = params->wifi_system;
         handle->jobs = params->jobs;
         handle->ws_client_count_provider = params->ws_client_count_provider;
@@ -49,12 +51,13 @@ void api_usecases_set_service_ops_with_handle(api_usecases_handle_t handle, cons
     handle->service_ops = ops;
 }
 
-void api_usecases_set_runtime_handles(api_usecases_handle_t handle, gateway_wifi_system_handle_t wifi_system,
-                                      gateway_jobs_handle_t jobs)
+void api_usecases_set_runtime_handles(api_usecases_handle_t handle, zigbee_service_handle_t zigbee_service,
+                                      gateway_wifi_system_handle_t wifi_system, gateway_jobs_handle_t jobs)
 {
     if (!handle) {
         return;
     }
+    handle->zigbee_service = zigbee_service;
     handle->wifi_system = wifi_system;
     handle->jobs = jobs;
 }
@@ -83,6 +86,14 @@ static esp_err_t require_wifi_system(api_usecases_handle_t handle)
     return handle->wifi_system ? ESP_OK : ESP_ERR_INVALID_STATE;
 }
 
+static esp_err_t require_zigbee(api_usecases_handle_t handle)
+{
+    if (!handle) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    return handle->zigbee_service ? ESP_OK : ESP_ERR_INVALID_STATE;
+}
+
 static esp_err_t require_jobs(api_usecases_handle_t handle)
 {
     if (!handle) {
@@ -105,7 +116,12 @@ esp_err_t api_usecase_control(api_usecases_handle_t handle, const api_control_re
         return handle->service_ops->send_on_off(in->addr, in->ep, in->cmd);
     }
 
-    return gateway_device_zigbee_send_on_off(in->addr, in->ep, in->cmd);
+    ret = require_zigbee(handle);
+    if (ret != ESP_OK) {
+        return ret;
+    }
+
+    return gateway_device_zigbee_send_on_off(handle->zigbee_service, in->addr, in->ep, in->cmd);
 }
 
 esp_err_t api_usecase_wifi_save(api_usecases_handle_t handle, const api_wifi_save_request_t *in)
@@ -163,7 +179,12 @@ esp_err_t api_usecase_get_network_status(api_usecases_handle_t handle, zigbee_ne
     if (ret != ESP_OK || !out_status) {
         return ESP_ERR_INVALID_ARG;
     }
-    return gateway_device_zigbee_get_network_status(out_status);
+    ret = require_zigbee(handle);
+    if (ret != ESP_OK) {
+        return ret;
+    }
+
+    return gateway_device_zigbee_get_network_status(handle->zigbee_service, out_status);
 }
 
 int api_usecase_get_devices_snapshot(api_usecases_handle_t handle, zb_device_t *out_devices, int max_devices)
@@ -171,7 +192,10 @@ int api_usecase_get_devices_snapshot(api_usecases_handle_t handle, zb_device_t *
     if (!handle) {
         return 0;
     }
-    return gateway_device_zigbee_get_devices_snapshot(out_devices, max_devices);
+    if (require_zigbee(handle) != ESP_OK) {
+        return 0;
+    }
+    return gateway_device_zigbee_get_devices_snapshot(handle->zigbee_service, out_devices, max_devices);
 }
 
 int api_usecase_get_neighbor_lqi_snapshot(api_usecases_handle_t handle, zigbee_neighbor_lqi_t *out_neighbors, int max_neighbors)
@@ -179,7 +203,10 @@ int api_usecase_get_neighbor_lqi_snapshot(api_usecases_handle_t handle, zigbee_n
     if (!handle) {
         return 0;
     }
-    return gateway_device_zigbee_get_neighbor_lqi_snapshot(out_neighbors, max_neighbors);
+    if (require_zigbee(handle) != ESP_OK) {
+        return 0;
+    }
+    return gateway_device_zigbee_get_neighbor_lqi_snapshot(handle->zigbee_service, out_neighbors, max_neighbors);
 }
 
 esp_err_t api_usecase_get_cached_lqi_snapshot(api_usecases_handle_t handle, zigbee_neighbor_lqi_t *out_neighbors,
@@ -190,7 +217,13 @@ esp_err_t api_usecase_get_cached_lqi_snapshot(api_usecases_handle_t handle, zigb
     if (ret != ESP_OK) {
         return ret;
     }
-    return gateway_device_zigbee_get_cached_lqi_snapshot(out_neighbors, max_neighbors, out_count, out_source, out_updated_ms);
+    ret = require_zigbee(handle);
+    if (ret != ESP_OK) {
+        return ret;
+    }
+
+    return gateway_device_zigbee_get_cached_lqi_snapshot(handle->zigbee_service, out_neighbors, max_neighbors, out_count,
+                                                         out_source, out_updated_ms);
 }
 
 esp_err_t api_usecase_permit_join(api_usecases_handle_t handle, uint8_t duration_seconds)
@@ -199,7 +232,12 @@ esp_err_t api_usecase_permit_join(api_usecases_handle_t handle, uint8_t duration
     if (ret != ESP_OK) {
         return ret;
     }
-    return gateway_device_zigbee_permit_join(duration_seconds);
+    ret = require_zigbee(handle);
+    if (ret != ESP_OK) {
+        return ret;
+    }
+
+    return gateway_device_zigbee_permit_join(handle->zigbee_service, duration_seconds);
 }
 
 esp_err_t api_usecase_delete_device(api_usecases_handle_t handle, uint16_t short_addr)
@@ -208,7 +246,12 @@ esp_err_t api_usecase_delete_device(api_usecases_handle_t handle, uint16_t short
     if (ret != ESP_OK) {
         return ret;
     }
-    return gateway_device_zigbee_delete_device(short_addr);
+    ret = require_zigbee(handle);
+    if (ret != ESP_OK) {
+        return ret;
+    }
+
+    return gateway_device_zigbee_delete_device(handle->zigbee_service, short_addr);
 }
 
 esp_err_t api_usecase_rename_device(api_usecases_handle_t handle, uint16_t short_addr, const char *name)
@@ -217,7 +260,12 @@ esp_err_t api_usecase_rename_device(api_usecases_handle_t handle, uint16_t short
     if (ret != ESP_OK || !name) {
         return ESP_ERR_INVALID_ARG;
     }
-    return gateway_device_zigbee_rename_device(short_addr, name);
+    ret = require_zigbee(handle);
+    if (ret != ESP_OK) {
+        return ret;
+    }
+
+    return gateway_device_zigbee_rename_device(handle->zigbee_service, short_addr, name);
 }
 
 esp_err_t api_usecase_wifi_scan(api_usecases_handle_t handle, wifi_ap_info_t **out_list, size_t *out_count)

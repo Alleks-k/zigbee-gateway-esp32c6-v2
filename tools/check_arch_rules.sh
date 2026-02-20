@@ -85,6 +85,25 @@ check_core_no_repository_headers
 check_device_repository_header_usage
 check_device_repository_symbol_ownership
 
+check_core_no_platform_includes() {
+    local core_dir="${ROOT_DIR}/components/gateway_core"
+    local hits
+    hits="$(
+        rg -n '#include[[:space:]]+[<"](esp_[^">]+|freertos/[^">]+)[>"]' \
+            "${core_dir}/src" "${core_dir}/include" --glob '*.[ch]' || true
+    )"
+
+    if [[ -n "${hits}" ]]; then
+        while IFS= read -r hit; do
+            local rel="${hit#${ROOT_DIR}/}"
+            echo "ARCH-RULE VIOLATION (gateway_core must stay platform-agnostic): ${rel}"
+            violations=1
+        done <<< "${hits}"
+    fi
+}
+
+check_core_no_platform_includes
+
 if [[ "${violations}" -ne 0 ]]; then
     echo "Architecture guardrails check failed."
     exit 1

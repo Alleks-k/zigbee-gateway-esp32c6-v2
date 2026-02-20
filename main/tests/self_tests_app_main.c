@@ -7,7 +7,6 @@
 #include "esp_timer.h"
 #include "gateway_runtime_context.h"
 #include "gateway_status_esp.h"
-#include "gateway_device_zigbee_facade.h"
 #include "gateway_wifi_system_facade.h"
 #include "gateway_persistence_adapter.h"
 #include "state_store.h"
@@ -79,7 +78,6 @@ void app_main(void)
     zigbee_service_params.gateway_state = gateway_state;
     zigbee_service_params.runtime_ops = NULL;
     ESP_ERROR_CHECK(zigbee_service_create(&zigbee_service_params, &zigbee_service));
-    ESP_ERROR_CHECK(gateway_device_zigbee_bind_service(zigbee_service));
     wifi_system_params.gateway_state_handle = gateway_state;
     ESP_ERROR_CHECK(gateway_wifi_system_create(&wifi_system_params, &wifi_system));
     ESP_ERROR_CHECK(wifi_init_bind_state(gateway_state));

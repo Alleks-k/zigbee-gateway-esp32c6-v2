@@ -1,6 +1,7 @@
 idf_component_register(
     SRCS
         "src/gateway_app_bootstrap.c"
+        "src/gateway_app_runtime.c"
         "src/gateway_zigbee_runtime_bootstrap.c"
         "src/gateway_zigbee_runtime_signals.c"
         "src/gateway_zigbee_runtime_commands.c"
@@ -21,6 +22,7 @@ idf_component_register(
         gateway_net
         gateway_web_api
         gateway_web
+        gateway_web_ws
     PRIV_REQUIRES
         esp_timer
         esp_coex

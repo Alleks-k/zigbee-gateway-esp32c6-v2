@@ -18,19 +18,14 @@ static void web_server_close_fn(httpd_handle_t hd, int sockfd)
     ws_httpd_close_fn_with_handle(s_ws_manager, hd, sockfd);
 }
 
-void start_web_server(api_usecases_handle_t usecases)
+void start_web_server(ws_manager_handle_t ws_manager, api_usecases_handle_t usecases)
 {
     server = NULL;
-    if (!usecases) {
-        ESP_LOGE(TAG, "API usecases handle is required");
+    if (!ws_manager || !usecases) {
+        ESP_LOGE(TAG, "WS manager and API usecases handles are required");
         return;
     }
-    if (!s_ws_manager) {
-        if (ws_manager_create(&s_ws_manager) != ESP_OK) {
-            ESP_LOGE(TAG, "Failed to create WS manager");
-            return;
-        }
-    }
+    s_ws_manager = ws_manager;
     httpd_config_t httpd_config = HTTPD_DEFAULT_CONFIG();
     httpd_config.server_port = 80;
     // Keep extra margin for telemetry/status JSON and WS handling.
@@ -65,10 +60,7 @@ void stop_web_server(void)
         httpd_stop(server);
         server = NULL;
     }
-    if (s_ws_manager) {
-        ws_manager_destroy(s_ws_manager);
-        s_ws_manager = NULL;
-    }
+    s_ws_manager = NULL;
 }
 
 int web_server_get_ws_client_count(void)

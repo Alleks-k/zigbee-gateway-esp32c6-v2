@@ -87,6 +87,9 @@ esp_err_t gateway_zigbee_runtime_prepare(const gateway_runtime_context_t *ctx)
     if (!ctx || !ctx->device_service || !ctx->gateway_state) {
         return ESP_ERR_INVALID_ARG;
     }
+    if (s_zigbee_service || s_delete_req_handler || s_device_service || s_gateway_state) {
+        gateway_zigbee_runtime_teardown();
+    }
     s_device_service = ctx->device_service;
     s_gateway_state = ctx->gateway_state;
 
@@ -95,11 +98,6 @@ esp_err_t gateway_zigbee_runtime_prepare(const gateway_runtime_context_t *ctx)
         .gateway_state = s_gateway_state,
         .runtime_ops = gateway_zigbee_runtime_get_ops(),
     };
-
-    if (s_zigbee_service) {
-        zigbee_service_destroy(s_zigbee_service);
-        s_zigbee_service = NULL;
-    }
 
     esp_err_t ret = zigbee_service_create(&params, &s_zigbee_service);
     if (ret != ESP_OK) {
@@ -125,6 +123,26 @@ esp_err_t gateway_zigbee_runtime_prepare(const gateway_runtime_context_t *ctx)
 zigbee_service_handle_t gateway_zigbee_runtime_get_service_handle(void)
 {
     return s_zigbee_service;
+}
+
+void gateway_zigbee_runtime_teardown(void)
+{
+    if (s_delete_req_handler) {
+        (void)esp_event_handler_instance_unregister(
+            GATEWAY_EVENT, GATEWAY_EVENT_DEVICE_DELETE_REQUEST, s_delete_req_handler);
+        s_delete_req_handler = NULL;
+    }
+
+    (void)gateway_device_zigbee_bind_service(NULL);
+
+    if (s_zigbee_service) {
+        zigbee_service_destroy(s_zigbee_service);
+        s_zigbee_service = NULL;
+    }
+
+    s_device_service = NULL;
+    s_gateway_state = NULL;
+    s_last_live_lqi_refresh_us = 0;
 }
 
 esp_err_t gateway_zigbee_runtime_start(void)

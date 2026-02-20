@@ -8,9 +8,6 @@ static zigbee_service_handle_t s_zigbee_service = NULL;
 
 esp_err_t gateway_device_zigbee_bind_service(zigbee_service_handle_t handle)
 {
-    if (!handle) {
-        return ESP_ERR_INVALID_ARG;
-    }
     s_zigbee_service = handle;
     return ESP_OK;
 }

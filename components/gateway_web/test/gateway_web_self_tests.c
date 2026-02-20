@@ -720,8 +720,11 @@ static bool ws_send_client_close_frame(int fd)
 static void test_ws_runtime_socket_lifecycle_real_stack_disconnect_reconnect_backpressure(void)
 {
     ensure_stateful_handles();
+    ws_manager_handle_t ws_server_manager = NULL;
+    TEST_ASSERT_EQUAL(ESP_OK, ws_manager_create(&ws_server_manager));
+    TEST_ASSERT_NOT_NULL(ws_server_manager);
     stop_web_server();
-    start_web_server(s_api_usecases);
+    start_web_server(ws_server_manager, s_api_usecases);
     usleep(120000);
 
     int fd1 = ws_connect_localhost();
@@ -758,6 +761,7 @@ static void test_ws_runtime_socket_lifecycle_real_stack_disconnect_reconnect_bac
     usleep(120000);
 
     stop_web_server();
+    ws_manager_destroy(ws_server_manager);
 }
 #endif
 

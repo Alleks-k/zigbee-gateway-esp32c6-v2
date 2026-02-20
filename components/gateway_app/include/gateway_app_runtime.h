@@ -7,11 +7,13 @@
 #include "gateway_wifi_system_facade.h"
 #include "state_store.h"
 #include "ws_manager.h"
+#include "gateway_zigbee_runtime.h"
 #include "zigbee_service.h"
 
 typedef struct {
     device_service_handle_t device_service;
     gateway_state_handle_t gateway_state;
+    gateway_zigbee_runtime_handle_t zigbee_runtime;
     zigbee_service_handle_t zigbee_service;
     gateway_wifi_system_handle_t wifi_system;
     gateway_jobs_handle_t jobs;

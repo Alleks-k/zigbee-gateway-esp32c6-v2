@@ -19,15 +19,18 @@ static void bdb_start_top_level_commissioning_cb(uint8_t mode_mask)
     esp_zb_bdb_start_top_level_commissioning(mode_mask);
 }
 
-void refresh_lqi_from_live_event(const char *reason)
+void refresh_lqi_from_live_event(gateway_zigbee_runtime_handle_t handle, const char *reason)
 {
-    int64_t now_us = esp_timer_get_time();
-    if ((now_us - s_last_live_lqi_refresh_us) < LIVE_LQI_REFRESH_MIN_INTERVAL_US) {
+    if (!handle || !handle->zigbee_service) {
         return;
     }
-    s_last_live_lqi_refresh_us = now_us;
+    int64_t now_us = esp_timer_get_time();
+    if ((now_us - handle->last_live_lqi_refresh_us) < LIVE_LQI_REFRESH_MIN_INTERVAL_US) {
+        return;
+    }
+    handle->last_live_lqi_refresh_us = now_us;
 
-    esp_err_t ret = zigbee_service_refresh_neighbor_lqi_from_table(s_zigbee_service);
+    esp_err_t ret = zigbee_service_refresh_neighbor_lqi_from_table(handle->zigbee_service);
     if (ret != ESP_OK) {
         ESP_LOGW(TAG, "Live LQI refresh failed (%s): %s", reason, esp_err_to_name(ret));
         return;
@@ -35,9 +38,9 @@ void refresh_lqi_from_live_event(const char *reason)
     (void)esp_event_post(GATEWAY_EVENT, GATEWAY_EVENT_LQI_STATE_CHANGED, NULL, 0, 0);
 }
 
-void gateway_state_publish(bool zigbee_started, bool factory_new)
+void gateway_state_publish(gateway_zigbee_runtime_handle_t handle, bool zigbee_started, bool factory_new)
 {
-    if (!s_gateway_state) {
+    if (!handle || !handle->gateway_state) {
         ESP_LOGW(TAG, "Gateway state handle is not initialized");
         return;
     }
@@ -56,7 +59,7 @@ void gateway_state_publish(bool zigbee_started, bool factory_new)
         state.short_addr = esp_zb_get_short_address();
     }
 
-    esp_err_t ret = gateway_status_to_esp_err(gateway_state_set_network(s_gateway_state, &state));
+    esp_err_t ret = gateway_status_to_esp_err(gateway_state_set_network(handle->gateway_state, &state));
     if (ret != ESP_OK) {
         ESP_LOGW(TAG, "Failed to publish gateway state: %s", esp_err_to_name(ret));
     }
@@ -64,7 +67,13 @@ void gateway_state_publish(bool zigbee_started, bool factory_new)
 
 void device_delete_request_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data)
 {
-    (void)arg;
+    gateway_zigbee_runtime_handle_t runtime = (gateway_zigbee_runtime_handle_t)arg;
+    if (!runtime) {
+        runtime = gateway_zigbee_runtime_get_active();
+    }
+    if (!runtime) {
+        return;
+    }
     if (event_base != GATEWAY_EVENT || event_id != GATEWAY_EVENT_DEVICE_DELETE_REQUEST || event_data == NULL) {
         return;
     }
@@ -76,6 +85,11 @@ void device_delete_request_event_handler(void *arg, esp_event_base_t event_base,
 
 void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
 {
+    gateway_zigbee_runtime_handle_t runtime = gateway_zigbee_runtime_get_active();
+    if (!runtime) {
+        return;
+    }
+
     uint32_t *p_sg_p = signal_struct->p_app_signal;
     esp_err_t err_status = signal_struct->esp_err_status;
     esp_zb_app_signal_type_t sig_type = *p_sg_p;
@@ -83,7 +97,7 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
     switch (sig_type) {
     case ESP_ZB_ZDO_SIGNAL_SKIP_STARTUP:
         ESP_LOGI(TAG, "Zigbee stack initialized");
-        gateway_state_publish(true, esp_zb_bdb_is_factory_new());
+        gateway_state_publish(runtime, true, esp_zb_bdb_is_factory_new());
 #if CONFIG_ESP_COEX_SW_COEXIST_ENABLE
         esp_coex_wifi_i154_enable();
 #endif
@@ -95,7 +109,7 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
         if (err_status == ESP_OK) {
             bool factory_new = esp_zb_bdb_is_factory_new();
             ESP_LOGI(TAG, "Device started up. Factory new: %d", factory_new);
-            gateway_state_publish(true, factory_new);
+            gateway_state_publish(runtime, true, factory_new);
             if (factory_new) {
                 esp_zb_bdb_start_top_level_commissioning(ESP_ZB_BDB_MODE_NETWORK_FORMATION);
             } else {
@@ -111,7 +125,7 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
         if (err_status == ESP_OK) {
             uint16_t pan_id = esp_zb_get_pan_id();
             uint8_t channel = esp_zb_get_current_channel();
-            gateway_state_publish(true, esp_zb_bdb_is_factory_new());
+            gateway_state_publish(runtime, true, esp_zb_bdb_is_factory_new());
             ESP_LOGI(TAG, "Formed network: PAN 0x%04hx, CH %d", pan_id, channel);
             esp_zb_bdb_start_top_level_commissioning(ESP_ZB_BDB_MODE_NETWORK_STEERING);
         } else {
@@ -138,7 +152,7 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
         } else {
             ESP_LOGW(TAG, "Failed to close permit join: %s", esp_err_to_name(close_ret));
         }
-        refresh_lqi_from_live_event("device_announce");
+        refresh_lqi_from_live_event(runtime, "device_announce");
         break;
     }
 
@@ -150,6 +164,11 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal_struct)
 
 esp_err_t gateway_zigbee_runtime_action_handler(esp_zb_core_action_callback_id_t callback_id, const void *message)
 {
+    gateway_zigbee_runtime_handle_t runtime = gateway_zigbee_runtime_get_active();
+    if (!runtime) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
     esp_err_t ret = ESP_OK;
     switch (callback_id) {
     case ESP_ZB_CORE_REPORT_ATTR_CB_ID: {
@@ -159,7 +178,7 @@ esp_err_t gateway_zigbee_runtime_action_handler(esp_zb_core_action_callback_id_t
             bool state = *(bool *)report->attribute.data.value;
             ESP_LOGI(TAG, "Device 0x%04x report: State is %s", report->src_address.u.short_addr, state ? "ON" : "OFF");
         }
-        refresh_lqi_from_live_event("report_attr");
+        refresh_lqi_from_live_event(runtime, "report_attr");
         break;
     }
     case ESP_ZB_CORE_CMD_DEFAULT_RESP_CB_ID:

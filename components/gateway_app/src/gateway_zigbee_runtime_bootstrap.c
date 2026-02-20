@@ -1,4 +1,5 @@
 #include <fcntl.h>
+#include <stdlib.h>
 
 #include "driver/usb_serial_jtag.h"
 #include "esp_log.h"
@@ -21,11 +22,17 @@
 
 static const char *TAG = "ZIGBEE_RUNTIME";
 
-esp_event_handler_instance_t s_delete_req_handler = NULL;
-int64_t s_last_live_lqi_refresh_us = 0;
-device_service_handle_t s_device_service = NULL;
-gateway_state_handle_t s_gateway_state = NULL;
-zigbee_service_handle_t s_zigbee_service = NULL;
+static gateway_zigbee_runtime_handle_t s_active_runtime = NULL;
+
+gateway_zigbee_runtime_handle_t gateway_zigbee_runtime_get_active(void)
+{
+    return s_active_runtime;
+}
+
+void gateway_zigbee_runtime_set_active(gateway_zigbee_runtime_handle_t handle)
+{
+    s_active_runtime = handle;
+}
 
 #if CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
 static esp_err_t esp_zb_gateway_console_init(void)
@@ -81,74 +88,96 @@ static void esp_zb_task(void *pvParameters)
     vTaskDelete(NULL);
 }
 
-esp_err_t gateway_zigbee_runtime_prepare(const gateway_runtime_context_t *ctx)
+esp_err_t gateway_zigbee_runtime_create(const gateway_runtime_context_t *ctx, gateway_zigbee_runtime_handle_t *out_handle)
 {
-    esp_err_t ret = ESP_OK;
-
-    if (!ctx || !ctx->device_service || !ctx->gateway_state) {
+    if (!ctx || !ctx->device_service || !ctx->gateway_state || !out_handle) {
         return ESP_ERR_INVALID_ARG;
     }
-    if (s_zigbee_service || s_delete_req_handler || s_device_service || s_gateway_state) {
-        gateway_zigbee_runtime_teardown();
+    if (s_active_runtime) {
+        return ESP_ERR_INVALID_STATE;
     }
-    s_device_service = ctx->device_service;
-    s_gateway_state = ctx->gateway_state;
+
+    gateway_zigbee_runtime_t *handle = (gateway_zigbee_runtime_t *)calloc(1, sizeof(*handle));
+    if (!handle) {
+        return ESP_ERR_NO_MEM;
+    }
+
+    handle->device_service = ctx->device_service;
+    handle->gateway_state = ctx->gateway_state;
+    gateway_zigbee_runtime_set_active(handle);
 
     zigbee_service_init_params_t params = {
-        .device_service = s_device_service,
-        .gateway_state = s_gateway_state,
+        .device_service = handle->device_service,
+        .gateway_state = handle->gateway_state,
         .runtime_ops = gateway_zigbee_runtime_get_ops(),
     };
 
-    ret = zigbee_service_create(&params, &s_zigbee_service);
+    esp_err_t ret = zigbee_service_create(&params, &handle->zigbee_service);
     if (ret != ESP_OK) {
         goto fail;
     }
-    gateway_state_publish(false, false);
+    gateway_state_publish(handle, false, false);
 
-    if (s_delete_req_handler == NULL) {
-        ret = esp_event_handler_instance_register(
-            GATEWAY_EVENT,
-            GATEWAY_EVENT_DEVICE_DELETE_REQUEST,
-            device_delete_request_event_handler,
-            NULL,
-            &s_delete_req_handler);
-        if (ret != ESP_OK) {
-            goto fail;
-        }
+    ret = esp_event_handler_instance_register(
+        GATEWAY_EVENT,
+        GATEWAY_EVENT_DEVICE_DELETE_REQUEST,
+        device_delete_request_event_handler,
+        handle,
+        &handle->delete_req_handler);
+    if (ret != ESP_OK) {
+        goto fail;
     }
+
+    *out_handle = handle;
     return ESP_OK;
 
 fail:
-    gateway_zigbee_runtime_teardown();
+    gateway_zigbee_runtime_destroy(handle);
     return ret;
 }
 
-zigbee_service_handle_t gateway_zigbee_runtime_get_service_handle(void)
+zigbee_service_handle_t gateway_zigbee_runtime_get_service_handle(gateway_zigbee_runtime_handle_t handle)
 {
-    return s_zigbee_service;
+    if (!handle) {
+        return NULL;
+    }
+    return handle->zigbee_service;
 }
 
-void gateway_zigbee_runtime_teardown(void)
+void gateway_zigbee_runtime_destroy(gateway_zigbee_runtime_handle_t handle)
 {
-    if (s_delete_req_handler) {
+    if (!handle) {
+        return;
+    }
+
+    if (handle->delete_req_handler) {
         (void)esp_event_handler_instance_unregister(
-            GATEWAY_EVENT, GATEWAY_EVENT_DEVICE_DELETE_REQUEST, s_delete_req_handler);
-        s_delete_req_handler = NULL;
+            GATEWAY_EVENT, GATEWAY_EVENT_DEVICE_DELETE_REQUEST, handle->delete_req_handler);
+        handle->delete_req_handler = NULL;
     }
 
-    if (s_zigbee_service) {
-        zigbee_service_destroy(s_zigbee_service);
-        s_zigbee_service = NULL;
+    if (handle->zigbee_service) {
+        zigbee_service_destroy(handle->zigbee_service);
+        handle->zigbee_service = NULL;
     }
 
-    s_device_service = NULL;
-    s_gateway_state = NULL;
-    s_last_live_lqi_refresh_us = 0;
+    handle->device_service = NULL;
+    handle->gateway_state = NULL;
+    handle->last_live_lqi_refresh_us = 0;
+
+    if (gateway_zigbee_runtime_get_active() == handle) {
+        gateway_zigbee_runtime_set_active(NULL);
+    }
+
+    free(handle);
 }
 
-esp_err_t gateway_zigbee_runtime_start(void)
+esp_err_t gateway_zigbee_runtime_start(gateway_zigbee_runtime_handle_t handle)
 {
+    if (!handle || gateway_zigbee_runtime_get_active() != handle || !handle->zigbee_service) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
 #if CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
     (void)esp_zb_gateway_console_init();
 #endif

@@ -15,10 +15,11 @@ static esp_err_t zigbee_runtime_send_on_off(uint16_t short_addr, uint8_t endpoin
 
 static esp_err_t zigbee_runtime_delete_device(uint16_t short_addr)
 {
-    if (!s_device_service) {
+    gateway_zigbee_runtime_handle_t runtime = gateway_zigbee_runtime_get_active();
+    if (!runtime || !runtime->device_service) {
         return ESP_ERR_INVALID_STATE;
     }
-    return gateway_status_to_esp_err(device_service_delete(s_device_service, short_addr));
+    return gateway_status_to_esp_err(device_service_delete(runtime->device_service, short_addr));
 }
 
 static esp_err_t zigbee_runtime_rename_device(uint16_t short_addr, const char *new_name)
@@ -26,10 +27,11 @@ static esp_err_t zigbee_runtime_rename_device(uint16_t short_addr, const char *n
     if (!new_name) {
         return ESP_ERR_INVALID_ARG;
     }
-    if (!s_device_service) {
+    gateway_zigbee_runtime_handle_t runtime = gateway_zigbee_runtime_get_active();
+    if (!runtime || !runtime->device_service) {
         return ESP_ERR_INVALID_STATE;
     }
-    return gateway_status_to_esp_err(device_service_update_name(s_device_service, short_addr, new_name));
+    return gateway_status_to_esp_err(device_service_update_name(runtime->device_service, short_addr, new_name));
 }
 
 static const zigbee_service_runtime_ops_t s_zigbee_runtime_ops = {

@@ -106,4 +106,51 @@ cc -std=c11 -Wall -Wextra -Werror \
 
 "${BUILD_DIR}/ws_manager_ctx_contract_host_test"
 
+cc -std=c11 -Wall -Wextra -Werror \
+    -I"${ROOT_DIR}/tests/host/include" \
+    -I"${ROOT_DIR}/components/gateway_core_facade/include" \
+    -I"${ROOT_DIR}/components/gateway_core_jobs/include" \
+    -I"${ROOT_DIR}/components/gateway_core/include" \
+    -I"${ROOT_DIR}/components/gateway_shared_config/include" \
+    "${ROOT_DIR}/tests/host/gateway_jobs_facade_host_test.c" \
+    "${ROOT_DIR}/components/gateway_core_facade/src/gateway_jobs_facade.c" \
+    -o "${BUILD_DIR}/gateway_jobs_facade_host_test"
+
+"${BUILD_DIR}/gateway_jobs_facade_host_test"
+
+cc -std=c11 -Wall -Wextra -Werror \
+    -I"${ROOT_DIR}/tests/host/include" \
+    -I"${ROOT_DIR}/components/gateway_core_facade/include" \
+    -I"${ROOT_DIR}/components/gateway_core_jobs/include" \
+    -I"${ROOT_DIR}/components/gateway_core/include" \
+    -I"${ROOT_DIR}/components/gateway_shared_config/include" \
+    "${ROOT_DIR}/tests/host/facade_typed_handles_contract_host_test.c" \
+    -o "${BUILD_DIR}/facade_typed_handles_contract_host_test"
+
+"${BUILD_DIR}/facade_typed_handles_contract_host_test"
+
+cc -std=c11 -Wall -Wextra -Werror \
+    -I"${ROOT_DIR}/tests/host/include" \
+    -I"${ROOT_DIR}/components/gateway_web/include" \
+    -I"${ROOT_DIR}/components/gateway_web_ws/include" \
+    -I"${ROOT_DIR}/components/gateway_web_api/include" \
+    -I"${ROOT_DIR}/components/gateway_core_facade/include" \
+    -I"${ROOT_DIR}/components/gateway_core_state/include" \
+    -I"${ROOT_DIR}/components/gateway_core/include" \
+    -I"${ROOT_DIR}/components/gateway_shared_config/include" \
+    "${ROOT_DIR}/tests/host/ws_lifecycle_contract_host_test.c" \
+    -o "${BUILD_DIR}/ws_lifecycle_contract_host_test"
+
+"${BUILD_DIR}/ws_lifecycle_contract_host_test"
+
+cc -std=c11 -Wall -Wextra -Werror \
+    -I"${ROOT_DIR}/tests/host/include" \
+    -I"${ROOT_DIR}/components/gateway_app/include" \
+    -I"${ROOT_DIR}/components/gateway_core/include" \
+    -I"${ROOT_DIR}/components/gateway_shared_config/include" \
+    "${ROOT_DIR}/tests/host/gateway_zigbee_runtime_ctx_host_test.c" \
+    -o "${BUILD_DIR}/gateway_zigbee_runtime_ctx_host_test"
+
+"${BUILD_DIR}/gateway_zigbee_runtime_ctx_host_test"
+
 echo "All host tests passed."

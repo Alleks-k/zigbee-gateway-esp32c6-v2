@@ -123,12 +123,12 @@ esp_err_t gateway_app_runtime_create(gateway_app_runtime_handles_t *out_handles)
 
     runtime_ctx.device_service = out_handles->device_service;
     runtime_ctx.gateway_state = out_handles->gateway_state;
-    ret = gateway_zigbee_runtime_prepare(&runtime_ctx);
+    ret = gateway_zigbee_runtime_create(&runtime_ctx, &out_handles->zigbee_runtime);
     if (ret != ESP_OK) {
         goto fail;
     }
 
-    out_handles->zigbee_service = gateway_zigbee_runtime_get_service_handle();
+    out_handles->zigbee_service = gateway_zigbee_runtime_get_service_handle(out_handles->zigbee_runtime);
     if (!out_handles->zigbee_service) {
         ret = ESP_ERR_INVALID_STATE;
         goto fail;
@@ -163,8 +163,10 @@ void gateway_app_runtime_destroy(gateway_app_runtime_handles_t *handles)
         api_usecases_destroy(handles->api_usecases);
     }
 
-    if (handles->zigbee_service) {
-        gateway_zigbee_runtime_teardown();
+    if (handles->zigbee_runtime) {
+        gateway_zigbee_runtime_destroy(handles->zigbee_runtime);
+        handles->zigbee_runtime = NULL;
+        handles->zigbee_service = NULL;
     }
 
     if (handles->jobs) {

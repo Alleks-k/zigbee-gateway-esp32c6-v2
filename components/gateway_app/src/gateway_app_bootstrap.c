@@ -136,5 +136,5 @@ void gateway_app_start(void)
         return;
     }
 
-    ESP_ERROR_CHECK(gateway_zigbee_runtime_start());
+    ESP_ERROR_CHECK(gateway_zigbee_runtime_start(s_runtime_handles.zigbee_runtime));
 }

@@ -6,6 +6,11 @@
 #include "esp_err.h"
 #include "gateway_runtime_types.h"
 
+struct zigbee_service;
+typedef struct zigbee_service *zigbee_service_handle_t;
+
+esp_err_t gateway_device_zigbee_bind_service(zigbee_service_handle_t handle);
+
 esp_err_t gateway_device_zigbee_send_on_off(uint16_t short_addr, uint8_t endpoint, uint8_t on_off);
 esp_err_t gateway_device_zigbee_get_network_status(zigbee_network_status_t *out_status);
 int gateway_device_zigbee_get_devices_snapshot(zb_device_t *out_devices, int max_devices);

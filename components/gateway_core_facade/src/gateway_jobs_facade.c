@@ -58,6 +58,14 @@ void gateway_jobs_destroy(gateway_jobs_handle_t handle)
     free(handle);
 }
 
+esp_err_t gateway_jobs_set_zigbee_service(gateway_jobs_handle_t handle, void *zigbee_service_handle)
+{
+    if (!handle || !handle->job_queue) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    return job_queue_set_zigbee_service_with_handle(handle->job_queue, zigbee_service_handle);
+}
+
 static esp_err_t ensure_job_queue(gateway_jobs_handle_t handle)
 {
     if (!handle || !handle->job_queue) {

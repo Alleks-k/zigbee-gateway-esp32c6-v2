@@ -174,6 +174,7 @@ void gateway_app_start(void)
     gateway_app_detach_device_events();
     ESP_ERROR_CHECK(gateway_app_attach_device_events(device_service));
     ESP_ERROR_CHECK(gateway_zigbee_runtime_prepare(&runtime_ctx));
+    ESP_ERROR_CHECK(gateway_jobs_set_zigbee_service(jobs, gateway_zigbee_runtime_get_service_handle()));
 
     esp_err_t wifi_ret = wifi_init_sta_and_wait();
     if (wifi_ret != ESP_OK) {

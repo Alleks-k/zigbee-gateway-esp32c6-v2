@@ -1,14 +1,21 @@
 #include "zigbee_service.h"
-#include "device_service.h"
+
+#include <stdlib.h>
+#include <string.h>
+
 #include "gateway_status_esp.h"
-#include "state_store.h"
+#include "esp_timer.h"
 #include "esp_zigbee_core.h"
-#include "nwk/esp_zigbee_nwk.h"
-#include "zdo/esp_zigbee_zdo_command.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
-#include "esp_timer.h"
-#include <string.h>
+#include "nwk/esp_zigbee_nwk.h"
+#include "zdo/esp_zigbee_zdo_command.h"
+
+struct zigbee_service {
+    device_service_handle_t device_service;
+    gateway_state_handle_t gateway_state;
+    const zigbee_service_runtime_ops_t *runtime_ops;
+};
 
 static esp_err_t runtime_send_on_off_not_supported(uint16_t short_addr, uint8_t endpoint, uint8_t on_off)
 {
@@ -37,28 +44,32 @@ static const zigbee_service_runtime_ops_t s_default_runtime_ops = {
     .rename_device = runtime_rename_device_not_supported,
 };
 
-static const zigbee_service_runtime_ops_t *s_runtime_ops = &s_default_runtime_ops;
-static device_service_handle_t s_device_service = NULL;
-static gateway_state_handle_t s_gateway_state = NULL;
-
-static bool core_handles_ready(void)
+static bool service_ready(zigbee_service_handle_t handle)
 {
-    return s_device_service != NULL && s_gateway_state != NULL;
+    return handle && handle->device_service && handle->gateway_state;
 }
 
-esp_err_t zigbee_service_bind_context(const gateway_runtime_context_t *ctx)
+esp_err_t zigbee_service_create(const zigbee_service_init_params_t *params, zigbee_service_handle_t *out_handle)
 {
-    if (!ctx || !ctx->device_service || !ctx->gateway_state) {
+    if (!params || !params->device_service || !params->gateway_state || !out_handle) {
         return ESP_ERR_INVALID_ARG;
     }
-    s_device_service = ctx->device_service;
-    s_gateway_state = ctx->gateway_state;
+
+    zigbee_service_t *handle = (zigbee_service_t *)calloc(1, sizeof(*handle));
+    if (!handle) {
+        return ESP_ERR_NO_MEM;
+    }
+
+    handle->device_service = params->device_service;
+    handle->gateway_state = params->gateway_state;
+    handle->runtime_ops = params->runtime_ops ? params->runtime_ops : &s_default_runtime_ops;
+    *out_handle = handle;
     return ESP_OK;
 }
 
-void zigbee_service_set_runtime_ops(const zigbee_service_runtime_ops_t *ops)
+void zigbee_service_destroy(zigbee_service_handle_t handle)
 {
-    s_runtime_ops = ops ? ops : &s_default_runtime_ops;
+    free(handle);
 }
 
 static gateway_lqi_source_t to_gateway_lqi_source(zigbee_lqi_source_t src)
@@ -87,12 +98,10 @@ static zigbee_lqi_source_t from_gateway_lqi_source(gateway_lqi_source_t src)
     }
 }
 
-static void update_gateway_lqi_from_snapshot(const zigbee_neighbor_lqi_t *items, int count, zigbee_lqi_source_t source)
+static void update_gateway_lqi_from_snapshot(zigbee_service_handle_t handle, const zigbee_neighbor_lqi_t *items, int count,
+                                             zigbee_lqi_source_t source)
 {
-    if (!core_handles_ready()) {
-        return;
-    }
-    if (!items || count <= 0) {
+    if (!service_ready(handle) || !items || count <= 0) {
         return;
     }
 
@@ -100,21 +109,21 @@ static void update_gateway_lqi_from_snapshot(const zigbee_neighbor_lqi_t *items,
     gateway_lqi_source_t gw_src = to_gateway_lqi_source(source);
     for (int i = 0; i < count; i++) {
         uint64_t ts = items[i].updated_ms > 0 ? items[i].updated_ms : now_ms;
-        (void)gateway_state_update_lqi(s_gateway_state, items[i].short_addr, items[i].lqi, items[i].rssi, gw_src, ts);
+        (void)gateway_state_update_lqi(handle->gateway_state, items[i].short_addr, items[i].lqi, items[i].rssi, gw_src, ts);
     }
 }
 
-esp_err_t zigbee_service_get_network_status(zigbee_network_status_t *out)
+esp_err_t zigbee_service_get_network_status(zigbee_service_handle_t handle, zigbee_network_status_t *out)
 {
     if (!out) {
         return ESP_ERR_INVALID_ARG;
     }
-    if (!core_handles_ready()) {
+    if (!service_ready(handle)) {
         return ESP_ERR_INVALID_STATE;
     }
 
     gateway_network_state_t state = {0};
-    esp_err_t ret = gateway_status_to_esp_err(gateway_state_get_network(s_gateway_state, &state));
+    esp_err_t ret = gateway_status_to_esp_err(gateway_state_get_network(handle->gateway_state, &state));
     if (ret != ESP_OK) {
         return ret;
     }
@@ -124,36 +133,42 @@ esp_err_t zigbee_service_get_network_status(zigbee_network_status_t *out)
     return ESP_OK;
 }
 
-esp_err_t zigbee_service_permit_join(uint16_t seconds)
+esp_err_t zigbee_service_permit_join(zigbee_service_handle_t handle, uint16_t seconds)
 {
+    if (!handle) {
+        return ESP_ERR_INVALID_ARG;
+    }
     esp_zb_bdb_open_network(seconds);
     return ESP_OK;
 }
 
-esp_err_t zigbee_service_send_on_off(uint16_t short_addr, uint8_t endpoint, uint8_t on_off)
+esp_err_t zigbee_service_send_on_off(zigbee_service_handle_t handle, uint16_t short_addr, uint8_t endpoint, uint8_t on_off)
 {
-    return s_runtime_ops->send_on_off(short_addr, endpoint, on_off);
+    if (!handle || !handle->runtime_ops || !handle->runtime_ops->send_on_off) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    return handle->runtime_ops->send_on_off(short_addr, endpoint, on_off);
 }
 
-int zigbee_service_get_devices_snapshot(zb_device_t *out, size_t max_items)
+int zigbee_service_get_devices_snapshot(zigbee_service_handle_t handle, zb_device_t *out, size_t max_items)
 {
-    if (!core_handles_ready()) {
+    if (!service_ready(handle)) {
         return 0;
     }
-    return device_service_get_snapshot(s_device_service, out, max_items);
+    return device_service_get_snapshot(handle->device_service, out, max_items);
 }
 
-int zigbee_service_get_neighbor_lqi_snapshot(zigbee_neighbor_lqi_t *out, size_t max_items)
+int zigbee_service_get_neighbor_lqi_snapshot(zigbee_service_handle_t handle, zigbee_neighbor_lqi_t *out, size_t max_items)
 {
     if (!out || max_items == 0) {
         return 0;
     }
-    if (!core_handles_ready()) {
+    if (!service_ready(handle)) {
         return 0;
     }
 
     gateway_network_state_t state = {0};
-    if (gateway_status_to_esp_err(gateway_state_get_network(s_gateway_state, &state)) != ESP_OK || !state.zigbee_started) {
+    if (gateway_status_to_esp_err(gateway_state_get_network(handle->gateway_state, &state)) != ESP_OK || !state.zigbee_started) {
         return 0;
     }
 
@@ -177,7 +192,7 @@ int zigbee_service_get_neighbor_lqi_snapshot(zigbee_neighbor_lqi_t *out, size_t 
         count++;
     }
 
-    update_gateway_lqi_from_snapshot(out, count, ZIGBEE_LQI_SOURCE_NEIGHBOR_TABLE);
+    update_gateway_lqi_from_snapshot(handle, out, count, ZIGBEE_LQI_SOURCE_NEIGHBOR_TABLE);
     return count;
 }
 
@@ -211,7 +226,7 @@ static void mgmt_lqi_rsp_cb(const esp_zb_zdo_mgmt_lqi_rsp_t *rsp, void *user_ctx
         const esp_zb_zdo_neighbor_table_list_record_t *rec = &rsp->neighbor_table_list[i];
         ctx->out[ctx->count].short_addr = rec->network_addr;
         ctx->out[ctx->count].lqi = (int)rec->lqi;
-        ctx->out[ctx->count].rssi = 127; /* Not provided by Mgmt_Lqi_rsp */
+        ctx->out[ctx->count].rssi = 127;
         ctx->out[ctx->count].relationship = rec->relationship;
         ctx->out[ctx->count].depth = rec->depth;
         ctx->out[ctx->count].updated_ms = (uint64_t)(esp_timer_get_time() / 1000);
@@ -226,18 +241,19 @@ static void mgmt_lqi_rsp_cb(const esp_zb_zdo_mgmt_lqi_rsp_t *rsp, void *user_ctx
     }
 }
 
-esp_err_t zigbee_service_refresh_neighbor_lqi_snapshot(zigbee_neighbor_lqi_t *out, size_t max_items, int *out_count)
+esp_err_t zigbee_service_refresh_neighbor_lqi_snapshot(zigbee_service_handle_t handle, zigbee_neighbor_lqi_t *out,
+                                                       size_t max_items, int *out_count)
 {
     if (!out || max_items == 0 || !out_count) {
         return ESP_ERR_INVALID_ARG;
     }
     *out_count = 0;
-    if (!core_handles_ready()) {
+    if (!service_ready(handle)) {
         return ESP_ERR_INVALID_STATE;
     }
 
     gateway_network_state_t state = {0};
-    esp_err_t sret = gateway_status_to_esp_err(gateway_state_get_network(s_gateway_state, &state));
+    esp_err_t sret = gateway_status_to_esp_err(gateway_state_get_network(handle->gateway_state, &state));
     if (sret != ESP_OK || !state.zigbee_started) {
         return ESP_ERR_INVALID_STATE;
     }
@@ -285,25 +301,26 @@ esp_err_t zigbee_service_refresh_neighbor_lqi_snapshot(zigbee_neighbor_lqi_t *ou
 
     if (ret == ESP_OK) {
         *out_count = (int)ctx.count;
-        update_gateway_lqi_from_snapshot(out, *out_count, ZIGBEE_LQI_SOURCE_MGMT_LQI);
+        update_gateway_lqi_from_snapshot(handle, out, *out_count, ZIGBEE_LQI_SOURCE_MGMT_LQI);
     }
 
     vSemaphoreDelete(ctx.done_sem);
     return ret;
 }
 
-esp_err_t zigbee_service_get_cached_lqi_snapshot(zigbee_neighbor_lqi_t *out, size_t max_items, int *out_count,
-                                                 zigbee_lqi_source_t *out_source, uint64_t *out_updated_ms)
+esp_err_t zigbee_service_get_cached_lqi_snapshot(zigbee_service_handle_t handle, zigbee_neighbor_lqi_t *out,
+                                                 size_t max_items, int *out_count, zigbee_lqi_source_t *out_source,
+                                                 uint64_t *out_updated_ms)
 {
     if (!out || max_items == 0 || !out_count) {
         return ESP_ERR_INVALID_ARG;
     }
-
-    gateway_lqi_cache_entry_t snapshot[MAX_DEVICES];
-    if (!core_handles_ready()) {
+    if (!service_ready(handle)) {
         return ESP_ERR_INVALID_STATE;
     }
-    int count = gateway_state_get_lqi_snapshot(s_gateway_state, snapshot, MAX_DEVICES);
+
+    gateway_lqi_cache_entry_t snapshot[MAX_DEVICES];
+    int count = gateway_state_get_lqi_snapshot(handle->gateway_state, snapshot, MAX_DEVICES);
     if (count < 0) {
         count = 0;
     }
@@ -338,22 +355,28 @@ esp_err_t zigbee_service_get_cached_lqi_snapshot(zigbee_neighbor_lqi_t *out, siz
     return ESP_OK;
 }
 
-esp_err_t zigbee_service_refresh_neighbor_lqi_from_table(void)
+esp_err_t zigbee_service_refresh_neighbor_lqi_from_table(zigbee_service_handle_t handle)
 {
     zigbee_neighbor_lqi_t neighbors[MAX_DEVICES] = {0};
-    (void)zigbee_service_get_neighbor_lqi_snapshot(neighbors, MAX_DEVICES);
+    (void)zigbee_service_get_neighbor_lqi_snapshot(handle, neighbors, MAX_DEVICES);
     return ESP_OK;
 }
 
-esp_err_t zigbee_service_delete_device(uint16_t short_addr)
+esp_err_t zigbee_service_delete_device(zigbee_service_handle_t handle, uint16_t short_addr)
 {
-    return s_runtime_ops->delete_device(short_addr);
+    if (!handle || !handle->runtime_ops || !handle->runtime_ops->delete_device) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    return handle->runtime_ops->delete_device(short_addr);
 }
 
-esp_err_t zigbee_service_rename_device(uint16_t short_addr, const char *name)
+esp_err_t zigbee_service_rename_device(zigbee_service_handle_t handle, uint16_t short_addr, const char *name)
 {
     if (!name) {
         return ESP_ERR_INVALID_ARG;
     }
-    return s_runtime_ops->rename_device(short_addr, name);
+    if (!handle || !handle->runtime_ops || !handle->runtime_ops->rename_device) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    return handle->runtime_ops->rename_device(short_addr, name);
 }

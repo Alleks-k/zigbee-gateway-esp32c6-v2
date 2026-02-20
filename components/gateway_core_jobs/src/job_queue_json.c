@@ -135,11 +135,16 @@ static const char *lqi_quality_label_from_value(int lqi, int rssi)
     return "bad";
 }
 
-esp_err_t job_queue_json_build_lqi_refresh_result(char *out, size_t out_size)
+esp_err_t job_queue_json_build_lqi_refresh_result(void *zigbee_service_handle, char *out, size_t out_size)
 {
+    zigbee_service_handle_t service = (zigbee_service_handle_t)zigbee_service_handle;
+    if (!service) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
     zigbee_neighbor_lqi_t neighbors[MAX_DEVICES] = {0};
     int count = 0;
-    esp_err_t err = zigbee_service_refresh_neighbor_lqi_snapshot(neighbors, MAX_DEVICES, &count);
+    esp_err_t err = zigbee_service_refresh_neighbor_lqi_snapshot(service, neighbors, MAX_DEVICES, &count);
     if (err != ESP_OK) {
         return err;
     }

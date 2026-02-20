@@ -50,6 +50,7 @@ typedef struct {
 
 esp_err_t gateway_jobs_create(const gateway_jobs_init_params_t *params, gateway_jobs_handle_t *out_handle);
 void gateway_jobs_destroy(gateway_jobs_handle_t handle);
+esp_err_t gateway_jobs_set_zigbee_service(gateway_jobs_handle_t handle, void *zigbee_service_handle);
 
 esp_err_t gateway_jobs_get_metrics(gateway_jobs_handle_t handle, gateway_core_job_metrics_t *out_metrics);
 esp_err_t gateway_jobs_submit(gateway_jobs_handle_t handle, gateway_core_job_type_t type, uint32_t reboot_delay_ms,

@@ -27,7 +27,7 @@ void refresh_lqi_from_live_event(const char *reason)
     }
     s_last_live_lqi_refresh_us = now_us;
 
-    esp_err_t ret = zigbee_service_refresh_neighbor_lqi_from_table();
+    esp_err_t ret = zigbee_service_refresh_neighbor_lqi_from_table(s_zigbee_service);
     if (ret != ESP_OK) {
         ESP_LOGW(TAG, "Live LQI refresh failed (%s): %s", reason, esp_err_to_name(ret));
         return;

@@ -7,6 +7,7 @@
 #include "esp_timer.h"
 #include "gateway_runtime_context.h"
 #include "gateway_status_esp.h"
+#include "gateway_device_zigbee_facade.h"
 #include "gateway_wifi_system_facade.h"
 #include "gateway_persistence_adapter.h"
 #include "state_store.h"
@@ -53,9 +54,10 @@ void app_main(void)
 {
     device_service_handle_t device_service = NULL;
     gateway_state_handle_t gateway_state = NULL;
+    zigbee_service_handle_t zigbee_service = NULL;
     gateway_wifi_system_handle_t wifi_system = NULL;
-    gateway_runtime_context_t runtime_ctx = {0};
     gateway_wifi_system_init_params_t wifi_system_params = {0};
+    zigbee_service_init_params_t zigbee_service_params = {0};
     device_service_init_params_t device_service_params = {
         .lock_port = NULL,
         .repo_port = &s_self_tests_device_repo_port,
@@ -73,13 +75,16 @@ void app_main(void)
     ESP_ERROR_CHECK(gateway_status_to_esp_err(device_service_init(device_service)));
     ESP_ERROR_CHECK(gateway_status_to_esp_err(gateway_state_init(gateway_state)));
     gateway_state_set_now_ms_provider(self_tests_now_ms);
-    runtime_ctx.device_service = device_service;
-    runtime_ctx.gateway_state = gateway_state;
-    ESP_ERROR_CHECK(zigbee_service_bind_context(&runtime_ctx));
+    zigbee_service_params.device_service = device_service;
+    zigbee_service_params.gateway_state = gateway_state;
+    zigbee_service_params.runtime_ops = NULL;
+    ESP_ERROR_CHECK(zigbee_service_create(&zigbee_service_params, &zigbee_service));
+    ESP_ERROR_CHECK(gateway_device_zigbee_bind_service(zigbee_service));
     wifi_system_params.gateway_state_handle = gateway_state;
     ESP_ERROR_CHECK(gateway_wifi_system_create(&wifi_system_params, &wifi_system));
     ESP_ERROR_CHECK(wifi_init_bind_state(gateway_state));
     (void)wifi_system;
+    (void)zigbee_service;
     int failures = zgw_run_self_tests();
     if (failures > 0) {
         ESP_LOGE(TAG, "Self-tests failed: %d", failures);

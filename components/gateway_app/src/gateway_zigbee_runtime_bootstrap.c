@@ -9,6 +9,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "gateway_events.h"
+#include "gateway_device_zigbee_facade.h"
 #include "gateway_zigbee_runtime.h"
 #include "gateway_zigbee_runtime_internal.h"
 #include "rcp_tool.h"
@@ -25,6 +26,7 @@ esp_event_handler_instance_t s_delete_req_handler = NULL;
 int64_t s_last_live_lqi_refresh_us = 0;
 device_service_handle_t s_device_service = NULL;
 gateway_state_handle_t s_gateway_state = NULL;
+zigbee_service_handle_t s_zigbee_service = NULL;
 
 #if CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
 static esp_err_t esp_zb_gateway_console_init(void)
@@ -88,11 +90,25 @@ esp_err_t gateway_zigbee_runtime_prepare(const gateway_runtime_context_t *ctx)
     s_device_service = ctx->device_service;
     s_gateway_state = ctx->gateway_state;
 
-    esp_err_t ret = zigbee_service_bind_context(ctx);
+    zigbee_service_init_params_t params = {
+        .device_service = s_device_service,
+        .gateway_state = s_gateway_state,
+        .runtime_ops = gateway_zigbee_runtime_get_ops(),
+    };
+
+    if (s_zigbee_service) {
+        zigbee_service_destroy(s_zigbee_service);
+        s_zigbee_service = NULL;
+    }
+
+    esp_err_t ret = zigbee_service_create(&params, &s_zigbee_service);
     if (ret != ESP_OK) {
         return ret;
     }
-    zigbee_service_set_runtime_ops(gateway_zigbee_runtime_get_ops());
+    ret = gateway_device_zigbee_bind_service(s_zigbee_service);
+    if (ret != ESP_OK) {
+        return ret;
+    }
     gateway_state_publish(false, false);
 
     if (s_delete_req_handler == NULL) {
@@ -104,6 +120,11 @@ esp_err_t gateway_zigbee_runtime_prepare(const gateway_runtime_context_t *ctx)
             &s_delete_req_handler);
     }
     return ESP_OK;
+}
+
+zigbee_service_handle_t gateway_zigbee_runtime_get_service_handle(void)
+{
+    return s_zigbee_service;
 }
 
 esp_err_t gateway_zigbee_runtime_start(void)

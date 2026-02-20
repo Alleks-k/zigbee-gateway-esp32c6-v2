@@ -29,6 +29,7 @@ typedef struct zgw_job_queue {
     uint32_t latency_samples_ms[64];
     size_t latency_samples_count;
     size_t latency_samples_next;
+    void *zigbee_service_handle;
 } zgw_job_queue_t;
 
 const char *job_queue_type_to_string(zgw_job_type_t type)
@@ -72,7 +73,8 @@ static void execute_job(job_queue_handle_t handle, uint32_t job_id)
     xSemaphoreGive(handle->mutex);
 
     char result[ZGW_JOB_RESULT_MAX_LEN] = {0};
-    esp_err_t exec_err = job_queue_policy_execute(type, reboot_delay_ms, result, sizeof(result));
+    esp_err_t exec_err =
+        job_queue_policy_execute(type, reboot_delay_ms, handle->zigbee_service_handle, result, sizeof(result));
 
     xSemaphoreTake(handle->mutex, portMAX_DELAY);
     idx = job_queue_find_slot_index_by_id(handle->jobs, job_id);
@@ -189,6 +191,21 @@ esp_err_t job_queue_init_with_handle(job_queue_handle_t handle)
             return ESP_ERR_NO_MEM;
         }
     }
+    return ESP_OK;
+}
+
+esp_err_t job_queue_set_zigbee_service_with_handle(job_queue_handle_t handle, void *zigbee_service_handle)
+{
+    if (!handle) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    esp_err_t err = job_queue_init_with_handle(handle);
+    if (err != ESP_OK) {
+        return err;
+    }
+    xSemaphoreTake(handle->mutex, portMAX_DELAY);
+    handle->zigbee_service_handle = zigbee_service_handle;
+    xSemaphoreGive(handle->mutex);
     return ESP_OK;
 }
 

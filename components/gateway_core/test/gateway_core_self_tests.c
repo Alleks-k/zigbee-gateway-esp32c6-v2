@@ -47,7 +47,7 @@ static void test_device_snapshot_null_buffer(void)
 
 static void test_service_rename_device_rejects_null_name(void)
 {
-    esp_err_t ret = zigbee_service_rename_device(0x1234, NULL);
+    esp_err_t ret = zigbee_service_rename_device(NULL, 0x1234, NULL);
     TEST_ASSERT_EQUAL(ESP_ERR_INVALID_ARG, ret);
 }
 

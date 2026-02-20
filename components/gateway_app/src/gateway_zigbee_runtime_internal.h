@@ -14,6 +14,7 @@ extern esp_event_handler_instance_t s_delete_req_handler;
 extern int64_t s_last_live_lqi_refresh_us;
 extern device_service_handle_t s_device_service;
 extern gateway_state_handle_t s_gateway_state;
+extern zigbee_service_handle_t s_zigbee_service;
 
 void refresh_lqi_from_live_event(const char *reason);
 void gateway_state_publish(bool zigbee_started, bool factory_new);

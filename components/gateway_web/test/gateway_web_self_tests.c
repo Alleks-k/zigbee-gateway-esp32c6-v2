@@ -9,7 +9,7 @@
 #include "device_service.h"
 #include "device_service_lock_freertos_port.h"
 #include "gateway_status.h"
-#include "gateway_runtime_context.h"
+#include "gateway_device_zigbee_facade.h"
 #include "gateway_persistence_adapter.h"
 #include "gateway_wifi_system_facade.h"
 #include "state_store.h"
@@ -27,10 +27,10 @@
 
 static device_service_handle_t s_device_service = NULL;
 static gateway_state_handle_t s_gateway_state = NULL;
+static zigbee_service_handle_t s_zigbee_service = NULL;
 static gateway_wifi_system_handle_t s_wifi_system = NULL;
 static gateway_jobs_handle_t s_jobs = NULL;
 static bool s_runtime_bound = false;
-static gateway_runtime_context_t s_runtime_ctx = {0};
 
 static gateway_status_t web_selftest_device_repo_load(void *ctx,
                                                       gateway_device_record_t *devices,
@@ -78,13 +78,18 @@ static void ensure_stateful_handles(void)
         gateway_wifi_system_init_params_t wifi_system_params = {
             .gateway_state_handle = s_gateway_state,
         };
+        zigbee_service_init_params_t zigbee_service_params = {
+            .device_service = s_device_service,
+            .gateway_state = s_gateway_state,
+            .runtime_ops = NULL,
+        };
         gateway_jobs_init_params_t jobs_params = {0};
 
-        s_runtime_ctx.device_service = s_device_service;
-        s_runtime_ctx.gateway_state = s_gateway_state;
-        TEST_ASSERT_EQUAL(ESP_OK, zigbee_service_bind_context(&s_runtime_ctx));
+        TEST_ASSERT_EQUAL(ESP_OK, zigbee_service_create(&zigbee_service_params, &s_zigbee_service));
+        TEST_ASSERT_EQUAL(ESP_OK, gateway_device_zigbee_bind_service(s_zigbee_service));
         TEST_ASSERT_EQUAL(ESP_OK, gateway_wifi_system_create(&wifi_system_params, &s_wifi_system));
         TEST_ASSERT_EQUAL(ESP_OK, gateway_jobs_create(&jobs_params, &s_jobs));
+        TEST_ASSERT_EQUAL(ESP_OK, gateway_jobs_set_zigbee_service(s_jobs, s_zigbee_service));
         api_usecases_set_wifi_system_handle(s_wifi_system);
         api_usecases_set_jobs_handle(s_jobs);
         TEST_ASSERT_EQUAL(ESP_OK, wifi_init_bind_state(s_gateway_state));

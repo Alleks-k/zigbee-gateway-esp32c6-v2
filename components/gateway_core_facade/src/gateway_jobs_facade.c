@@ -22,7 +22,7 @@ esp_err_t gateway_jobs_create(const gateway_jobs_init_params_t *params, gateway_
     }
 
     if (params && params->job_queue_handle) {
-        handle->job_queue = (job_queue_handle_t)params->job_queue_handle;
+        handle->job_queue = params->job_queue_handle;
         handle->owns_job_queue = false;
     } else {
         esp_err_t err = job_queue_create(&handle->job_queue);
@@ -58,7 +58,7 @@ void gateway_jobs_destroy(gateway_jobs_handle_t handle)
     free(handle);
 }
 
-esp_err_t gateway_jobs_set_zigbee_service(gateway_jobs_handle_t handle, void *zigbee_service_handle)
+esp_err_t gateway_jobs_set_zigbee_service(gateway_jobs_handle_t handle, struct zigbee_service *zigbee_service_handle)
 {
     if (!handle || !handle->job_queue) {
         return ESP_ERR_INVALID_STATE;

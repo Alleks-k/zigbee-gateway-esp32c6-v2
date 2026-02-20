@@ -128,6 +128,8 @@ void ws_broadcast_status_with_handle(ws_manager_handle_t handle)
     }
 
     size_t heap_after = heap_caps_get_free_size(MALLOC_CAP_8BIT);
+    (void)heap_before;
+    (void)heap_after;
     ESP_LOGD(TAG, "WS broadcast heap: before=%u after=%u delta=%d",
              (unsigned)heap_before, (unsigned)heap_after, (int)(heap_after - heap_before));
 out:

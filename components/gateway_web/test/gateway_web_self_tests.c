@@ -722,7 +722,7 @@ static void test_ws_runtime_socket_lifecycle_real_stack_disconnect_reconnect_bac
     ws_manager_handle_t ws_server_manager = NULL;
     TEST_ASSERT_EQUAL(ESP_OK, ws_manager_create(&ws_server_manager));
     TEST_ASSERT_NOT_NULL(ws_server_manager);
-    stop_web_server();
+    stop_web_server(ws_server_manager);
     start_web_server(ws_server_manager, s_api_usecases);
     usleep(120000);
 
@@ -730,36 +730,36 @@ static void test_ws_runtime_socket_lifecycle_real_stack_disconnect_reconnect_bac
     TEST_ASSERT_TRUE(fd1 >= 0);
     TEST_ASSERT_TRUE(ws_send_handshake_and_wait_101(fd1));
     usleep(120000);
-    TEST_ASSERT_EQUAL_INT(1, web_server_get_ws_client_count());
+    TEST_ASSERT_EQUAL_INT(1, web_server_get_ws_client_count(ws_server_manager));
 
     TEST_ASSERT_TRUE(ws_send_client_close_frame(fd1));
     usleep(120000);
     close(fd1);
     usleep(120000);
-    TEST_ASSERT_EQUAL_INT(0, web_server_get_ws_client_count());
+    TEST_ASSERT_EQUAL_INT(0, web_server_get_ws_client_count(ws_server_manager));
 
     int fd2 = ws_connect_localhost();
     TEST_ASSERT_TRUE(fd2 >= 0);
     TEST_ASSERT_TRUE(ws_send_handshake_and_wait_101(fd2));
     usleep(120000);
-    TEST_ASSERT_EQUAL_INT(1, web_server_get_ws_client_count());
+    TEST_ASSERT_EQUAL_INT(1, web_server_get_ws_client_count(ws_server_manager));
 
     // Abrupt disconnect (no WS close) + broadcast => send failure path should prune client.
     close(fd2);
     usleep(120000);
-    web_server_broadcast_ws_status();
+    web_server_broadcast_ws_status(ws_server_manager);
     usleep(120000);
-    TEST_ASSERT_EQUAL_INT(0, web_server_get_ws_client_count());
+    TEST_ASSERT_EQUAL_INT(0, web_server_get_ws_client_count(ws_server_manager));
 
     int fd3 = ws_connect_localhost();
     TEST_ASSERT_TRUE(fd3 >= 0);
     TEST_ASSERT_TRUE(ws_send_handshake_and_wait_101(fd3));
     usleep(120000);
-    TEST_ASSERT_EQUAL_INT(1, web_server_get_ws_client_count());
+    TEST_ASSERT_EQUAL_INT(1, web_server_get_ws_client_count(ws_server_manager));
     close(fd3);
     usleep(120000);
 
-    stop_web_server();
+    stop_web_server(ws_server_manager);
     ws_manager_destroy(ws_server_manager);
 }
 #endif

@@ -38,7 +38,7 @@ typedef struct {
 } gateway_core_telemetry_t;
 
 typedef struct {
-    void *gateway_state_handle;
+    struct gateway_state_store *gateway_state_handle;
 } gateway_wifi_system_init_params_t;
 
 typedef struct gateway_wifi_system gateway_wifi_system_t;

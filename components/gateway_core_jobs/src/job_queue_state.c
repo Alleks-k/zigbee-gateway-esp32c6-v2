@@ -136,7 +136,7 @@ uint32_t job_queue_latency_p95(const uint32_t *samples, size_t count)
         return 0;
     }
 
-    uint32_t sorted[64];
+    uint32_t sorted[64] = {0};
     size_t n = count;
     if (n > 64) {
         n = 64;

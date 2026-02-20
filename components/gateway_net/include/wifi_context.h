@@ -4,6 +4,7 @@
 #include "esp_event.h"
 #include "esp_netif.h"
 #include "freertos/event_groups.h"
+#include "state_store.h"
 
 typedef struct {
     EventGroupHandle_t wifi_event_group;
@@ -14,6 +15,7 @@ typedef struct {
     bool fallback_ap_active;
     bool sta_connected;
     bool loaded_from_nvs;
+    gateway_state_handle_t gateway_state;
     esp_event_handler_instance_t instance_any_id;
     esp_event_handler_instance_t instance_got_ip;
 } wifi_runtime_ctx_t;

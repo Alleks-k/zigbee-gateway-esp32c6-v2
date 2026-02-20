@@ -29,7 +29,7 @@ typedef struct zgw_job_queue {
     uint32_t latency_samples_ms[64];
     size_t latency_samples_count;
     size_t latency_samples_next;
-    void *zigbee_service_handle;
+    zigbee_service_handle_t zigbee_service_handle;
 } zgw_job_queue_t;
 
 const char *job_queue_type_to_string(zgw_job_type_t type)
@@ -194,7 +194,7 @@ esp_err_t job_queue_init_with_handle(job_queue_handle_t handle)
     return ESP_OK;
 }
 
-esp_err_t job_queue_set_zigbee_service_with_handle(job_queue_handle_t handle, void *zigbee_service_handle)
+esp_err_t job_queue_set_zigbee_service_with_handle(job_queue_handle_t handle, zigbee_service_handle_t zigbee_service_handle)
 {
     if (!handle) {
         return ESP_ERR_INVALID_ARG;
@@ -226,6 +226,7 @@ esp_err_t job_queue_submit_with_handle(job_queue_handle_t handle, zgw_job_type_t
     if (inflight_idx >= 0) {
         uint32_t inflight_id = handle->jobs[inflight_idx].id;
         zgw_job_state_t inflight_state = handle->jobs[inflight_idx].state;
+        (void)inflight_state;
         handle->metrics.dedup_reused_total++;
         *out_job_id = inflight_id;
         xSemaphoreGive(handle->mutex);

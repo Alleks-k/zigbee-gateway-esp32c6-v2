@@ -19,6 +19,22 @@ bool ws_manager_metrics_provider(ws_manager_handle_t handle, api_ws_runtime_metr
     return true;
 }
 
+httpd_handle_t ws_manager_get_server_with_handle(ws_manager_handle_t handle)
+{
+    if (!handle) {
+        return NULL;
+    }
+    return handle->server;
+}
+
+void ws_manager_set_server_with_handle(ws_manager_handle_t handle, httpd_handle_t server)
+{
+    if (!handle) {
+        return;
+    }
+    handle->server = server;
+}
+
 int ws_manager_get_client_count_with_handle(ws_manager_handle_t handle)
 {
     if (!handle) {

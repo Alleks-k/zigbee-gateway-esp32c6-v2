@@ -24,6 +24,8 @@ void ws_manager_reset_transport_ops_for_test_with_handle(ws_manager_handle_t han
 esp_err_t ws_manager_create(ws_manager_handle_t *out_handle);
 void ws_manager_destroy(ws_manager_handle_t handle);
 void ws_manager_init_with_handle(ws_manager_handle_t handle, httpd_handle_t server, api_usecases_handle_t usecases);
+httpd_handle_t ws_manager_get_server_with_handle(ws_manager_handle_t handle);
+void ws_manager_set_server_with_handle(ws_manager_handle_t handle, httpd_handle_t server);
 esp_err_t ws_handler_with_handle(ws_manager_handle_t handle, httpd_req_t *req);
 void ws_broadcast_status_with_handle(ws_manager_handle_t handle);
 void ws_httpd_close_fn_with_handle(ws_manager_handle_t handle, httpd_handle_t hd, int sockfd);

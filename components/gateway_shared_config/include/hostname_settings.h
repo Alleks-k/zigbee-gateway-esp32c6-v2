@@ -1,5 +1,6 @@
 #pragma once
 
-/* mDNS settings */
-#define GATEWAY_MDNS_HOSTNAME "zigbee-gw2"
-#define GATEWAY_MDNS_INSTANCE "ESP32C6 Zigbee Gateway"
+/* Legacy include path kept for compatibility. Canonical definitions live in
+ * gateway_hostname_settings.h.
+ */
+#include "gateway_hostname_settings.h"

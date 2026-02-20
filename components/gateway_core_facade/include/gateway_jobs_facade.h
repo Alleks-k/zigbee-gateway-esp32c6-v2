@@ -5,6 +5,9 @@
 
 #include "esp_err.h"
 
+struct zgw_job_queue;
+struct zigbee_service;
+
 typedef struct {
     uint32_t submitted_total;
     uint32_t dedup_reused_total;
@@ -45,12 +48,12 @@ typedef struct gateway_jobs gateway_jobs_t;
 typedef gateway_jobs_t *gateway_jobs_handle_t;
 
 typedef struct {
-    void *job_queue_handle;
+    struct zgw_job_queue *job_queue_handle;
 } gateway_jobs_init_params_t;
 
 esp_err_t gateway_jobs_create(const gateway_jobs_init_params_t *params, gateway_jobs_handle_t *out_handle);
 void gateway_jobs_destroy(gateway_jobs_handle_t handle);
-esp_err_t gateway_jobs_set_zigbee_service(gateway_jobs_handle_t handle, void *zigbee_service_handle);
+esp_err_t gateway_jobs_set_zigbee_service(gateway_jobs_handle_t handle, struct zigbee_service *zigbee_service_handle);
 
 esp_err_t gateway_jobs_get_metrics(gateway_jobs_handle_t handle, gateway_core_job_metrics_t *out_metrics);
 esp_err_t gateway_jobs_submit(gateway_jobs_handle_t handle, gateway_core_job_type_t type, uint32_t reboot_delay_ms,

@@ -25,7 +25,7 @@ esp_err_t gateway_wifi_system_create(const gateway_wifi_system_init_params_t *pa
         return ESP_ERR_NO_MEM;
     }
 
-    handle->gateway_state = (gateway_state_handle_t)params->gateway_state_handle;
+    handle->gateway_state = params->gateway_state_handle;
     *out_handle = handle;
     return ESP_OK;
 }

@@ -10,14 +10,13 @@
 
 static const char *TAG = "wifi_init";
 static wifi_runtime_ctx_t s_ctx = {0};
-static gateway_state_handle_t s_gateway_state = NULL;
 
 esp_err_t wifi_init_bind_state(gateway_state_handle_t state_handle)
 {
     if (!state_handle) {
         return ESP_ERR_INVALID_ARG;
     }
-    s_gateway_state = state_handle;
+    s_ctx.gateway_state = state_handle;
     return ESP_OK;
 }
 
@@ -46,7 +45,7 @@ static wifi_init_ops_t s_wifi_init_ops = {
 
 void wifi_state_store_update(void)
 {
-    if (!s_gateway_state) {
+    if (!s_ctx.gateway_state) {
         ESP_LOGW(TAG, "Gateway state handle is not bound");
         return;
     }
@@ -57,7 +56,7 @@ void wifi_state_store_update(void)
         .loaded_from_nvs = s_ctx.loaded_from_nvs,
     };
     strlcpy(state.active_ssid, s_ctx.active_ssid, sizeof(state.active_ssid));
-    esp_err_t ret = gateway_status_to_esp_err(gateway_state_set_wifi(s_gateway_state, &state));
+    esp_err_t ret = gateway_status_to_esp_err(gateway_state_set_wifi(s_ctx.gateway_state, &state));
     if (ret != ESP_OK) {
         ESP_LOGW(TAG, "Failed to publish Wi-Fi state: %s", esp_err_to_name(ret));
     }

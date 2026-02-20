@@ -1,7 +1,7 @@
 #include "mdns_service.h"
 #include "esp_log.h"
 #include "mdns.h"
-#include "hostname_settings.h"
+#include "gateway_hostname_settings.h"
 
 static const char *TAG = "MDNS_SERVICE";
 

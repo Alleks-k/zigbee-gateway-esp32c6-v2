@@ -10,7 +10,9 @@
 #include "gateway_wifi_system_facade.h"
 #include "gateway_persistence_adapter.h"
 #include "state_store.h"
+#include "system_service.h"
 #include "wifi_init.h"
+#include "wifi_service.h"
 #include "zigbee_service.h"
 #include "device_service_lock_freertos_port.h"
 #include "nvs_flash.h"
@@ -54,6 +56,8 @@ void app_main(void)
     device_service_handle_t device_service = NULL;
     gateway_state_handle_t gateway_state = NULL;
     zigbee_service_handle_t zigbee_service = NULL;
+    wifi_service_handle_t wifi_service = NULL;
+    system_service_handle_t system_service = NULL;
     gateway_wifi_system_handle_t wifi_system = NULL;
     gateway_wifi_system_init_params_t wifi_system_params = {0};
     zigbee_service_init_params_t zigbee_service_params = {0};
@@ -71,16 +75,21 @@ void app_main(void)
 
     ESP_ERROR_CHECK(gateway_status_to_esp_err(device_service_create_with_params(&device_service_params, &device_service)));
     ESP_ERROR_CHECK(gateway_status_to_esp_err(gateway_state_create(&gateway_state)));
+    ESP_ERROR_CHECK(wifi_service_create(&wifi_service));
+    ESP_ERROR_CHECK(system_service_create(&system_service));
     ESP_ERROR_CHECK(gateway_status_to_esp_err(device_service_init(device_service)));
     ESP_ERROR_CHECK(gateway_status_to_esp_err(gateway_state_init(gateway_state)));
-    gateway_state_set_now_ms_provider(self_tests_now_ms);
+    gateway_state_set_now_ms_provider(gateway_state, self_tests_now_ms);
     zigbee_service_params.device_service = device_service;
     zigbee_service_params.gateway_state = gateway_state;
     zigbee_service_params.runtime_ops = NULL;
     ESP_ERROR_CHECK(zigbee_service_create(&zigbee_service_params, &zigbee_service));
     wifi_system_params.gateway_state_handle = gateway_state;
+    wifi_system_params.wifi_service_handle = wifi_service;
+    wifi_system_params.system_service_handle = system_service;
     ESP_ERROR_CHECK(gateway_wifi_system_create(&wifi_system_params, &wifi_system));
-    ESP_ERROR_CHECK(wifi_init_bind_state(gateway_state));
+    wifi_runtime_ctx_t wifi_runtime = {0};
+    ESP_ERROR_CHECK(wifi_init_bind_state(&wifi_runtime, gateway_state, wifi_service, system_service));
     (void)wifi_system;
     (void)zigbee_service;
     int failures = zgw_run_self_tests();

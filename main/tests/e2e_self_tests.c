@@ -32,6 +32,8 @@ static int s_mock_wifi_net_platform_init_called = 0;
 static int s_mock_wifi_sta_connect_called = 0;
 static int s_mock_wifi_fallback_called = 0;
 static job_queue_handle_t s_job_queue = NULL;
+static wifi_service_handle_t s_wifi_service = NULL;
+static system_service_handle_t s_system_service = NULL;
 static api_usecases_handle_t s_api_usecases = NULL;
 static int s_api_zigbee_ctx = 0;
 static int s_api_wifi_ctx = 0;
@@ -40,12 +42,24 @@ static zigbee_service_handle_t s_api_zigbee_handle = (zigbee_service_handle_t)&s
 static gateway_wifi_system_handle_t s_api_wifi_handle = (gateway_wifi_system_handle_t)&s_api_wifi_ctx;
 static gateway_jobs_handle_t s_api_jobs_handle = (gateway_jobs_handle_t)&s_api_jobs_ctx;
 
+static void ensure_platform_services(void)
+{
+    if (!s_wifi_service) {
+        TEST_ASSERT_EQUAL(ESP_OK, wifi_service_create(&s_wifi_service));
+    }
+    if (!s_system_service) {
+        TEST_ASSERT_EQUAL(ESP_OK, system_service_create(&s_system_service));
+    }
+}
+
 static job_queue_handle_t ensure_job_queue(void)
 {
+    ensure_platform_services();
     if (!s_job_queue) {
         TEST_ASSERT_EQUAL(ESP_OK, job_queue_create(&s_job_queue));
     }
     TEST_ASSERT_EQUAL(ESP_OK, job_queue_init_with_handle(s_job_queue));
+    TEST_ASSERT_EQUAL(ESP_OK, job_queue_set_platform_services_with_handle(s_job_queue, s_wifi_service, s_system_service));
     return s_job_queue;
 }
 
@@ -112,8 +126,9 @@ static esp_err_t mock_wifi_scan_slow_impl(wifi_ap_info_t **out_list, size_t *out
     return ret;
 }
 
-static void mock_net_platform_services_init(void)
+static void mock_net_platform_services_init(wifi_runtime_ctx_t *ctx)
 {
+    TEST_ASSERT_NOT_NULL(ctx);
     s_mock_wifi_net_platform_init_called++;
 }
 
@@ -145,6 +160,7 @@ static esp_err_t mock_wifi_start_fallback_ap_ok(wifi_runtime_ctx_t *ctx)
 
 static void reset_api_mocks(void)
 {
+    ensure_platform_services();
     s_mock_send_on_off_called = 0;
     s_mock_send_on_off_addr = 0;
     s_mock_send_on_off_ep = 0;
@@ -328,7 +344,7 @@ static void test_e2e_endpoint_factory_reset_success(void)
 static void test_e2e_wifi_scan_contract_and_usecase(void)
 {
     reset_api_mocks();
-    wifi_service_register_scan_impl(mock_wifi_scan_impl, mock_wifi_scan_free_impl);
+    wifi_service_register_scan_impl(s_wifi_service, mock_wifi_scan_impl, mock_wifi_scan_free_impl);
 
     wifi_ap_info_t *list = NULL;
     size_t count = 0;
@@ -345,25 +361,27 @@ static void test_e2e_wifi_scan_contract_and_usecase(void)
     api_usecase_wifi_scan_free(s_api_usecases, list);
     TEST_ASSERT_EQUAL_INT(1, s_mock_wifi_scan_free_called);
 
-    wifi_service_register_scan_impl(NULL, NULL);
+    wifi_service_register_scan_impl(s_wifi_service, NULL, NULL);
 }
 
 static void test_e2e_wifi_connect_retry_exhausted_switches_to_ap_fallback(void)
 {
     reset_api_mocks();
     gateway_state_handle_t gateway_state = NULL;
+    wifi_runtime_ctx_t wifi_runtime = {0};
     TEST_ASSERT_EQUAL(GATEWAY_STATUS_OK, gateway_state_create(&gateway_state));
     TEST_ASSERT_EQUAL(GATEWAY_STATUS_OK, gateway_state_init(gateway_state));
-    TEST_ASSERT_EQUAL(ESP_OK, wifi_init_bind_state(gateway_state));
+    ensure_platform_services();
+    TEST_ASSERT_EQUAL(ESP_OK, wifi_init_bind_state(&wifi_runtime, gateway_state, s_wifi_service, s_system_service));
 
     wifi_init_ops_t ops = {
         .net_platform_services_init = mock_net_platform_services_init,
         .wifi_sta_connect_and_wait = mock_wifi_sta_connect_and_wait_fail_after_retries,
         .wifi_start_fallback_ap = mock_wifi_start_fallback_ap_ok,
     };
-    wifi_init_set_ops_for_test(&ops);
+    wifi_init_set_ops_for_test(&wifi_runtime, &ops);
 
-    esp_err_t ret = wifi_init_sta_and_wait();
+    esp_err_t ret = wifi_init_sta_and_wait(&wifi_runtime);
     TEST_ASSERT_EQUAL(ESP_OK, ret);
     TEST_ASSERT_EQUAL_INT(1, s_mock_wifi_net_platform_init_called);
     TEST_ASSERT_EQUAL_INT(1, s_mock_wifi_sta_connect_called);
@@ -375,7 +393,7 @@ static void test_e2e_wifi_connect_retry_exhausted_switches_to_ap_fallback(void)
     TEST_ASSERT_TRUE(state.fallback_ap_active);
     TEST_ASSERT_EQUAL_STRING("ZGW-Fallback", state.active_ssid);
 
-    wifi_init_reset_ops_for_test();
+    wifi_init_reset_ops_for_test(&wifi_runtime);
 }
 
 static esp_err_t wait_job_done(uint32_t job_id, uint32_t timeout_ms, zgw_job_info_t *out_info)
@@ -399,7 +417,7 @@ static esp_err_t wait_job_done(uint32_t job_id, uint32_t timeout_ms, zgw_job_inf
 static void test_e2e_job_queue_reuses_completed_slots_without_saturation_120_cycles(void)
 {
     reset_api_mocks();
-    wifi_service_register_scan_impl(mock_wifi_scan_impl, mock_wifi_scan_free_impl);
+    wifi_service_register_scan_impl(s_wifi_service, mock_wifi_scan_impl, mock_wifi_scan_free_impl);
     job_queue_handle_t queue = ensure_job_queue();
 
     for (int i = 0; i < 120; i++) {
@@ -421,13 +439,13 @@ static void test_e2e_job_queue_reuses_completed_slots_without_saturation_120_cyc
 
     TEST_ASSERT_GREATER_OR_EQUAL_INT(120, s_mock_wifi_scan_called);
     TEST_ASSERT_GREATER_OR_EQUAL_INT(120, s_mock_wifi_scan_free_called);
-    wifi_service_register_scan_impl(NULL, NULL);
+    wifi_service_register_scan_impl(s_wifi_service, NULL, NULL);
 }
 
 static void test_e2e_job_queue_singleflight_reuses_inflight_id(void)
 {
     reset_api_mocks();
-    wifi_service_register_scan_impl(mock_wifi_scan_slow_impl, mock_wifi_scan_free_impl);
+    wifi_service_register_scan_impl(s_wifi_service, mock_wifi_scan_slow_impl, mock_wifi_scan_free_impl);
     job_queue_handle_t queue = ensure_job_queue();
 
     uint32_t job_id_1 = 0;
@@ -443,22 +461,23 @@ static void test_e2e_job_queue_singleflight_reuses_inflight_id(void)
     TEST_ASSERT_EQUAL_INT(1, s_mock_wifi_scan_called);
     TEST_ASSERT_EQUAL_INT(1, s_mock_wifi_scan_free_called);
 
-    wifi_service_register_scan_impl(NULL, NULL);
+    wifi_service_register_scan_impl(s_wifi_service, NULL, NULL);
 }
 
 static void test_e2e_reboot_singleflight_schedules_once(void)
 {
-    system_service_reset_reboot_singleflight_for_test();
-    TEST_ASSERT_FALSE(system_service_is_reboot_scheduled_for_test());
-    TEST_ASSERT_EQUAL_UINT32(0, system_service_get_reboot_schedule_count_for_test());
+    ensure_platform_services();
+    system_service_reset_reboot_singleflight_for_test(s_system_service);
+    TEST_ASSERT_FALSE(system_service_is_reboot_scheduled_for_test(s_system_service));
+    TEST_ASSERT_EQUAL_UINT32(0, system_service_get_reboot_schedule_count_for_test(s_system_service));
 
-    TEST_ASSERT_EQUAL(ESP_OK, system_service_schedule_reboot(600000));
-    TEST_ASSERT_TRUE(system_service_is_reboot_scheduled_for_test());
-    TEST_ASSERT_EQUAL_UINT32(1, system_service_get_reboot_schedule_count_for_test());
+    TEST_ASSERT_EQUAL(ESP_OK, system_service_schedule_reboot(s_system_service, 600000));
+    TEST_ASSERT_TRUE(system_service_is_reboot_scheduled_for_test(s_system_service));
+    TEST_ASSERT_EQUAL_UINT32(1, system_service_get_reboot_schedule_count_for_test(s_system_service));
 
-    TEST_ASSERT_EQUAL(ESP_OK, system_service_schedule_reboot(600000));
-    TEST_ASSERT_TRUE(system_service_is_reboot_scheduled_for_test());
-    TEST_ASSERT_EQUAL_UINT32(1, system_service_get_reboot_schedule_count_for_test());
+    TEST_ASSERT_EQUAL(ESP_OK, system_service_schedule_reboot(s_system_service, 600000));
+    TEST_ASSERT_TRUE(system_service_is_reboot_scheduled_for_test(s_system_service));
+    TEST_ASSERT_EQUAL_UINT32(1, system_service_get_reboot_schedule_count_for_test(s_system_service));
 }
 
 void zgw_register_e2e_self_tests(void)

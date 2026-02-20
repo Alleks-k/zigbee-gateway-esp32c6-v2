@@ -9,21 +9,31 @@
 #include <string.h>
 
 static const char *TAG = "wifi_init";
-static wifi_runtime_ctx_t s_ctx = {0};
 
-esp_err_t wifi_init_bind_state(gateway_state_handle_t state_handle)
+esp_err_t wifi_init_bind_state(wifi_runtime_ctx_t *ctx,
+                               gateway_state_handle_t state_handle,
+                               struct wifi_service *wifi_service,
+                               struct system_service *system_service)
 {
-    if (!state_handle) {
+    if (!ctx || !state_handle || !wifi_service || !system_service) {
         return ESP_ERR_INVALID_ARG;
     }
-    s_ctx.gateway_state = state_handle;
+    ctx->gateway_state = state_handle;
+    ctx->wifi_service = wifi_service;
+    ctx->system_service = system_service;
+#if CONFIG_GATEWAY_SELF_TEST_APP
+    wifi_init_reset_ops_for_test(ctx);
+#endif
     return ESP_OK;
 }
 
 #if CONFIG_GATEWAY_SELF_TEST_APP
-static void wifi_init_default_net_platform_services_init(void)
+static void wifi_init_default_net_platform_services_init(wifi_runtime_ctx_t *ctx)
 {
-    net_platform_services_init();
+    if (!ctx) {
+        return;
+    }
+    net_platform_services_init(ctx->wifi_service, ctx->system_service);
 }
 
 static esp_err_t wifi_init_default_sta_connect_and_wait(wifi_runtime_ctx_t *ctx)
@@ -36,81 +46,101 @@ static esp_err_t wifi_init_default_start_fallback_ap(wifi_runtime_ctx_t *ctx)
     return wifi_start_fallback_ap(ctx);
 }
 
-static wifi_init_ops_t s_wifi_init_ops = {
-    .net_platform_services_init = wifi_init_default_net_platform_services_init,
-    .wifi_sta_connect_and_wait = wifi_init_default_sta_connect_and_wait,
-    .wifi_start_fallback_ap = wifi_init_default_start_fallback_ap,
-};
+static void wifi_init_apply_default_ops_if_needed(wifi_runtime_ctx_t *ctx)
+{
+    if (!ctx) {
+        return;
+    }
+    if (!ctx->ops.net_platform_services_init) {
+        ctx->ops.net_platform_services_init = wifi_init_default_net_platform_services_init;
+    }
+    if (!ctx->ops.wifi_sta_connect_and_wait) {
+        ctx->ops.wifi_sta_connect_and_wait = wifi_init_default_sta_connect_and_wait;
+    }
+    if (!ctx->ops.wifi_start_fallback_ap) {
+        ctx->ops.wifi_start_fallback_ap = wifi_init_default_start_fallback_ap;
+    }
+}
 #endif
 
-void wifi_state_store_update(void)
+void wifi_state_store_update(wifi_runtime_ctx_t *ctx)
 {
-    if (!s_ctx.gateway_state) {
+    if (!ctx || !ctx->gateway_state) {
         ESP_LOGW(TAG, "Gateway state handle is not bound");
         return;
     }
 
     gateway_wifi_state_t state = {
-        .sta_connected = s_ctx.sta_connected,
-        .fallback_ap_active = s_ctx.fallback_ap_active,
-        .loaded_from_nvs = s_ctx.loaded_from_nvs,
+        .sta_connected = ctx->sta_connected,
+        .fallback_ap_active = ctx->fallback_ap_active,
+        .loaded_from_nvs = ctx->loaded_from_nvs,
     };
-    strlcpy(state.active_ssid, s_ctx.active_ssid, sizeof(state.active_ssid));
-    esp_err_t ret = gateway_status_to_esp_err(gateway_state_set_wifi(s_ctx.gateway_state, &state));
+    strlcpy(state.active_ssid, ctx->active_ssid, sizeof(state.active_ssid));
+    esp_err_t ret = gateway_status_to_esp_err(gateway_state_set_wifi(ctx->gateway_state, &state));
     if (ret != ESP_OK) {
         ESP_LOGW(TAG, "Failed to publish Wi-Fi state: %s", esp_err_to_name(ret));
     }
 }
 
-esp_err_t wifi_init_sta_and_wait(void)
+esp_err_t wifi_init_sta_and_wait(wifi_runtime_ctx_t *ctx)
 {
+    if (!ctx) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (!ctx->gateway_state || !ctx->wifi_service || !ctx->system_service) {
+        return ESP_ERR_INVALID_STATE;
+    }
 #if CONFIG_GATEWAY_SELF_TEST_APP
-    if (s_wifi_init_ops.net_platform_services_init) {
-        s_wifi_init_ops.net_platform_services_init();
+    wifi_init_apply_default_ops_if_needed(ctx);
+    if (ctx->ops.net_platform_services_init) {
+        ctx->ops.net_platform_services_init(ctx);
     }
 #else
-    net_platform_services_init();
+    net_platform_services_init(ctx->wifi_service, ctx->system_service);
 #endif
-    wifi_state_store_update();
+    wifi_state_store_update(ctx);
     esp_err_t ret = ESP_FAIL;
 #if CONFIG_GATEWAY_SELF_TEST_APP
-    if (s_wifi_init_ops.wifi_sta_connect_and_wait) {
-        ret = s_wifi_init_ops.wifi_sta_connect_and_wait(&s_ctx);
+    if (ctx->ops.wifi_sta_connect_and_wait) {
+        ret = ctx->ops.wifi_sta_connect_and_wait(ctx);
     }
 #else
-    ret = wifi_sta_connect_and_wait(&s_ctx);
+    ret = wifi_sta_connect_and_wait(ctx);
 #endif
     if (ret == ESP_OK) {
-        wifi_state_store_update();
+        wifi_state_store_update(ctx);
         return ESP_OK;
     }
 
-    ESP_LOGE(TAG, "Failed to connect to SSID:%s", s_ctx.active_ssid);
+    ESP_LOGE(TAG, "Failed to connect to SSID:%s", ctx->active_ssid);
     ret = ESP_FAIL;
 #if CONFIG_GATEWAY_SELF_TEST_APP
-    if (s_wifi_init_ops.wifi_start_fallback_ap) {
-        ret = s_wifi_init_ops.wifi_start_fallback_ap(&s_ctx);
+    if (ctx->ops.wifi_start_fallback_ap) {
+        ret = ctx->ops.wifi_start_fallback_ap(ctx);
     }
 #else
-    ret = wifi_start_fallback_ap(&s_ctx);
+    ret = wifi_start_fallback_ap(ctx);
 #endif
-    wifi_state_store_update();
+    wifi_state_store_update(ctx);
     return (ret == ESP_OK) ? ESP_OK : ESP_FAIL;
 }
 
 #if CONFIG_GATEWAY_SELF_TEST_APP
-void wifi_init_set_ops_for_test(const wifi_init_ops_t *ops)
+void wifi_init_set_ops_for_test(wifi_runtime_ctx_t *ctx, const wifi_init_ops_t *ops)
 {
-    if (!ops) {
+    if (!ctx || !ops) {
         return;
     }
-    s_wifi_init_ops = *ops;
+    ctx->ops = *ops;
 }
 
-void wifi_init_reset_ops_for_test(void)
+void wifi_init_reset_ops_for_test(wifi_runtime_ctx_t *ctx)
 {
-    s_wifi_init_ops.net_platform_services_init = wifi_init_default_net_platform_services_init;
-    s_wifi_init_ops.wifi_sta_connect_and_wait = wifi_init_default_sta_connect_and_wait;
-    s_wifi_init_ops.wifi_start_fallback_ap = wifi_init_default_start_fallback_ap;
+    if (!ctx) {
+        return;
+    }
+    ctx->ops.net_platform_services_init = wifi_init_default_net_platform_services_init;
+    ctx->ops.wifi_sta_connect_and_wait = wifi_init_default_sta_connect_and_wait;
+    ctx->ops.wifi_start_fallback_ap = wifi_init_default_start_fallback_ap;
 }
 #endif

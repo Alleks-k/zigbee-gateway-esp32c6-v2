@@ -60,7 +60,7 @@ esp_err_t wifi_start_fallback_ap(wifi_runtime_ctx_t *ctx)
     }
     ctx->fallback_ap_active = true;
     ctx->sta_connected = false;
-    wifi_state_store_update();
+    wifi_state_store_update(ctx);
 
     esp_netif_ip_info_t ap_ip;
     if (ctx->ap_netif && esp_netif_get_ip_info(ctx->ap_netif, &ap_ip) == ESP_OK) {

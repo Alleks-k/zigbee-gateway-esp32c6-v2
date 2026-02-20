@@ -42,6 +42,17 @@ esp_err_t gateway_jobs_create(const gateway_jobs_init_params_t *params, gateway_
         return err;
     }
 
+    err = job_queue_set_platform_services_with_handle(handle->job_queue,
+                                                      params ? params->wifi_service_handle : NULL,
+                                                      params ? params->system_service_handle : NULL);
+    if (err != ESP_OK) {
+        if (handle->owns_job_queue) {
+            job_queue_destroy(handle->job_queue);
+        }
+        free(handle);
+        return err;
+    }
+
     *out_handle = handle;
     return ESP_OK;
 }

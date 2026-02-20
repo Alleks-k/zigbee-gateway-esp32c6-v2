@@ -7,31 +7,40 @@
 
 struct gateway_state_store {
     gateway_state_lock_t state_lock;
+    gateway_state_lock_ctx_t lock_ctx;
     gateway_network_state_t network_state;
     gateway_wifi_state_t wifi_state;
     gateway_lqi_cache_entry_t lqi_cache[GATEWAY_STATE_LQI_CACHE_CAPACITY];
     int lqi_cache_count;
+    gateway_state_now_ms_provider_t now_ms_provider;
+    uint64_t fallback_now_ms;
 };
 
-static gateway_state_now_ms_provider_t s_now_ms_provider = NULL;
-static uint64_t s_fallback_now_ms = 0;
-
-static uint64_t gateway_state_now_ms(void)
+static uint64_t gateway_state_now_ms(gateway_state_handle_t handle)
 {
-    if (s_now_ms_provider) {
-        return s_now_ms_provider();
+    if (!handle) {
+        return 0;
     }
-    return ++s_fallback_now_ms;
+    if (handle->now_ms_provider) {
+        return handle->now_ms_provider();
+    }
+    return ++handle->fallback_now_ms;
 }
 
-void gateway_state_set_now_ms_provider(gateway_state_now_ms_provider_t provider)
+void gateway_state_set_now_ms_provider(gateway_state_handle_t handle, gateway_state_now_ms_provider_t provider)
 {
-    s_now_ms_provider = provider;
+    if (!handle) {
+        return;
+    }
+    handle->now_ms_provider = provider;
 }
 
-gateway_status_t gateway_state_set_lock_backend(gateway_state_lock_backend_t backend)
+gateway_status_t gateway_state_set_lock_backend(gateway_state_handle_t handle, gateway_state_lock_backend_t backend)
 {
-    return gateway_state_lock_select_backend(backend);
+    if (!handle) {
+        return GATEWAY_STATUS_INVALID_ARG;
+    }
+    return gateway_state_lock_ctx_select_backend(&handle->lock_ctx, backend);
 }
 
 gateway_status_t gateway_state_create(gateway_state_handle_t *out_handle)
@@ -44,6 +53,7 @@ gateway_status_t gateway_state_create(gateway_state_handle_t *out_handle)
     if (!handle) {
         return GATEWAY_STATUS_NO_MEM;
     }
+    gateway_state_lock_ctx_init(&handle->lock_ctx);
 
     *out_handle = handle;
     return GATEWAY_STATUS_OK;
@@ -56,12 +66,15 @@ void gateway_state_destroy(gateway_state_handle_t handle)
     }
 
     if (handle->state_lock) {
-        gateway_state_lock_destroy(handle->state_lock);
+        gateway_state_lock_ctx_destroy(&handle->lock_ctx, handle->state_lock);
         handle->state_lock = NULL;
     }
     handle->network_state = (gateway_network_state_t){0};
     handle->wifi_state = (gateway_wifi_state_t){0};
     handle->lqi_cache_count = 0;
+    handle->now_ms_provider = NULL;
+    handle->fallback_now_ms = 0;
+    gateway_state_lock_ctx_init(&handle->lock_ctx);
     memset(handle->lqi_cache, 0, sizeof(handle->lqi_cache));
     free(handle);
 }
@@ -72,7 +85,7 @@ gateway_status_t gateway_state_init(gateway_state_handle_t handle)
         return GATEWAY_STATUS_INVALID_ARG;
     }
     if (handle->state_lock == NULL) {
-        return gateway_state_lock_create(&handle->state_lock);
+        return gateway_state_lock_ctx_create(&handle->lock_ctx, &handle->state_lock);
     }
     return GATEWAY_STATUS_OK;
 }
@@ -87,9 +100,9 @@ gateway_status_t gateway_state_set_network(gateway_state_handle_t handle, const 
         return ret;
     }
 
-    gateway_state_lock_enter(handle->state_lock);
+    gateway_state_lock_ctx_enter(&handle->lock_ctx, handle->state_lock);
     handle->network_state = *state;
-    gateway_state_lock_exit(handle->state_lock);
+    gateway_state_lock_ctx_exit(&handle->lock_ctx, handle->state_lock);
     return GATEWAY_STATUS_OK;
 }
 
@@ -103,9 +116,9 @@ gateway_status_t gateway_state_get_network(gateway_state_handle_t handle, gatewa
         return ret;
     }
 
-    gateway_state_lock_enter(handle->state_lock);
+    gateway_state_lock_ctx_enter(&handle->lock_ctx, handle->state_lock);
     *out_state = handle->network_state;
-    gateway_state_lock_exit(handle->state_lock);
+    gateway_state_lock_ctx_exit(&handle->lock_ctx, handle->state_lock);
     return GATEWAY_STATUS_OK;
 }
 
@@ -119,9 +132,9 @@ gateway_status_t gateway_state_set_wifi(gateway_state_handle_t handle, const gat
         return ret;
     }
 
-    gateway_state_lock_enter(handle->state_lock);
+    gateway_state_lock_ctx_enter(&handle->lock_ctx, handle->state_lock);
     handle->wifi_state = *state;
-    gateway_state_lock_exit(handle->state_lock);
+    gateway_state_lock_ctx_exit(&handle->lock_ctx, handle->state_lock);
     return GATEWAY_STATUS_OK;
 }
 
@@ -135,9 +148,9 @@ gateway_status_t gateway_state_get_wifi(gateway_state_handle_t handle, gateway_w
         return ret;
     }
 
-    gateway_state_lock_enter(handle->state_lock);
+    gateway_state_lock_ctx_enter(&handle->lock_ctx, handle->state_lock);
     *out_state = handle->wifi_state;
-    gateway_state_lock_exit(handle->state_lock);
+    gateway_state_lock_ctx_exit(&handle->lock_ctx, handle->state_lock);
     return GATEWAY_STATUS_OK;
 }
 
@@ -157,10 +170,10 @@ gateway_status_t gateway_state_update_lqi(gateway_state_handle_t handle,
         return ret;
     }
     if (updated_ms == 0) {
-        updated_ms = gateway_state_now_ms();
+        updated_ms = gateway_state_now_ms(handle);
     }
 
-    gateway_state_lock_enter(handle->state_lock);
+    gateway_state_lock_ctx_enter(&handle->lock_ctx, handle->state_lock);
     int idx = -1;
     for (int i = 0; i < handle->lqi_cache_count; i++) {
         if (handle->lqi_cache[i].short_addr == short_addr) {
@@ -170,7 +183,7 @@ gateway_status_t gateway_state_update_lqi(gateway_state_handle_t handle,
     }
     if (idx < 0) {
         if (handle->lqi_cache_count >= GATEWAY_STATE_LQI_CACHE_CAPACITY) {
-            gateway_state_lock_exit(handle->state_lock);
+            gateway_state_lock_ctx_exit(&handle->lock_ctx, handle->state_lock);
             return GATEWAY_STATUS_NO_MEM;
         }
         idx = handle->lqi_cache_count;
@@ -182,7 +195,7 @@ gateway_status_t gateway_state_update_lqi(gateway_state_handle_t handle,
     handle->lqi_cache[idx].rssi = rssi;
     handle->lqi_cache[idx].source = source;
     handle->lqi_cache[idx].updated_ms = updated_ms;
-    gateway_state_lock_exit(handle->state_lock);
+    gateway_state_lock_ctx_exit(&handle->lock_ctx, handle->state_lock);
     return GATEWAY_STATUS_OK;
 }
 
@@ -196,7 +209,7 @@ int gateway_state_get_lqi_snapshot(gateway_state_handle_t handle, gateway_lqi_ca
         return 0;
     }
 
-    gateway_state_lock_enter(handle->state_lock);
+    gateway_state_lock_ctx_enter(&handle->lock_ctx, handle->state_lock);
     int count = handle->lqi_cache_count;
     if ((size_t)count > max_items) {
         count = (int)max_items;
@@ -204,6 +217,6 @@ int gateway_state_get_lqi_snapshot(gateway_state_handle_t handle, gateway_lqi_ca
     if (count > 0) {
         memcpy(out, handle->lqi_cache, sizeof(gateway_lqi_cache_entry_t) * (size_t)count);
     }
-    gateway_state_lock_exit(handle->state_lock);
+    gateway_state_lock_ctx_exit(&handle->lock_ctx, handle->state_lock);
     return count;
 }

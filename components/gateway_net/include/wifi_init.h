@@ -10,17 +10,14 @@
  *
  * @return esp_err_t
  */
-esp_err_t wifi_init_sta_and_wait(void);
-void wifi_state_store_update(void);
-esp_err_t wifi_init_bind_state(gateway_state_handle_t state_handle);
+esp_err_t wifi_init_sta_and_wait(wifi_runtime_ctx_t *ctx);
+void wifi_state_store_update(wifi_runtime_ctx_t *ctx);
+esp_err_t wifi_init_bind_state(wifi_runtime_ctx_t *ctx,
+                               gateway_state_handle_t state_handle,
+                               struct wifi_service *wifi_service,
+                               struct system_service *system_service);
 
 #if CONFIG_GATEWAY_SELF_TEST_APP
-typedef struct {
-    void (*net_platform_services_init)(void);
-    esp_err_t (*wifi_sta_connect_and_wait)(wifi_runtime_ctx_t *ctx);
-    esp_err_t (*wifi_start_fallback_ap)(wifi_runtime_ctx_t *ctx);
-} wifi_init_ops_t;
-
-void wifi_init_set_ops_for_test(const wifi_init_ops_t *ops);
-void wifi_init_reset_ops_for_test(void);
+void wifi_init_set_ops_for_test(wifi_runtime_ctx_t *ctx, const wifi_init_ops_t *ops);
+void wifi_init_reset_ops_for_test(wifi_runtime_ctx_t *ctx);
 #endif

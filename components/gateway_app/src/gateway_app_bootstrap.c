@@ -105,11 +105,10 @@ void gateway_app_start(void)
     gateway_app_detach_device_events();
     gateway_app_runtime_destroy(&s_runtime_handles);
     ESP_ERROR_CHECK(gateway_app_runtime_create(&s_runtime_handles));
-    gateway_state_set_now_ms_provider(gateway_app_now_ms_provider);
-    ESP_ERROR_CHECK(wifi_init_bind_state(s_runtime_handles.gateway_state));
+    gateway_state_set_now_ms_provider(s_runtime_handles.gateway_state, gateway_app_now_ms_provider);
     ESP_ERROR_CHECK(gateway_app_attach_device_events(s_runtime_handles.device_service));
 
-    esp_err_t wifi_ret = wifi_init_sta_and_wait();
+    esp_err_t wifi_ret = wifi_init_sta_and_wait(&s_runtime_handles.wifi_runtime);
     if (wifi_ret != ESP_OK) {
         ESP_LOGE(TAG,
                  "Wi-Fi STA connection failed (%s). Continuing without network.",

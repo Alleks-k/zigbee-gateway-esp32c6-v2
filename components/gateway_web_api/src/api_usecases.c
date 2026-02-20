@@ -10,7 +10,7 @@ struct api_usecases {
     gateway_jobs_handle_t jobs;
     api_ws_client_count_provider_t ws_client_count_provider;
     api_ws_metrics_provider_t ws_metrics_provider;
-    void *ws_provider_ctx;
+    api_ws_provider_ctx_t *ws_provider_ctx;
 };
 
 esp_err_t api_usecases_create(const api_usecases_init_params_t *params, api_usecases_handle_t *out_handle)
@@ -63,7 +63,7 @@ void api_usecases_set_runtime_handles(api_usecases_handle_t handle, zigbee_servi
 }
 
 void api_usecases_set_ws_providers(api_usecases_handle_t handle, api_ws_client_count_provider_t count_provider,
-                                   api_ws_metrics_provider_t metrics_provider, void *provider_ctx)
+                                   api_ws_metrics_provider_t metrics_provider, api_ws_provider_ctx_t *provider_ctx)
 {
     if (!handle) {
         return;

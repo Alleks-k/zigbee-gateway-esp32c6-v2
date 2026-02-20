@@ -6,6 +6,9 @@
 #include "gateway_runtime_context.h"
 #include "gateway_status_esp.h"
 #include "gateway_zigbee_runtime.h"
+#include "system_service.h"
+#include "wifi_service.h"
+#include "wifi_init.h"
 
 #include <string.h>
 
@@ -87,6 +90,16 @@ esp_err_t gateway_app_runtime_create(gateway_app_runtime_handles_t *out_handles)
         goto fail;
     }
 
+    ret = wifi_service_create(&out_handles->wifi_service);
+    if (ret != ESP_OK) {
+        goto fail;
+    }
+
+    ret = system_service_create(&out_handles->system_service);
+    if (ret != ESP_OK) {
+        goto fail;
+    }
+
     ret = gateway_status_to_esp_err(device_service_init(out_handles->device_service));
     if (ret != ESP_OK) {
         goto fail;
@@ -97,12 +110,24 @@ esp_err_t gateway_app_runtime_create(gateway_app_runtime_handles_t *out_handles)
         goto fail;
     }
 
+    ret = wifi_init_bind_state(&out_handles->wifi_runtime,
+                               out_handles->gateway_state,
+                               out_handles->wifi_service,
+                               out_handles->system_service);
+    if (ret != ESP_OK) {
+        goto fail;
+    }
+
     wifi_system_params.gateway_state_handle = out_handles->gateway_state;
+    wifi_system_params.wifi_service_handle = out_handles->wifi_service;
+    wifi_system_params.system_service_handle = out_handles->system_service;
     ret = gateway_wifi_system_create(&wifi_system_params, &out_handles->wifi_system);
     if (ret != ESP_OK) {
         goto fail;
     }
 
+    jobs_params.wifi_service_handle = out_handles->wifi_service;
+    jobs_params.system_service_handle = out_handles->system_service;
     ret = gateway_jobs_create(&jobs_params, &out_handles->jobs);
     if (ret != ESP_OK) {
         goto fail;
@@ -175,6 +200,14 @@ void gateway_app_runtime_destroy(gateway_app_runtime_handles_t *handles)
 
     if (handles->wifi_system) {
         gateway_wifi_system_destroy(handles->wifi_system);
+    }
+
+    if (handles->system_service) {
+        system_service_destroy(handles->system_service);
+    }
+
+    if (handles->wifi_service) {
+        wifi_service_destroy(handles->wifi_service);
     }
 
     if (handles->gateway_state) {

@@ -134,6 +134,7 @@ esp_err_t build_lqi_json_compact(api_usecases_handle_t usecases, char *out, size
 
     zb_device_t devices[MAX_DEVICES] = {0};
     zigbee_neighbor_lqi_t neighbors[MAX_DEVICES] = {0};
+    const int nbr_capacity = (int)(sizeof(neighbors) / sizeof(neighbors[0]));
     int dev_count = api_usecase_get_devices_snapshot(usecases, devices, MAX_DEVICES);
     int nbr_count = 0;
     zigbee_lqi_source_t source = ZIGBEE_LQI_SOURCE_UNKNOWN;
@@ -145,13 +146,25 @@ esp_err_t build_lqi_json_compact(api_usecases_handle_t usecases, char *out, size
     if (cached_ret != ESP_OK) {
         return cached_ret;
     }
+    if (nbr_count < 0) {
+        nbr_count = 0;
+    }
+    if (nbr_count > nbr_capacity) {
+        nbr_count = nbr_capacity;
+    }
 
     if (updated_ms == 0) {
         nbr_count = api_usecase_get_neighbor_lqi_snapshot(usecases, neighbors, MAX_DEVICES);
+        if (nbr_count < 0) {
+            nbr_count = 0;
+        }
+        if (nbr_count > nbr_capacity) {
+            nbr_count = nbr_capacity;
+        }
         source = ZIGBEE_LQI_SOURCE_NEIGHBOR_TABLE;
         if (nbr_count > 0) {
             updated_ms = neighbors[0].updated_ms;
-            for (int i = 1; i < nbr_count; i++) {
+            for (int i = 1; i < nbr_count && i < nbr_capacity; i++) {
                 if (neighbors[i].updated_ms > updated_ms) {
                     updated_ms = neighbors[i].updated_ms;
                 }

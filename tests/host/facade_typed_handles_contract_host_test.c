@@ -24,9 +24,25 @@ _Static_assert(__builtin_types_compatible_p(
                    struct gateway_state_store *),
                "gateway_wifi_system_init_params_t.gateway_state_handle must be typed");
 _Static_assert(__builtin_types_compatible_p(
+                   __typeof__(((gateway_wifi_system_init_params_t *)0)->wifi_service_handle),
+                   struct wifi_service *),
+               "gateway_wifi_system_init_params_t.wifi_service_handle must be typed");
+_Static_assert(__builtin_types_compatible_p(
+                   __typeof__(((gateway_wifi_system_init_params_t *)0)->system_service_handle),
+                   struct system_service *),
+               "gateway_wifi_system_init_params_t.system_service_handle must be typed");
+_Static_assert(__builtin_types_compatible_p(
                    __typeof__(((gateway_jobs_init_params_t *)0)->job_queue_handle),
                    struct zgw_job_queue *),
                "gateway_jobs_init_params_t.job_queue_handle must be typed");
+_Static_assert(__builtin_types_compatible_p(
+                   __typeof__(((gateway_jobs_init_params_t *)0)->wifi_service_handle),
+                   struct wifi_service *),
+               "gateway_jobs_init_params_t.wifi_service_handle must be typed");
+_Static_assert(__builtin_types_compatible_p(
+                   __typeof__(((gateway_jobs_init_params_t *)0)->system_service_handle),
+                   struct system_service *),
+               "gateway_jobs_init_params_t.system_service_handle must be typed");
 
 int main(void)
 {
@@ -35,7 +51,11 @@ int main(void)
     gateway_wifi_system_init_params_t wifi_params = {0};
     gateway_jobs_init_params_t jobs_params = {0};
     assert(wifi_params.gateway_state_handle == NULL);
+    assert(wifi_params.wifi_service_handle == NULL);
+    assert(wifi_params.system_service_handle == NULL);
     assert(jobs_params.job_queue_handle == NULL);
+    assert(jobs_params.wifi_service_handle == NULL);
+    assert(jobs_params.system_service_handle == NULL);
 
     printf("Host tests passed: facade_typed_handles_contract_host_test\n");
     return 0;

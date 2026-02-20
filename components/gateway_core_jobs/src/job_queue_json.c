@@ -13,11 +13,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-esp_err_t job_queue_json_build_scan_result(char *out, size_t out_size)
+esp_err_t job_queue_json_build_scan_result_with_services(struct wifi_service *wifi_service_handle, char *out, size_t out_size)
 {
+    if (!wifi_service_handle) {
+        return ESP_ERR_INVALID_STATE;
+    }
     wifi_ap_info_t *list = NULL;
     size_t count = 0;
-    esp_err_t err = wifi_service_scan(&list, &count);
+    esp_err_t err = wifi_service_scan(wifi_service_handle, &list, &count);
     if (err != ESP_OK) {
         return err;
     }
@@ -27,7 +30,7 @@ esp_err_t job_queue_json_build_scan_result(char *out, size_t out_size)
     if (!root || !arr) {
         cJSON_Delete(root);
         cJSON_Delete(arr);
-        wifi_service_scan_free(list);
+        wifi_service_scan_free(wifi_service_handle, list);
         return ESP_ERR_NO_MEM;
     }
     cJSON_AddNumberToObject(root, "count", (double)count);
@@ -37,7 +40,7 @@ esp_err_t job_queue_json_build_scan_result(char *out, size_t out_size)
         cJSON *item = cJSON_CreateObject();
         if (!item) {
             cJSON_Delete(root);
-            wifi_service_scan_free(list);
+            wifi_service_scan_free(wifi_service_handle, list);
             return ESP_ERR_NO_MEM;
         }
         cJSON_AddStringToObject(item, "ssid", list[i].ssid);
@@ -48,7 +51,7 @@ esp_err_t job_queue_json_build_scan_result(char *out, size_t out_size)
 
     char *json = cJSON_PrintUnformatted(root);
     cJSON_Delete(root);
-    wifi_service_scan_free(list);
+    wifi_service_scan_free(wifi_service_handle, list);
     if (!json) {
         return ESP_ERR_NO_MEM;
     }
@@ -88,9 +91,15 @@ esp_err_t job_queue_json_build_factory_reset_result(char *out, size_t out_size)
     return ESP_OK;
 }
 
-esp_err_t job_queue_json_build_reboot_result(uint32_t delay_ms, char *out, size_t out_size)
+esp_err_t job_queue_json_build_reboot_result_with_services(struct system_service *system_service_handle,
+                                                           uint32_t delay_ms,
+                                                           char *out,
+                                                           size_t out_size)
 {
-    esp_err_t err = system_service_schedule_reboot(delay_ms);
+    if (!system_service_handle) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    esp_err_t err = system_service_schedule_reboot(system_service_handle, delay_ms);
     if (err != ESP_OK) {
         return err;
     }

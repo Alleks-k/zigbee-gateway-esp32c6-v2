@@ -86,8 +86,10 @@ typedef struct {
 typedef struct api_usecases api_usecases_t;
 typedef api_usecases_t *api_usecases_handle_t;
 
-typedef uint32_t (*api_ws_client_count_provider_t)(void *ctx);
-typedef bool (*api_ws_metrics_provider_t)(void *ctx, api_ws_runtime_metrics_t *out_metrics);
+typedef struct api_ws_provider_ctx api_ws_provider_ctx_t;
+
+typedef uint32_t (*api_ws_client_count_provider_t)(api_ws_provider_ctx_t *ctx);
+typedef bool (*api_ws_metrics_provider_t)(api_ws_provider_ctx_t *ctx, api_ws_runtime_metrics_t *out_metrics);
 
 typedef struct {
     const api_service_ops_t *service_ops;
@@ -96,7 +98,7 @@ typedef struct {
     gateway_jobs_handle_t jobs;
     api_ws_client_count_provider_t ws_client_count_provider;
     api_ws_metrics_provider_t ws_metrics_provider;
-    void *ws_provider_ctx;
+    api_ws_provider_ctx_t *ws_provider_ctx;
 } api_usecases_init_params_t;
 
 esp_err_t api_usecases_create(const api_usecases_init_params_t *params, api_usecases_handle_t *out_handle);
@@ -106,7 +108,7 @@ void api_usecases_set_service_ops_with_handle(api_usecases_handle_t handle, cons
 void api_usecases_set_runtime_handles(api_usecases_handle_t handle, zigbee_service_handle_t zigbee_service,
                                       gateway_wifi_system_handle_t wifi_system, gateway_jobs_handle_t jobs);
 void api_usecases_set_ws_providers(api_usecases_handle_t handle, api_ws_client_count_provider_t count_provider,
-                                   api_ws_metrics_provider_t metrics_provider, void *provider_ctx);
+                                   api_ws_metrics_provider_t metrics_provider, api_ws_provider_ctx_t *provider_ctx);
 
 esp_err_t api_usecase_control(api_usecases_handle_t handle, const api_control_request_t *in);
 esp_err_t api_usecase_wifi_save(api_usecases_handle_t handle, const api_wifi_save_request_t *in);

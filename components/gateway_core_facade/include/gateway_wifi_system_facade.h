@@ -39,6 +39,8 @@ typedef struct {
 
 typedef struct {
     struct gateway_state_store *gateway_state_handle;
+    struct wifi_service *wifi_service_handle;
+    struct system_service *system_service_handle;
 } gateway_wifi_system_init_params_t;
 
 typedef struct gateway_wifi_system gateway_wifi_system_t;

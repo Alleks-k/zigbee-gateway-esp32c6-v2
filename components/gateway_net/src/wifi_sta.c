@@ -41,11 +41,11 @@ static void event_handler(void *arg, esp_event_base_t event_base, int32_t event_
 
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
         ctx->sta_connected = false;
-        wifi_state_store_update();
+        wifi_state_store_update(ctx);
         esp_wifi_connect();
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
         ctx->sta_connected = false;
-        wifi_state_store_update();
+        wifi_state_store_update(ctx);
         if (ctx->fallback_ap_active) {
             return;
         }
@@ -75,7 +75,7 @@ static void event_handler(void *arg, esp_event_base_t event_base, int32_t event_
         ESP_LOGI(TAG, "got ip:" IPSTR, IP2STR(&event->ip_info.ip));
         ctx->retry_num = 0;
         ctx->sta_connected = true;
-        wifi_state_store_update();
+        wifi_state_store_update(ctx);
         if (ctx->wifi_event_group) {
             xEventGroupSetBits(ctx->wifi_event_group, WIFI_CONNECTED_BIT);
         }
@@ -104,7 +104,7 @@ static void load_wifi_credentials(wifi_runtime_ctx_t *ctx, wifi_config_t *wifi_c
 
     ctx->loaded_from_nvs = loaded_from_nvs;
     strlcpy(ctx->active_ssid, (char *)wifi_config->sta.ssid, sizeof(ctx->active_ssid));
-    wifi_state_store_update();
+    wifi_state_store_update(ctx);
 }
 
 esp_err_t wifi_sta_connect_and_wait(wifi_runtime_ctx_t *ctx)
@@ -114,7 +114,7 @@ esp_err_t wifi_sta_connect_and_wait(wifi_runtime_ctx_t *ctx)
     ctx->retry_num = 0;
     ctx->instance_any_id = NULL;
     ctx->instance_got_ip = NULL;
-    wifi_state_store_update();
+    wifi_state_store_update(ctx);
 
     ctx->wifi_event_group = xEventGroupCreate();
     ESP_RETURN_ON_FALSE(ctx->wifi_event_group != NULL, ESP_ERR_NO_MEM, TAG, "Failed to create Wi-Fi event group");

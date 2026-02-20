@@ -18,8 +18,8 @@ typedef enum {
 
 gateway_status_t gateway_state_create(gateway_state_handle_t *out_handle);
 void gateway_state_destroy(gateway_state_handle_t handle);
-void gateway_state_set_now_ms_provider(gateway_state_now_ms_provider_t provider);
-gateway_status_t gateway_state_set_lock_backend(gateway_state_lock_backend_t backend);
+void gateway_state_set_now_ms_provider(gateway_state_handle_t handle, gateway_state_now_ms_provider_t provider);
+gateway_status_t gateway_state_set_lock_backend(gateway_state_handle_t handle, gateway_state_lock_backend_t backend);
 gateway_status_t gateway_state_init(gateway_state_handle_t handle);
 gateway_status_t gateway_state_set_network(gateway_state_handle_t handle, const gateway_network_state_t *state);
 gateway_status_t gateway_state_get_network(gateway_state_handle_t handle, gateway_network_state_t *out_state);

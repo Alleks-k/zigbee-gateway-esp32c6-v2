@@ -11,12 +11,14 @@
 
 struct gateway_wifi_system {
     gateway_state_handle_t gateway_state;
+    wifi_service_handle_t wifi_service;
+    system_service_handle_t system_service;
 };
 
 esp_err_t gateway_wifi_system_create(const gateway_wifi_system_init_params_t *params,
                                      gateway_wifi_system_handle_t *out_handle)
 {
-    if (!params || !params->gateway_state_handle || !out_handle) {
+    if (!params || !params->gateway_state_handle || !params->wifi_service_handle || !params->system_service_handle || !out_handle) {
         return ESP_ERR_INVALID_ARG;
     }
 
@@ -26,6 +28,8 @@ esp_err_t gateway_wifi_system_create(const gateway_wifi_system_init_params_t *pa
     }
 
     handle->gateway_state = params->gateway_state_handle;
+    handle->wifi_service = params->wifi_service_handle;
+    handle->system_service = params->system_service_handle;
     *out_handle = handle;
     return ESP_OK;
 }
@@ -38,6 +42,17 @@ void gateway_wifi_system_destroy(gateway_wifi_system_handle_t handle)
 static esp_err_t require_gateway_state_handle(gateway_wifi_system_handle_t handle)
 {
     return (handle && handle->gateway_state) ? ESP_OK : ESP_ERR_INVALID_STATE;
+}
+
+static esp_err_t require_service_handles(gateway_wifi_system_handle_t handle)
+{
+    if (!handle) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (!handle->wifi_service || !handle->system_service) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    return ESP_OK;
 }
 
 static gateway_core_wifi_link_quality_t to_core_wifi_link_quality(system_wifi_link_quality_t quality)
@@ -57,40 +72,46 @@ static gateway_core_wifi_link_quality_t to_core_wifi_link_quality(system_wifi_li
 
 esp_err_t gateway_wifi_system_save_credentials(gateway_wifi_system_handle_t handle, const char *ssid, const char *password)
 {
-    if (!handle) {
-        return ESP_ERR_INVALID_ARG;
+    esp_err_t ret = require_service_handles(handle);
+    if (ret != ESP_OK) {
+        return ret;
     }
-    return wifi_service_save_credentials(ssid, password);
+    return wifi_service_save_credentials(handle->wifi_service, ssid, password);
 }
 
 esp_err_t gateway_wifi_system_schedule_reboot(gateway_wifi_system_handle_t handle, uint32_t delay_ms)
 {
-    if (!handle) {
-        return ESP_ERR_INVALID_ARG;
+    esp_err_t ret = require_service_handles(handle);
+    if (ret != ESP_OK) {
+        return ret;
     }
-    return system_service_schedule_reboot(delay_ms);
+    return system_service_schedule_reboot(handle->system_service, delay_ms);
 }
 
 esp_err_t gateway_wifi_system_factory_reset_and_reboot(gateway_wifi_system_handle_t handle, uint32_t reboot_delay_ms)
 {
-    if (!handle) {
-        return ESP_ERR_INVALID_ARG;
+    esp_err_t ret = require_service_handles(handle);
+    if (ret != ESP_OK) {
+        return ret;
     }
-    return system_service_factory_reset_and_reboot(reboot_delay_ms);
+    return system_service_factory_reset_and_reboot(handle->system_service, reboot_delay_ms);
 }
 
 esp_err_t gateway_wifi_system_scan(gateway_wifi_system_handle_t handle, wifi_ap_info_t **out_list, size_t *out_count)
 {
-    if (!handle) {
-        return ESP_ERR_INVALID_ARG;
+    esp_err_t ret = require_service_handles(handle);
+    if (ret != ESP_OK) {
+        return ret;
     }
-    return wifi_service_scan(out_list, out_count);
+    return wifi_service_scan(handle->wifi_service, out_list, out_count);
 }
 
 void gateway_wifi_system_scan_free(gateway_wifi_system_handle_t handle, wifi_ap_info_t *list)
 {
-    (void)handle;
-    wifi_service_scan_free(list);
+    if (!handle || !handle->wifi_service) {
+        return;
+    }
+    wifi_service_scan_free(handle->wifi_service, list);
 }
 
 esp_err_t gateway_wifi_system_get_factory_reset_report(gateway_wifi_system_handle_t handle,
@@ -100,8 +121,13 @@ esp_err_t gateway_wifi_system_get_factory_reset_report(gateway_wifi_system_handl
         return ESP_ERR_INVALID_ARG;
     }
 
+    esp_err_t ret = require_service_handles(handle);
+    if (ret != ESP_OK) {
+        return ret;
+    }
+
     system_factory_reset_report_t report = {0};
-    esp_err_t err = system_service_get_last_factory_reset_report(&report);
+    esp_err_t err = system_service_get_last_factory_reset_report(handle->system_service, &report);
     if (err != ESP_OK) {
         return err;
     }
@@ -119,8 +145,13 @@ esp_err_t gateway_wifi_system_collect_telemetry(gateway_wifi_system_handle_t han
         return ESP_ERR_INVALID_ARG;
     }
 
+    esp_err_t ret = require_service_handles(handle);
+    if (ret != ESP_OK) {
+        return ret;
+    }
+
     system_telemetry_t telemetry = {0};
-    esp_err_t err = system_service_collect_telemetry(&telemetry);
+    esp_err_t err = system_service_collect_telemetry(handle->system_service, &telemetry);
     if (err != ESP_OK) {
         return err;
     }

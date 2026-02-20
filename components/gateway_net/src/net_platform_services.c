@@ -223,8 +223,11 @@ static esp_err_t net_collect_telemetry_impl(system_telemetry_t *out)
     return ESP_OK;
 }
 
-void net_platform_services_init(void)
+void net_platform_services_init(wifi_service_handle_t wifi_service, system_service_handle_t system_service)
 {
-    wifi_service_register_scan_impl(net_wifi_scan_impl, net_wifi_scan_free_impl);
-    system_service_register_telemetry_impl(net_collect_telemetry_impl);
+    if (!wifi_service || !system_service) {
+        return;
+    }
+    wifi_service_register_scan_impl(wifi_service, net_wifi_scan_impl, net_wifi_scan_free_impl);
+    system_service_register_telemetry_impl(system_service, net_collect_telemetry_impl);
 }

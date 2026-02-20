@@ -7,6 +7,8 @@
 
 struct zgw_job_queue;
 struct zigbee_service;
+struct wifi_service;
+struct system_service;
 
 typedef struct {
     uint32_t submitted_total;
@@ -49,6 +51,8 @@ typedef gateway_jobs_t *gateway_jobs_handle_t;
 
 typedef struct {
     struct zgw_job_queue *job_queue_handle;
+    struct wifi_service *wifi_service_handle;
+    struct system_service *system_service_handle;
 } gateway_jobs_init_params_t;
 
 esp_err_t gateway_jobs_create(const gateway_jobs_init_params_t *params, gateway_jobs_handle_t *out_handle);

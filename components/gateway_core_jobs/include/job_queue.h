@@ -44,11 +44,16 @@ typedef struct {
 
 typedef struct zgw_job_queue *job_queue_handle_t;
 typedef struct zigbee_service *zigbee_service_handle_t;
+struct wifi_service;
+struct system_service;
 
 esp_err_t job_queue_create(job_queue_handle_t *out_handle);
 void job_queue_destroy(job_queue_handle_t handle);
 esp_err_t job_queue_init_with_handle(job_queue_handle_t handle);
 esp_err_t job_queue_set_zigbee_service_with_handle(job_queue_handle_t handle, zigbee_service_handle_t zigbee_service_handle);
+esp_err_t job_queue_set_platform_services_with_handle(job_queue_handle_t handle,
+                                                      struct wifi_service *wifi_service_handle,
+                                                      struct system_service *system_service_handle);
 esp_err_t job_queue_submit_with_handle(job_queue_handle_t handle, zgw_job_type_t type, uint32_t reboot_delay_ms,
                                        uint32_t *out_job_id);
 esp_err_t job_queue_get_with_handle(job_queue_handle_t handle, uint32_t job_id, zgw_job_info_t *out_info);

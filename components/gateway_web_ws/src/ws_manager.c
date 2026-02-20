@@ -25,12 +25,12 @@ static void ws_manager_reset_transport_to_defaults(ws_manager_handle_t handle)
 }
 #endif
 
-static bool ws_manager_metrics_provider_adapter(void *ctx, api_ws_runtime_metrics_t *out_metrics)
+static bool ws_manager_metrics_provider_adapter(api_ws_provider_ctx_t *ctx, api_ws_runtime_metrics_t *out_metrics)
 {
     return ws_manager_metrics_provider((ws_manager_handle_t)ctx, out_metrics);
 }
 
-static uint32_t ws_manager_client_count_provider_adapter(void *ctx)
+static uint32_t ws_manager_client_count_provider_adapter(api_ws_provider_ctx_t *ctx)
 {
     return ws_manager_client_count_provider((ws_manager_handle_t)ctx);
 }
@@ -140,7 +140,7 @@ void ws_manager_init_with_handle(ws_manager_handle_t handle, httpd_handle_t serv
         api_usecases_set_ws_providers(handle->api_usecases,
                                       ws_manager_client_count_provider_adapter,
                                       ws_manager_metrics_provider_adapter,
-                                      handle);
+                                      (api_ws_provider_ctx_t *)handle);
     }
 
     for (int i = 0; i < MAX_WS_CLIENTS; i++) {

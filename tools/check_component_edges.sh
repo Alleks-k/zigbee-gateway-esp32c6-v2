@@ -138,6 +138,29 @@ check_web_api_no_low_level_idf_includes() {
     fi
 }
 
+check_no_legacy_hostname_shim_usage() {
+    local hits
+    hits="$(
+        rg -n '#include[[:space:]]+"hostname_settings\.h"' \
+            "${ROOT_DIR}/components" "${ROOT_DIR}/main" "${ROOT_DIR}/tests" \
+            --glob '*.[ch]' || true
+    )"
+
+    if [[ -z "${hits}" ]]; then
+        return
+    fi
+
+    while IFS= read -r hit; do
+        [[ -z "${hit}" ]] && continue
+        local rel="${hit#${ROOT_DIR}/}"
+        if [[ "${rel}" == "components/gateway_shared_config/include/hostname_settings.h" ]] || \
+           [[ "${rel}" == "components/gateway_net/include/hostname_settings.h" ]]; then
+            continue
+        fi
+        report_violation "legacy hostname_settings.h include is forbidden; use gateway_hostname_settings.h: ${rel}"
+    done <<< "${hits}"
+}
+
 check_no_legacy_default_getters() {
     local hits
     hits="$(
@@ -182,6 +205,11 @@ check_no_mutable_runtime_singletons() {
             "${ROOT_DIR}/components/gateway_core_zigbee/src" \
             "${ROOT_DIR}/components/gateway_web_api/src" \
             "${ROOT_DIR}/components/gateway_web_ws/src" \
+            "${ROOT_DIR}/components/gateway_net/src/wifi_init.c" \
+            "${ROOT_DIR}/components/gateway_core_wifi/src/wifi_service.c" \
+            "${ROOT_DIR}/components/gateway_core_state/src/gateway_state.c" \
+            "${ROOT_DIR}/components/gateway_core_state/src/gateway_state_lock.c" \
+            "${ROOT_DIR}/components/gateway_core_system/src/system_service.c" \
             --glob '*.c' || true
     )"
 
@@ -202,6 +230,7 @@ check_no_relative_source_includes
 check_web_api_headers_are_facade_only
 check_core_facade_headers_no_low_level_includes
 check_web_api_no_low_level_idf_includes
+check_no_legacy_hostname_shim_usage
 check_no_legacy_default_getters
 check_no_legacy_runtime_singleton_apis
 check_no_mutable_runtime_singletons

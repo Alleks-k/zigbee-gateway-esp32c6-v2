@@ -13,9 +13,12 @@ static int g_job_queue_set_zigbee_calls = 0;
 static int g_job_queue_get_metrics_calls = 0;
 static int g_job_queue_submit_calls = 0;
 static int g_job_queue_get_calls = 0;
+static int g_job_queue_set_platform_services_calls = 0;
 
 static job_queue_handle_t g_created_queue = (job_queue_handle_t)(uintptr_t)0x1111;
 static zigbee_service_handle_t g_last_zigbee_handle = NULL;
+static struct wifi_service *g_last_wifi_service_handle = NULL;
+static struct system_service *g_last_system_service_handle = NULL;
 
 static void reset_stubs(void)
 {
@@ -26,7 +29,10 @@ static void reset_stubs(void)
     g_job_queue_get_metrics_calls = 0;
     g_job_queue_submit_calls = 0;
     g_job_queue_get_calls = 0;
+    g_job_queue_set_platform_services_calls = 0;
     g_last_zigbee_handle = NULL;
+    g_last_wifi_service_handle = NULL;
+    g_last_system_service_handle = NULL;
 }
 
 esp_err_t job_queue_create(job_queue_handle_t *out_handle)
@@ -62,6 +68,19 @@ esp_err_t job_queue_set_zigbee_service_with_handle(job_queue_handle_t handle, zi
     }
     g_job_queue_set_zigbee_calls++;
     g_last_zigbee_handle = zigbee_service_handle;
+    return ESP_OK;
+}
+
+esp_err_t job_queue_set_platform_services_with_handle(job_queue_handle_t handle,
+                                                      struct wifi_service *wifi_service_handle,
+                                                      struct system_service *system_service_handle)
+{
+    if (!handle) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    g_job_queue_set_platform_services_calls++;
+    g_last_wifi_service_handle = wifi_service_handle;
+    g_last_system_service_handle = system_service_handle;
     return ESP_OK;
 }
 
@@ -135,12 +154,17 @@ static void test_create_with_external_queue_does_not_own_queue(void)
     gateway_jobs_handle_t jobs = NULL;
     gateway_jobs_init_params_t params = {
         .job_queue_handle = (job_queue_handle_t)(uintptr_t)0x2222,
+        .wifi_service_handle = (struct wifi_service *)(uintptr_t)0x1111,
+        .system_service_handle = (struct system_service *)(uintptr_t)0x2222,
     };
 
     assert(gateway_jobs_create(&params, &jobs) == ESP_OK);
     assert(jobs != NULL);
     assert(g_job_queue_create_calls == 0);
     assert(g_job_queue_init_calls == 1);
+    assert(g_job_queue_set_platform_services_calls == 1);
+    assert(g_last_wifi_service_handle == params.wifi_service_handle);
+    assert(g_last_system_service_handle == params.system_service_handle);
 
     gateway_jobs_destroy(jobs);
     assert(g_job_queue_destroy_calls == 0);
@@ -155,6 +179,9 @@ static void test_create_without_queue_owns_queue_and_forwards_ops(void)
     assert(jobs != NULL);
     assert(g_job_queue_create_calls == 1);
     assert(g_job_queue_init_calls == 1);
+    assert(g_job_queue_set_platform_services_calls == 1);
+    assert(g_last_wifi_service_handle == NULL);
+    assert(g_last_system_service_handle == NULL);
 
     struct zigbee_service *zigbee = (struct zigbee_service *)(uintptr_t)0x3333;
     assert(gateway_jobs_set_zigbee_service(jobs, zigbee) == ESP_OK);

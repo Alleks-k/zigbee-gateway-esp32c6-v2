@@ -78,6 +78,25 @@ sudo apt-get install -y build-essential cppcheck
 `run_target_self_tests.sh` потребує доступного `idf.py` (через `IDF_PY`, `IDF_PATH` або після source ESP-IDF environment).
 Self-test build overlay конфігурації: `sdkconfig.selftest`.
 
+## Фіксація фінального target rerun
+
+Після фактичного прогона на платі збережіть лог:
+
+```bash
+IDF_PATH=/home/alex/dev/esp32/esp-idf \
+/home/alex/dev/esp32/esp-idf/tools/idf.py -B build-selftest -p /dev/ttyACM0 flash monitor 2>&1 | tee selftest_run_$(date +%F_%H%M).log
+```
+
+Перевірте pass/fail маркери одним кроком:
+
+```bash
+./tools/check_target_selftest_log.sh selftest_run_YYYY-MM-DD_HHMM.log
+```
+
+Очікуваний результат:
+- `Self-tests complete, failures=0`
+- `SELF_TEST_APP: Self-tests passed`
+
 ## Використання
 
 1. Після прошивки пристрій намагається підключитися до STA Wi-Fi.

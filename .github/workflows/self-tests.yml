@@ -52,3 +52,13 @@ jobs:
 
       - name: Run target self-test build
         run: ./tools/run_target_self_tests.sh
+
+      - name: Document hardware rerun gate
+        run: |
+          {
+            echo "### Hardware Rerun Gate"
+            echo "Target build in CI passed, but final hardware rerun is still required."
+            echo "Use:"
+            echo "\`idf.py -B build-selftest -p <PORT> flash monitor 2>&1 | tee selftest_run_<date>.log\`"
+            echo "\`./tools/check_target_selftest_log.sh selftest_run_<date>.log\`"
+          } >> "$GITHUB_STEP_SUMMARY"

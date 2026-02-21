@@ -95,3 +95,4 @@ curl -sS http://zigbee-gw2.local/api/v1/jobs/<job_id>
 - [ ] Smoke пройдено на desktop браузері.
 - [ ] Smoke пройдено на mobile клієнті.
 - [ ] Логи збережені для релізного артефакту.
+- [ ] Лог target self-tests перевірено: `./tools/check_target_selftest_log.sh selftest_run_YYYY-MM-DD_HHMM.log`.

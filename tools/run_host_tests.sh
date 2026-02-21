@@ -78,6 +78,8 @@ cc -std=c11 -Wall -Wextra -Werror \
     -I"${ROOT_DIR}/components/gateway_shared_config/include" \
     "${ROOT_DIR}/tests/host/api_usecases_host_test.c" \
     "${ROOT_DIR}/components/gateway_web_api/src/api_usecases.c" \
+    "${ROOT_DIR}/components/gateway_web_api/src/api_usecases_zigbee.c" \
+    "${ROOT_DIR}/components/gateway_web_api/src/api_usecases_system.c" \
     -o "${BUILD_DIR}/api_usecases_host_test"
 
 "${BUILD_DIR}/api_usecases_host_test"

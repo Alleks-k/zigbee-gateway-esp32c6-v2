@@ -1,6 +1,8 @@
 idf_component_register(
     SRCS
         "src/job_queue.c"
+        "src/job_queue_worker.c"
+        "src/job_queue_submit.c"
         "src/job_queue_state.c"
         "src/job_queue_policy.c"
         "src/job_queue_json.c"

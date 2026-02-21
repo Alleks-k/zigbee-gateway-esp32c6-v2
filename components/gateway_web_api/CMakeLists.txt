@@ -8,6 +8,8 @@ idf_component_register(
         "src/health_json_builder.c"
         "src/api_jobs_handlers.c"
         "src/api_usecases.c"
+        "src/api_usecases_zigbee.c"
+        "src/api_usecases_system.c"
         "src/http_error.c"
         "src/error_ring.c"
         "src/lqi_json_mapper.c"

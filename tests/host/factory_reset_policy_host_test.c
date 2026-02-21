@@ -123,6 +123,15 @@ static void assert_last_report(gateway_status_t wifi_err, gateway_status_t devic
     assert(out.zigbee_fct_err == zb_fct_err);
 }
 
+static void test_initial_report_is_invalid_state(void)
+{
+    reset_stub();
+    assert_last_report(GATEWAY_STATUS_INVALID_STATE,
+                       GATEWAY_STATUS_INVALID_STATE,
+                       GATEWAY_STATUS_INVALID_STATE,
+                       GATEWAY_STATUS_INVALID_STATE);
+}
+
 static void test_factory_reset_error_priority(void)
 {
     reset_stub();
@@ -142,6 +151,21 @@ static void test_factory_reset_error_priority(void)
     assert_last_report(GATEWAY_STATUS_OK, GATEWAY_STATUS_OK, GATEWAY_STATUS_NOT_FOUND, GATEWAY_STATUS_FAIL);
 }
 
+static void test_factory_reset_persists_full_failure_report(void)
+{
+    reset_stub();
+    g_stub.clear_wifi_ret = ESP_FAIL;
+    g_stub.clear_devices_ret = ESP_ERR_INVALID_ARG;
+    g_stub.erase_zb_storage_ret = ESP_ERR_NOT_FOUND;
+    g_stub.erase_zb_fct_ret = ESP_ERR_INVALID_SIZE;
+
+    assert(config_service_factory_reset() == GATEWAY_STATUS_FAIL);
+    assert_last_report(GATEWAY_STATUS_FAIL,
+                       GATEWAY_STATUS_INVALID_ARG,
+                       GATEWAY_STATUS_NOT_FOUND,
+                       GATEWAY_STATUS_FAIL);
+}
+
 static void test_factory_reset_tolerates_missing_zigbee_partitions(void)
 {
     reset_stub();
@@ -155,7 +179,9 @@ int main(void)
 {
     printf("Running host tests: factory_reset_policy_host_test\n");
     assert(config_service_get_last_factory_reset_report(NULL) == GATEWAY_STATUS_INVALID_ARG);
+    test_initial_report_is_invalid_state();
     test_factory_reset_error_priority();
+    test_factory_reset_persists_full_failure_report();
     test_factory_reset_tolerates_missing_zigbee_partitions();
     printf("Host tests passed: factory_reset_policy_host_test\n");
     return 0;

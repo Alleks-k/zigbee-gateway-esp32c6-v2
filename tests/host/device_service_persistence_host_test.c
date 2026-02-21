@@ -167,6 +167,20 @@ static void test_init_propagates_load_error(void)
     device_service_destroy(handle);
 }
 
+static void test_init_rejects_invalid_loaded_count(void)
+{
+    reset_stubs();
+    g_repo.load_loaded = true;
+    g_repo.load_count = MAX_DEVICES + 1;
+
+    device_service_handle_t handle = make_service();
+    assert(device_service_init(handle) == GATEWAY_STATUS_INVALID_ARG);
+
+    gateway_device_record_t snapshot[MAX_DEVICES] = {0};
+    assert(device_service_get_snapshot(handle, snapshot, MAX_DEVICES) == 0);
+    device_service_destroy(handle);
+}
+
 static void test_add_rolls_back_on_save_failure(void)
 {
     reset_stubs();
@@ -212,6 +226,37 @@ static void test_update_same_name_is_noop(void)
     device_service_destroy(handle);
 }
 
+static void test_update_rolls_back_on_save_failure(void)
+{
+    reset_stubs();
+
+    device_service_handle_t handle = make_service();
+    assert(device_service_init(handle) == GATEWAY_STATUS_OK);
+
+    gateway_ieee_addr_t ieee = {0};
+    set_ieee(ieee, 0x40);
+    assert(device_service_add_with_ieee(handle, 0x2222, ieee) == GATEWAY_STATUS_OK);
+
+    gateway_device_record_t before[MAX_DEVICES] = {0};
+    int before_count = device_service_get_snapshot(handle, before, MAX_DEVICES);
+    assert(before_count == 1);
+
+    g_repo.save_status = GATEWAY_STATUS_FAIL;
+    g_repo.save_calls = 0;
+    g_notifier.list_changed_calls = 0;
+
+    assert(device_service_update_name(handle, 0x2222, "NewName") == GATEWAY_STATUS_FAIL);
+    assert(g_repo.save_calls == 1);
+    assert(g_notifier.list_changed_calls == 0);
+
+    gateway_device_record_t after[MAX_DEVICES] = {0};
+    int after_count = device_service_get_snapshot(handle, after, MAX_DEVICES);
+    assert(after_count == 1);
+    assert(strcmp(after[0].name, before[0].name) == 0);
+
+    device_service_destroy(handle);
+}
+
 static void test_delete_rolls_back_on_save_failure(void)
 {
     reset_stubs();
@@ -242,8 +287,10 @@ int main(void)
 {
     printf("Running host tests: device_service_persistence_host_test\n");
     test_init_propagates_load_error();
+    test_init_rejects_invalid_loaded_count();
     test_add_rolls_back_on_save_failure();
     test_update_same_name_is_noop();
+    test_update_rolls_back_on_save_failure();
     test_delete_rolls_back_on_save_failure();
     printf("Host tests passed: device_service_persistence_host_test\n");
     return 0;

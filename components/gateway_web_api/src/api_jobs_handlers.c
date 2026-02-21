@@ -16,8 +16,6 @@
 #define JOB_API_RESULT_JSON_LIMIT_REBOOT        512
 #define JOB_API_RESULT_JSON_LIMIT_UPDATE        768
 #define JOB_API_RESULT_JSON_LIMIT_LQI_REFRESH   1024
-#define JOB_API_GET_DATA_JSON_CAP               2304
-
 static size_t job_result_json_limit_for_type(gateway_core_job_type_t type)
 {
     switch (type) {
@@ -123,47 +121,76 @@ esp_err_t api_jobs_get_handler(httpd_req_t *req)
         return http_error_send_esp(req, err, "Invalid job id");
     }
 
-    gateway_core_job_info_t info = {0};
-    err = api_usecase_jobs_get(usecases, job_id, &info);
+    gateway_core_job_info_t *info = (gateway_core_job_info_t *)calloc(1, sizeof(gateway_core_job_info_t));
+    if (!info) {
+        return http_error_send_esp(req, ESP_ERR_NO_MEM, "Out of memory");
+    }
+
+    err = api_usecase_jobs_get(usecases, job_id, info);
     if (err != ESP_OK) {
+        free(info);
         return http_error_send_esp(req, err, "Job not found");
     }
 
     const char *result_json = "null";
     char truncated_result_json[96];
-    size_t result_limit = job_result_json_limit_for_type(info.type);
-    if (info.has_result) {
-        size_t result_len = strnlen(info.result_json, sizeof(info.result_json));
+    size_t result_limit = job_result_json_limit_for_type(info->type);
+    if (info->has_result) {
+        size_t result_len = strnlen(info->result_json, sizeof(info->result_json));
         if (result_len > result_limit) {
             int t_written = snprintf(
                 truncated_result_json, sizeof(truncated_result_json),
                 "{\"truncated\":true,\"original_len\":%u,\"max_len\":%u}",
                 (unsigned)result_len, (unsigned)result_limit);
             if (t_written < 0 || (size_t)t_written >= sizeof(truncated_result_json)) {
+                free(info);
                 return http_error_send_esp(req, ESP_ERR_NO_MEM, "Failed to build truncated result");
             }
             result_json = truncated_result_json;
         } else {
-            result_json = info.result_json;
+            result_json = info->result_json;
         }
     }
 
-    char data_json[JOB_API_GET_DATA_JSON_CAP];
+    char head_json[256];
     int written = snprintf(
-        data_json, sizeof(data_json),
+        head_json, sizeof(head_json),
         "{\"job_id\":%" PRIu32 ",\"type\":\"%s\",\"state\":\"%s\",\"done\":%s,"
-        "\"created_ms\":%" PRIu64 ",\"updated_ms\":%" PRIu64 ",\"error\":\"%s\",\"result\":%s}",
-        info.id,
-        gateway_jobs_type_to_string(info.type),
-        gateway_jobs_state_to_string(info.state),
-        (info.state == GATEWAY_CORE_JOB_STATE_SUCCEEDED || info.state == GATEWAY_CORE_JOB_STATE_FAILED) ? "true" : "false",
-        info.created_ms,
-        info.updated_ms,
-        esp_err_to_name(info.err),
-        result_json);
-    if (written < 0 || (size_t)written >= sizeof(data_json)) {
+        "\"created_ms\":%" PRIu64 ",\"updated_ms\":%" PRIu64 ",\"error\":\"%s\",\"result\":",
+        info->id,
+        gateway_jobs_type_to_string(info->type),
+        gateway_jobs_state_to_string(info->state),
+        (info->state == GATEWAY_CORE_JOB_STATE_SUCCEEDED || info->state == GATEWAY_CORE_JOB_STATE_FAILED) ? "true" : "false",
+        info->created_ms,
+        info->updated_ms,
+        esp_err_to_name(info->err));
+    if (written < 0 || (size_t)written >= sizeof(head_json)) {
+        free(info);
         return http_error_send_esp(req, ESP_ERR_NO_MEM, "Job response too large");
     }
 
-    return http_success_send_data_json(req, data_json);
+    httpd_resp_set_type(req, "application/json");
+    esp_err_t send_ret = httpd_resp_sendstr_chunk(req, "{\"status\":\"ok\",\"data\":");
+    if (send_ret != ESP_OK) {
+        free(info);
+        return send_ret;
+    }
+    send_ret = httpd_resp_sendstr_chunk(req, head_json);
+    if (send_ret != ESP_OK) {
+        free(info);
+        return send_ret;
+    }
+    send_ret = httpd_resp_sendstr_chunk(req, result_json);
+    if (send_ret != ESP_OK) {
+        free(info);
+        return send_ret;
+    }
+    send_ret = httpd_resp_sendstr_chunk(req, "}}");
+    if (send_ret != ESP_OK) {
+        free(info);
+        return send_ret;
+    }
+    send_ret = httpd_resp_sendstr_chunk(req, NULL);
+    free(info);
+    return send_ret;
 }

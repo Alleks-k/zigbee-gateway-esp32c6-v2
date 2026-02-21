@@ -12,6 +12,7 @@
 #include "state_store.h"
 #include "system_service.h"
 #include "wifi_init.h"
+#include "net_platform_services.h"
 #include "wifi_service.h"
 #include "zigbee_service.h"
 #include "device_service_lock_freertos_port.h"
@@ -80,6 +81,7 @@ void app_main(void)
     ESP_ERROR_CHECK(gateway_status_to_esp_err(device_service_init(device_service)));
     ESP_ERROR_CHECK(gateway_status_to_esp_err(gateway_state_init(gateway_state)));
     gateway_state_set_now_ms_provider(gateway_state, self_tests_now_ms);
+    net_platform_services_init(wifi_service, system_service);
     zigbee_service_params.device_service = device_service;
     zigbee_service_params.gateway_state = gateway_state;
     zigbee_service_params.runtime_ops = NULL;

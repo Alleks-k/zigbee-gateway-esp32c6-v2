@@ -4,10 +4,10 @@
 #include <string.h>
 
 static config_service_factory_reset_report_t s_last_factory_reset_report = {
-    .wifi_err = GATEWAY_STATUS_FAIL,
-    .devices_err = GATEWAY_STATUS_FAIL,
-    .zigbee_storage_err = GATEWAY_STATUS_FAIL,
-    .zigbee_fct_err = GATEWAY_STATUS_FAIL,
+    .wifi_err = GATEWAY_STATUS_INVALID_STATE,
+    .devices_err = GATEWAY_STATUS_INVALID_STATE,
+    .zigbee_storage_err = GATEWAY_STATUS_INVALID_STATE,
+    .zigbee_fct_err = GATEWAY_STATUS_INVALID_STATE,
 };
 
 static gateway_status_t config_schema_get_effective_version(int32_t *out_version)

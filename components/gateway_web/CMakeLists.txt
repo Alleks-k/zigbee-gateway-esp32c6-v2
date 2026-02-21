@@ -21,7 +21,6 @@ if(CONFIG_GATEWAY_SELF_TEST_APP)
         gateway_net
         unity)
     list(APPEND gateway_web_priv_reqs
-        gateway_core_platform_freertos
         gateway_core_persistence_adapter
         gateway_core_state
         gateway_net

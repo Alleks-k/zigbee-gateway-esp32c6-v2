@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "gateway_status_esp.h"
+#include "state_store.h"
 #include "esp_timer.h"
 #include "esp_zigbee_core.h"
 #include "freertos/FreeRTOS.h"

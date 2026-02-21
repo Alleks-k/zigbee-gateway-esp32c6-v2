@@ -6,7 +6,8 @@
 #include "esp_err.h"
 #include "gateway_runtime_types.h"
 #include "device_service.h"
-#include "state_store.h"
+
+struct gateway_state_store;
 
 typedef struct {
     esp_err_t (*send_on_off)(uint16_t short_addr, uint8_t endpoint, uint8_t on_off);
@@ -19,7 +20,7 @@ typedef zigbee_service_t *zigbee_service_handle_t;
 
 typedef struct {
     device_service_handle_t device_service;
-    gateway_state_handle_t gateway_state;
+    struct gateway_state_store *gateway_state;
     const zigbee_service_runtime_ops_t *runtime_ops;
 } zigbee_service_init_params_t;
 

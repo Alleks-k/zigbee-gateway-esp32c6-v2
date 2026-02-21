@@ -67,7 +67,8 @@ esp_err_t ws_manager_send_frame_to_clients(ws_manager_handle_t handle, const cha
             if (ret != ESP_OK) {
                 ESP_LOGW(TAG, "WS send failed (%s), removing client %d", esp_err_to_name(ret), handle->ws_fds[i]);
                 gateway_error_ring_add("ws", (int32_t)ret, "send_frame_async failed");
-                ws_manager_inc_dropped_frames(handle);
+                // ws_mutex is already held in this loop; update metric inline to avoid recursive lock.
+                handle->ws_metrics.dropped_frames_total++;
                 handle->ws_fds[i] = -1;
             }
         }

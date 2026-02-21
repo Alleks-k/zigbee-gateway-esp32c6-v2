@@ -4,7 +4,43 @@
 #include "zigbee_service.h"
 #include "config_service.h"
 #include "gateway_persistence_adapter.h"
-#include "device_service_lock_freertos_port.h"
+
+static gateway_status_t core_selftest_lock_create(void *ctx, void **out_lock)
+{
+    (void)ctx;
+    static int s_lock_dummy = 0;
+    if (!out_lock) {
+        return GATEWAY_STATUS_INVALID_ARG;
+    }
+    *out_lock = &s_lock_dummy;
+    return GATEWAY_STATUS_OK;
+}
+
+static void core_selftest_lock_destroy(void *ctx, void *lock)
+{
+    (void)ctx;
+    (void)lock;
+}
+
+static void core_selftest_lock_enter(void *ctx, void *lock)
+{
+    (void)ctx;
+    (void)lock;
+}
+
+static void core_selftest_lock_exit(void *ctx, void *lock)
+{
+    (void)ctx;
+    (void)lock;
+}
+
+static const device_service_lock_port_t s_core_selftest_lock_port = {
+    .create = core_selftest_lock_create,
+    .destroy = core_selftest_lock_destroy,
+    .enter = core_selftest_lock_enter,
+    .exit = core_selftest_lock_exit,
+    .ctx = NULL,
+};
 
 static gateway_status_t core_selftest_device_repo_load(void *ctx,
                                                        gateway_device_record_t *devices,
@@ -35,7 +71,7 @@ static void test_device_snapshot_null_buffer(void)
 {
     device_service_handle_t device_service = NULL;
     device_service_init_params_t params = {
-        .lock_port = device_service_lock_port_freertos(),
+        .lock_port = &s_core_selftest_lock_port,
         .repo_port = &s_core_selftest_device_repo_port,
         .notifier = NULL,
     };

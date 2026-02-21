@@ -11,6 +11,11 @@
 
 static const char *TAG = "WEB_SERVER";
 
+static void web_server_global_user_ctx_noop_free(void *ctx)
+{
+    (void)ctx;
+}
+
 static void web_server_close_fn(httpd_handle_t hd, int sockfd)
 {
     ws_manager_handle_t ws_manager = (ws_manager_handle_t)httpd_get_global_user_ctx(hd);
@@ -37,6 +42,8 @@ void start_web_server(ws_manager_handle_t ws_manager, api_usecases_handle_t usec
     // Enable wildcard matching for dynamic routes like /api/v1/jobs/*.
     httpd_config.uri_match_fn = httpd_uri_match_wildcard;
     httpd_config.global_user_ctx = ws_manager;
+    // ws_manager lifetime is owned by caller (ws_manager_destroy), not by HTTPD core.
+    httpd_config.global_user_ctx_free_fn = web_server_global_user_ctx_noop_free;
     httpd_config.close_fn = web_server_close_fn;
 
     ESP_LOGI(TAG, "Starting Web Server on port %d", httpd_config.server_port);

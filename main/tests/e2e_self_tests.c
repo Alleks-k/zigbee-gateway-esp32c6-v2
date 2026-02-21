@@ -4,6 +4,7 @@
 #include "wifi_service.h"
 #include "wifi_init.h"
 #include "state_store.h"
+#include "gateway_wifi_system_facade.h"
 #include "gateway_status.h"
 #include "job_queue.h"
 #include "system_service.h"
@@ -34,12 +35,12 @@ static int s_mock_wifi_fallback_called = 0;
 static job_queue_handle_t s_job_queue = NULL;
 static wifi_service_handle_t s_wifi_service = NULL;
 static system_service_handle_t s_system_service = NULL;
+static gateway_state_handle_t s_api_gateway_state = NULL;
+static gateway_wifi_system_handle_t s_api_wifi_handle = NULL;
 static api_usecases_handle_t s_api_usecases = NULL;
 static int s_api_zigbee_ctx = 0;
-static int s_api_wifi_ctx = 0;
 static int s_api_jobs_ctx = 0;
 static zigbee_service_handle_t s_api_zigbee_handle = (zigbee_service_handle_t)&s_api_zigbee_ctx;
-static gateway_wifi_system_handle_t s_api_wifi_handle = (gateway_wifi_system_handle_t)&s_api_wifi_ctx;
 static gateway_jobs_handle_t s_api_jobs_handle = (gateway_jobs_handle_t)&s_api_jobs_ctx;
 
 static void ensure_platform_services(void)
@@ -49,6 +50,24 @@ static void ensure_platform_services(void)
     }
     if (!s_system_service) {
         TEST_ASSERT_EQUAL(ESP_OK, system_service_create(&s_system_service));
+    }
+}
+
+static void ensure_api_wifi_system(void)
+{
+    ensure_platform_services();
+    if (!s_api_gateway_state) {
+        TEST_ASSERT_EQUAL(GATEWAY_STATUS_OK, gateway_state_create(&s_api_gateway_state));
+    }
+    TEST_ASSERT_EQUAL(GATEWAY_STATUS_OK, gateway_state_init(s_api_gateway_state));
+
+    if (!s_api_wifi_handle) {
+        gateway_wifi_system_init_params_t params = {
+            .gateway_state_handle = s_api_gateway_state,
+            .wifi_service_handle = s_wifi_service,
+            .system_service_handle = s_system_service,
+        };
+        TEST_ASSERT_EQUAL(ESP_OK, gateway_wifi_system_create(&params, &s_api_wifi_handle));
     }
 }
 
@@ -160,7 +179,7 @@ static esp_err_t mock_wifi_start_fallback_ap_ok(wifi_runtime_ctx_t *ctx)
 
 static void reset_api_mocks(void)
 {
-    ensure_platform_services();
+    ensure_api_wifi_system();
     s_mock_send_on_off_called = 0;
     s_mock_send_on_off_addr = 0;
     s_mock_send_on_off_ep = 0;

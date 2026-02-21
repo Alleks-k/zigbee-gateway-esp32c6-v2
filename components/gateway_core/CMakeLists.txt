@@ -25,7 +25,6 @@ if(CONFIG_GATEWAY_SELF_TEST_APP)
     list(APPEND gateway_core_reqs
         unity)
     list(APPEND gateway_core_priv_reqs
-        gateway_core_platform_freertos
         gateway_core_zigbee
         unity)
     list(APPEND gateway_core_priv_include_dirs

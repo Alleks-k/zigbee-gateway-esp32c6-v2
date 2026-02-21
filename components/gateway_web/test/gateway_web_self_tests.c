@@ -7,13 +7,13 @@
 #include "lqi_json_mapper.h"
 #include "error_ring.h"
 #include "device_service.h"
-#include "device_service_lock_freertos_port.h"
 #include "gateway_status.h"
 #include "gateway_persistence_adapter.h"
 #include "gateway_wifi_system_facade.h"
 #include "state_store.h"
 #include "system_service.h"
 #include "wifi_init.h"
+#include "net_platform_services.h"
 #include "wifi_service.h"
 #include "zigbee_service.h"
 #include "ws_manager.h"
@@ -62,11 +62,48 @@ static const device_service_repo_port_t s_web_selftest_device_repo_port = {
     .ctx = NULL,
 };
 
+static gateway_status_t web_selftest_lock_create(void *ctx, void **out_lock)
+{
+    (void)ctx;
+    static int s_lock_dummy = 0;
+    if (!out_lock) {
+        return GATEWAY_STATUS_INVALID_ARG;
+    }
+    *out_lock = &s_lock_dummy;
+    return GATEWAY_STATUS_OK;
+}
+
+static void web_selftest_lock_destroy(void *ctx, void *lock)
+{
+    (void)ctx;
+    (void)lock;
+}
+
+static void web_selftest_lock_enter(void *ctx, void *lock)
+{
+    (void)ctx;
+    (void)lock;
+}
+
+static void web_selftest_lock_exit(void *ctx, void *lock)
+{
+    (void)ctx;
+    (void)lock;
+}
+
+static const device_service_lock_port_t s_web_selftest_lock_port = {
+    .create = web_selftest_lock_create,
+    .destroy = web_selftest_lock_destroy,
+    .enter = web_selftest_lock_enter,
+    .exit = web_selftest_lock_exit,
+    .ctx = NULL,
+};
+
 static void ensure_stateful_handles(void)
 {
     if (!s_device_service) {
         device_service_init_params_t params = {
-            .lock_port = device_service_lock_port_freertos(),
+            .lock_port = &s_web_selftest_lock_port,
             .repo_port = &s_web_selftest_device_repo_port,
             .notifier = NULL,
         };
@@ -101,6 +138,7 @@ static void ensure_stateful_handles(void)
         TEST_ASSERT_EQUAL(ESP_OK, gateway_wifi_system_create(&wifi_system_params, &s_wifi_system));
         TEST_ASSERT_EQUAL(ESP_OK, gateway_jobs_create(&jobs_params, &s_jobs));
         TEST_ASSERT_EQUAL(ESP_OK, gateway_jobs_set_zigbee_service(s_jobs, s_zigbee_service));
+        net_platform_services_init(s_wifi_service, s_system_service);
         if (!s_api_usecases) {
             api_usecases_init_params_t params = {
                 .service_ops = NULL,
@@ -607,7 +645,7 @@ static void test_ws_runtime_socket_lifecycle_disconnect_reconnect_backpressure(v
     TEST_ASSERT_EQUAL(ESP_OK, ws_handler_with_handle(ws, &req));
     TEST_ASSERT_EQUAL_INT(1, ws_manager_get_client_count_with_handle(ws));
 
-    usleep(130000);
+    usleep(280000);
     s_ws_test_fail_fd = s_ws_test_active_fd;
     ws_broadcast_status_with_handle(ws);
     TEST_ASSERT_EQUAL_INT(0, ws_manager_get_client_count_with_handle(ws));
@@ -720,10 +758,15 @@ static bool ws_send_handshake_and_wait_101(int fd)
 
 static bool ws_send_client_close_frame(int fd)
 {
-    const uint8_t close_frame[6] = {
-        0x88,       // FIN + CLOSE opcode
-        0x80,       // MASK + payload len 0
-        0x12, 0x34, 0x56, 0x78 // mask key
+    // RFC6455 compliant client close frame: masked payload with status code 1000.
+    const uint8_t mask[4] = {0x12, 0x34, 0x56, 0x78};
+    const uint8_t payload[2] = {0x03, 0xE8};
+    const uint8_t close_frame[8] = {
+        0x88,                               // FIN + CLOSE opcode
+        0x82,                               // MASK + payload len 2
+        mask[0], mask[1], mask[2], mask[3],
+        (uint8_t)(payload[0] ^ mask[0]),   // masked status code bytes
+        (uint8_t)(payload[1] ^ mask[1]),
     };
     return send(fd, close_frame, sizeof(close_frame), 0) == (int)sizeof(close_frame);
 }
